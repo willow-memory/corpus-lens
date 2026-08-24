@@ -64,7 +64,7 @@ path, and one that documents that weekly cadence *is* reconstructable.
 Python 3.10+, no dependencies. Not on PyPI yet — install from source:
 
 ```bash
-git clone https://github.com/rudi193-cmd/corpus-lens
+git clone https://github.com/willow-memory/corpus-lens
 cd corpus-lens
 pip install .           # or: pip install -e .  (for development)
 ```
