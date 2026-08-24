@@ -10,7 +10,7 @@ Python, nothing leaves your machine, and this is for studying *yourself*.
 Pointing it at another person (a child, a partner, an employee) is a different
 consent object and is out of scope by design.
 
-The rubric this instruments: [GRADING.md](https://github.com/rudi193-cmd/willow-seed/blob/main/GRADING.md)
+The rubric this instruments: [GRADING.md](GRADING.md)
 (ten questions to grade your own system).
 
 ## The wall (what it guarantees, stated honestly)
