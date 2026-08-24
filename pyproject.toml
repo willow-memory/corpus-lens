@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/rudi193-cmd/corpus-lens"
+Homepage = "https://github.com/willow-memory/corpus-lens"
 Rubric = "https://github.com/rudi193-cmd/willow-seed/blob/main/GRADING.md"
 
 [project.scripts]
