@@ -23,7 +23,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/willow-memory/corpus-lens"
-Rubric = "https://github.com/rudi193-cmd/willow-seed/blob/main/GRADING.md"
+Rubric = "https://github.com/willow-memory/corpus-lens/blob/main/GRADING.md"
 
 [project.scripts]
 corpuslens = "corpuslens.cli:main"

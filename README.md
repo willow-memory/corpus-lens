@@ -10,7 +10,7 @@ Python, nothing leaves your machine, and this is for studying *yourself*.
 Pointing it at another person (a child, a partner, an employee) is a different
 consent object and is out of scope by design.
 
-The rubric this instruments: [GRADING.md](https://github.com/rudi193-cmd/willow-seed/blob/main/GRADING.md)
+The rubric this instruments: [GRADING.md](GRADING.md)
 (ten questions to grade your own system).
 
 ## The wall (what it guarantees, stated honestly)
@@ -64,7 +64,7 @@ path, and one that documents that weekly cadence *is* reconstructable.
 Python 3.10+, no dependencies. Not on PyPI yet — install from source:
 
 ```bash
-git clone https://github.com/rudi193-cmd/corpus-lens
+git clone https://github.com/willow-memory/corpus-lens
 cd corpus-lens
 pip install .           # or: pip install -e .  (for development)
 ```
