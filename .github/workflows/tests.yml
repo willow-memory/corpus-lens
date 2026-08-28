@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  # A four-version matrix restarted on every push to a PR branch, with nothing
+  # cancelling the superseded run. Scoped to workflow AND ref so a PR cancelling
+  # its own older run can never reach main's.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-matrix:
     runs-on: ubuntu-latest
