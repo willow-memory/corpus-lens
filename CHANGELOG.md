@@ -10,6 +10,53 @@ First cut: the wall, two adapters, four analyzers, hardened across four rounds
 of adversarial review.
 
 ### Added
+- **Cursor `store.db` adapter** (`ingest/cursor_store.py`, `--adapter
+  cursor-store`): reads the chat store Cursor keeps for itself — a tree of
+  `store.db` SQLite files under `~/.cursor/chats`, one per thread. The format
+  is undocumented, so it is read from the bytes: a `blobs` heap where a blob
+  beginning `{` is the conversation as plain JSON (`role`/`content`) and every
+  other blob is protobuf, walked on the wire format alone (stdlib only, no
+  schema, no dependency) to recover the tool-step clocks in fields 59/60. The
+  thread anchor comes from the sibling `meta.json`'s `createdAtMs`. On the
+  corpus this was written for it read 266 threads and 3,734 turns that the
+  `cursor` adapter could not see at all.
+
+  **It gives operator turns no `delta_prev_s`, on purpose.** The store
+  timestamps tool steps, not prompts; a prompt is dated by the last logged
+  moment at or before it, and its tempo is `None`. Interpolating a plausible
+  clock would invent exactly the quantity the wall governs, and a fabricated
+  tempo is indistinguishable from a measured one downstream. Databases open
+  `mode=ro`; a malformed, encrypted, or anchorless blob is counted, never
+  hidden. `meta.json`'s `title` and `cwd` are read and deliberately never
+  emitted.
+
+### Fixed
+- **The injection filter missed most of what Cursor injects**, and the
+  front-loading finding it was built for was still in the numbers: on the
+  `store.db` corpus the median "opener" was **3617 words**. `<user_info>` was
+  the only Cursor wrapper it knew. Now it also strips
+  `always_applied_workspace_rule(s)`, `agent_transcripts`, `git_status`,
+  `rules`, `user_rule`, `agent_skill(s)`, `summary_content`, `hooks_context`,
+  `system_notification`, `system_reminder`, `mcp_instructions`,
+  `mcp_meta_tool(s|_servers)`, `dynamic_tool(s|_catalog|_namespaces)`,
+  `available_subagent_(types|models)`, `mermaid_syntax` and `todo_update` —
+  **including tags carrying attributes** (`<mcp_instructions description="…">`
+  matched nothing before, which alone left 277 turns with a four-figure word
+  count), and including a block left unclosed by a context boundary.
+
+  Three injections are not tags at all: a runtime that compacts a conversation
+  re-injects the summary **as a user turn**. `[Previous conversation summary]`,
+  `Your conversation was summarized due to…`, `This session is being continued
+  from a previous conversation` and a subagent-result preamble are now
+  recognised as whole-turn machine text and carry no authored words. The
+  patterns are anchored at the start of the turn, so a human quoting one of
+  those phrases mid-message is untouched.
+
+  Median opener on the store corpus: **3617 → 12 words**; turns still over 300
+  words after stripping: **438 → 0**. The `claude-code` adapter shares this
+  filter; measured on a frozen snapshot, its opener median is unchanged and it
+  correctly drops 7 compaction summaries it had been counting as prompts.
+
 - **Database adapters** (`ingest/sqlite.py`, `ingest/postgres.py`): read a
   corpus from a **SQLite `.db` file** or a **Postgres connection string** instead
   of a directory of session files. Both resolve the turns table's timestamp /

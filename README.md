@@ -77,6 +77,7 @@ installing, straight from a clone, via `python3 -m corpuslens`.
 ```bash
 corpuslens run ~/.claude/projects --adapter claude-code --out report.md
 corpuslens run ./my-cursor-sessions --adapter cursor
+corpuslens run ~/.cursor/chats --adapter cursor-store  # Cursor's own store.db tree
 corpuslens run ./corpus.db --adapter sqlite            # a SQLite corpus (a file)
 corpuslens run "dbname=mycorpus" --adapter postgres    # a Postgres corpus (a DSN)
 # equivalently, from a clone without installing:
@@ -85,9 +86,34 @@ python3 -m corpuslens run ~/.claude/projects --adapter claude-code
 
 Point `--adapter claude-code` at a directory of Claude Code session `.jsonl`
 files, or `--adapter cursor` at a directory of Cursor session `.jsonl` files.
+`--adapter cursor-store` reads the chat store Cursor keeps for itself — a tree
+of `store.db` SQLite files under `~/.cursor/chats`, one per thread. See
+[Cursor's store.db](#cursor-storedb) for what that corpus can and cannot tell
+you about time.
 The report prints to stdout (or `--out FILE`), and always opens with a
 plain-language audit line naming exactly what left the wall and how many input
 records were dropped.
+
+### Cursor's store.db
+
+Cursor keeps each chat in its own directory holding a `store.db` and a
+`meta.json`. There is no published schema, so the adapter reads the format from
+the bytes: a `blobs` heap where a blob beginning `{` is the conversation as
+plain JSON (`role` / `content`) and every other blob is protobuf, walked on the
+wire format alone. Databases are opened `mode=ro` — pointing the lens at a live
+Cursor cannot mutate it.
+
+**What this corpus does not have: a clock on your turns.** The store timestamps
+tool *steps*, not prompts. So a prompt is dated by the last logged moment at or
+before it (the thread's `createdAtMs`, or the most recent tool step above it),
+and its `delta_prev_s` is always `None`. Interpolating a plausible time would
+be inventing exactly the quantity the wall exists to govern, and a fabricated
+tempo is indistinguishable from a measured one downstream. `tempo` over this
+corpus therefore describes the machine's step rate, never your typing rhythm.
+
+Everything a blob cannot become — a tool or system message, an unparseable or
+encrypted payload, a thread with no anchor — is counted in the audit line
+rather than silently dropped.
 
 ### Database corpora (SQLite and Postgres)
 
@@ -155,8 +181,8 @@ reference table inherits those corrections, not the first drafts.
 
 ## Status: spine (v0.1)
 
-Built: event model, the wall, four adapters (claude-code, cursor, sqlite,
-postgres), injection filter, four analyzers, markdown renderer, CLI, test suite
+Built: event model, the wall, five adapters (claude-code, cursor, cursor-store,
+sqlite, postgres), injection filter, four analyzers, markdown renderer, CLI, test suite
 (wall + pipeline + db-adapter + regression tests for every review finding).
 
 Named and deliberately unbuilt:
@@ -169,7 +195,11 @@ Named and deliberately unbuilt:
   agent-fleet adapters; JSON/prose renderers.
 - The cursor adapter keeps only turns carrying the runtime's injected
   timestamp tag — conservative, undercounts, and **every dropped turn is
-  counted in the audit line** (not silently discarded).
+  counted in the audit line** (not silently discarded). On a real corpus it
+  read 12 of 310 session files for this reason; `cursor-store` is the way in
+  to the same work.
+- The cursor-store adapter gives operator turns no per-turn tempo, because the
+  store has none to give. Reconstructing one would need Cursor to log it.
 
 The classifiers are regex heuristics with known false-positive/negative modes
 (a mixed personal + coding corpus is where they are weakest); the reference
