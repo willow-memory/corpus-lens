@@ -62,6 +62,10 @@ SUBJECTS = (SUBJECT_HUMAN, SUBJECT_AGENT, SUBJECT_MIXED, SUBJECT_UNKNOWN)
 # erase the 40% and both drop their "you" and lose their own reference point.
 DOMINANT_FRAC = 0.80
 
+#: Minimum turns supporting the leading class before a categorical call. See
+#: the long note in `infer_subject` for why this is not SMALL_N.
+_LEADER_MIN = 20
+
 # If the classifier itself could not place more than this share of turns in
 # EITHER class, the classified remainder's split is not trustworthy enough to
 # make a categorical call from — `unknown` PER TURN already means "not enough
@@ -73,7 +77,8 @@ MAX_UNCLASSIFIED_FRAC = 0.50
 
 def infer_subject(results: dict, small_n: int = SMALL_N,
                    dominant_frac: float = DOMINANT_FRAC,
-                   max_unclassified_frac: float = MAX_UNCLASSIFIED_FRAC) -> tuple[str, str]:
+                   max_unclassified_frac: float = MAX_UNCLASSIFIED_FRAC,
+                   leader_min: int = _LEADER_MIN) -> tuple[str, str]:
     """Derive this run's SUBJECT from `results["authorship_mix"]` — never from
     a flag, per `cli.py`'s standing claim that there is no CLI switch for a
     capability-shaped decision like this one. Returns `(subject, reason)`:
@@ -102,10 +107,23 @@ def infer_subject(results: dict, small_n: int = SMALL_N,
     if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
         return SUBJECT_UNKNOWN, ("authorship_mix reported no classified operator-role turns "
                                   "— not enough evidence to call the operator role human or agent")
-    if n < small_n:
-        return SUBJECT_UNKNOWN, (f"only {n} operator-role turn(s) were classified, below the "
-                                  f"{small_n}-turn convention this tool uses elsewhere before "
-                                  "trusting a categorical call — not enough evidence")
+    # The floor is on the turns SUPPORTING the leading class, not on corpus size.
+    #
+    # It used to be `n < small_n`, borrowed from SMALL_N, and that made the rule
+    # incoherent: SMALL_N exists so a PERCENTAGE is not read to a decimal on a
+    # thin sample, which is a different question from whether a two-way
+    # categorical call is supported. Under the old rule a 30-turn corpus split
+    # 24 human / 6 agent passed, while a 24-turn corpus that was 24/24
+    # unanimously human was refused — rejecting strictly stronger evidence than
+    # it accepted. Found by running the merged build on this project's own
+    # corpus, where 24 unanimous human turns returned "undetermined"; both real
+    # corpora available at the time failed the floor, so the feature never fired
+    # at all in practice.
+    #
+    # `_LEADER_MIN` is a convention like every other number here, not a power
+    # analysis, and it is deliberately the same 20 either way rather than tuned
+    # per class. What it is NOT is a claim that 20 supporting turns make a call
+    # safe — only that fewer than 20 is where this tool stops guessing.
 
     def _pct(key: str) -> float:
         v = res.get(key, 0.0)
@@ -117,6 +135,13 @@ def infer_subject(results: dict, small_n: int = SMALL_N,
         return SUBJECT_UNKNOWN, (f"the classifier could not place {unknown_pct}% of {n} "
                                   "classified operator-role turns in either class — too little "
                                   "evidence for a categorical call")
+    leader_pct = max(human_pct, agent_pct)
+    leader_turns = int(round(n * leader_pct / 100.0))
+    if leader_turns < leader_min:
+        return SUBJECT_UNKNOWN, (f"only {leader_turns} of {n} classified operator-role turn(s) "
+                                  f"support the leading class, below the {leader_min}-turn "
+                                  "convention this tool uses before making a categorical call "
+                                  "— not enough evidence")
     if human_pct / 100.0 >= dominant_frac:
         return SUBJECT_HUMAN, (f"{human_pct}% of {n} classified operator-role turns read as "
                                 f"human (>= the {int(dominant_frac * 100)}% threshold for a "

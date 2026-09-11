@@ -42,10 +42,44 @@ class MissingEvidenceTests(unittest.TestCase):
         subj, reason = infer_subject(_mix(0, human_pct=100.0))
         self.assertEqual(subj, SUBJECT_UNKNOWN)
 
-    def test_below_small_n_is_unknown_even_if_all_one_class(self):
-        subj, reason = infer_subject(_mix(SMALL_N - 1, human_pct=100.0))
+    def test_too_few_supporting_turns_is_unknown(self):
+        # the floor is on turns SUPPORTING the leading class, not corpus size
+        subj, reason = infer_subject(_mix(10, human_pct=100.0))
         self.assertEqual(subj, SUBJECT_UNKNOWN)
-        self.assertIn(str(SMALL_N), reason)
+        self.assertIn("support the leading class", reason)
+
+    def test_a_unanimous_call_is_not_refused_for_being_under_small_n(self):
+        """The regression this rule was changed for.
+
+        The floor used to be corpus size borrowed from SMALL_N, which exists so
+        a PERCENTAGE is not read to a decimal on a thin sample — a different
+        question from whether a two-way categorical call is supported. Under
+        that rule this project's own corpus, 24 of 24 unanimously human,
+        returned 'undetermined', while a 30-turn corpus split 24/6 did not.
+        """
+        subj, _ = infer_subject(_mix(24, human_pct=100.0))
+        self.assertEqual(subj, SUBJECT_HUMAN)
+
+    def test_the_rule_never_refuses_strictly_stronger_evidence(self):
+        """The invariant the old floor broke, pinned directly.
+
+        If some (n, leading share) yields a categorical call, then any case
+        with at least as many supporting turns AND at least as high a share
+        must also yield one. A rule that fails this is rejecting evidence it
+        would accept in a weaker form, which is what a corpus-size floor does
+        to a unanimous result.
+        """
+        cases = [(n, pct) for n in (10, 20, 24, 30, 60, 200)
+                 for pct in (80.0, 90.0, 100.0)]
+        decided = {(n, pct): infer_subject(_mix(n, human_pct=pct))[0] != SUBJECT_UNKNOWN
+                   for n, pct in cases}
+        for (n1, p1), ok1 in decided.items():
+            if not ok1:
+                continue
+            support1 = n1 * p1
+            for (n2, p2), ok2 in decided.items():
+                if n2 * p2 >= support1 and p2 >= p1:
+                    self.assertTrue(ok2, f"({n2},{p2}) refused but ({n1},{p1}) accepted")
 
     def test_at_small_n_with_a_dominant_class_is_not_unknown(self):
         subj, _ = infer_subject(_mix(SMALL_N, human_pct=100.0))
