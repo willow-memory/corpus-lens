@@ -22,6 +22,7 @@ from pathlib import Path
 
 from corpuslens.cli import main as cli_main
 from corpuslens.guard import AuditRecord, Guard, Profile, WallError
+from corpuslens.model import Quarantine
 from corpuslens.share import band_n, coarsen, coarsen_audit
 from corpuslens.share_shape import (
     ALLOWED_AUDIT_FIELDS,
@@ -30,6 +31,12 @@ from corpuslens.share_shape import (
 )
 
 from test_pipeline import _cc_line, _write
+
+
+def _quarantine():
+    """Empty quarantine: these tests exercise the SHAPE check, never the
+    literal scan, so nothing here should be a known quarantined value."""
+    return Quarantine(base_date_iso="", local_tz="", ref_map={})
 
 
 def _clean_payload():
@@ -271,3 +278,35 @@ class AllowlistsAreReviewedSetsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ErrorMessageLegibilityTests(unittest.TestCase):
+    """A total coarsening failure violates once per field per analyzer. The
+    uncapped message ran past 4,000 characters, which buries the count and the
+    instruction under a wall of field names."""
+
+    def test_many_violations_are_summarized_not_all_listed(self):
+        # an uncoarsened payload across several analyzers: dozens of violations
+        raw = {
+            f"analyzer_{i}": {"n": 21, "median_gap_s": 90.0, "reading": "x",
+                              "reference": "y", "analyzer_version": 1}
+            for i in range(6)
+        }
+        with self.assertRaises(WallError) as cm:
+            Guard(_quarantine()).scan_share_shape(raw, _clean_payload()[1])
+        msg = str(cm.exception)
+        self.assertLess(len(msg), 1200, "error message is still unreadably long")
+        self.assertIn("and ", msg)
+        self.assertIn("more", msg)
+        # the count is what tells a reader "the step did not run at all"
+        self.assertRegex(msg, r"\d+ shape violation\(s\)")
+
+    def test_a_single_violation_is_named_in_full_with_no_summary(self):
+        results, audit = _clean_payload()
+        audit["n_events"] = 21            # exactly one thing wrong
+        with self.assertRaises(WallError) as cm:
+            Guard(_quarantine()).scan_share_shape(results, audit)
+        msg = str(cm.exception)
+        self.assertIn("n_events", msg)
+        self.assertNotIn("and 0 more", msg)
+        self.assertNotIn(" more —", msg)

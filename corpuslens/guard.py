@@ -249,6 +249,12 @@ class AuditRecord:
         return base + tail + subj + consent
 
 
+#: Violation labels shown in a WallError before the rest are summarized as a
+#: count. A total coarsening failure produces one violation per field per
+#: analyzer, which is unreadable in a single line.
+_MAX_VIOLATIONS_SHOWN = 8
+
+
 class Guard:
     """Holds the Quarantine privately (name-mangled) so the supported way to
     reach an anchored value is `release()`. This makes accidental access loud;
@@ -368,9 +374,20 @@ class Guard:
         share mode itself claims."""
         violations = find_shape_violations(results, audit_dict)
         if violations:
+            # Cap the list. When the coarsening step does not run at all, every
+            # field of every analyzer violates at once — the uncapped message
+            # ran past 4,000 characters in testing, which buries the count and
+            # the instruction under a wall of field names. The labels carry no
+            # payload value either way (that discipline is share_shape.py's),
+            # so this is legibility, not leak containment: the total is what
+            # tells a reader "the step did not run" rather than "one field
+            # slipped".
+            shown = violations[:_MAX_VIOLATIONS_SHOWN]
+            more = len(violations) - len(shown)
+            detail = ", ".join(shown) + (f", and {more} more" if more else "")
             raise WallError(
-                "share shape scan: the coarsened share payload contains "
-                f"{', '.join(violations)} — refusing to emit. This means the "
+                f"share shape scan: {len(violations)} shape violation(s) in the "
+                f"coarsened share payload — {detail} — refusing to emit. This means the "
                 "coarsening step in share.py did not run, or a field/denominator "
                 "was added without being reviewed onto its allowlist; that is a "
                 "highest-class bug, report it like one.")
