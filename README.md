@@ -8,7 +8,10 @@ reference points to grade yourself against.
 **Stdlib only. Local only. Owner == subject.** Nothing to install beyond
 Python, nothing leaves your machine, and this is for studying *yourself*.
 Pointing it at another person (a child, a partner, an employee) is a different
-consent object and is out of scope by design.
+consent object. As of 0.4 that object is *representable* — a verified,
+hash-chained grant from a named grantor, checked before a file is opened — and
+still not the default: see [A corpus that is not your own](#a-corpus-that-is-not-your-own)
+for exactly what a grant lets the tool do, and what it does not.
 
 The rubric this instruments: [GRADING.md](GRADING.md)
 (ten questions to grade your own system).
@@ -196,6 +199,50 @@ runs no analyzer and emits no rate, counts rather than content, and its output
 passes the same fail-closed egress scan the report does. `adapters` and
 `analyzers` list what is registered — each adapter with the argument it expects,
 each analyzer with its claim type and its named denominator.
+
+### A corpus that is not your own
+
+```bash
+corpuslens consent grant kid-1 --store ~/.corpuslens-consent --by "their guardian"
+corpuslens run ./their-sessions --adapter claude-code --subject kid-1 --consent-store ~/.corpuslens-consent
+corpuslens consent status kid-1 --store ~/.corpuslens-consent     # what the record says
+corpuslens consent revoke kid-1 --store ~/.corpuslens-consent --by "their guardian"
+```
+
+Every run without `--subject` is your own corpus and nothing here applies. With
+`--subject`, you are saying the corpus is about someone else, and the tool
+refuses to open a single file unless that subject's `process_analysis` grant
+verifies in the consent store: fail-closed on a missing store, a missing
+record, a `pending` or `revoked` state, and on a chain that was edited or
+truncated. After a report is written, one counts-only row (adapter, events
+read, events dropped — never a date, never a filename, never a number from the
+report) is appended to the subject's own disclosure chain, the record a
+guardian can read. The audit sentence says the corpus was analyzed as another
+person's and that a grant was found; it never carries the subject's id. The
+report stops saying "you".
+
+The consent primitive is the fleet's shared one — `corpuslens/consent/core.py`
+is vendored byte-for-byte from
+[willow-mcp](https://github.com/willow-memory/willow-mcp)'s `subject_consent`
+core (itself from safe-app-store's `libs/subject-consent`), and
+`tests/test_consent.py` pins its hash to the value willow-mcp's own tests pin.
+The binding, and the part of the design that is corpuslens's own, is
+`corpuslens/subject_consent.py`. Read its header before extending it.
+
+What a grant does **not** do, stated so nobody reads more into it:
+
+- It does not make a person-shaped claim possible. The core has a
+  `person_inference` scope and the Guard has a `person_inference` capability,
+  the same name on purpose — and a grant for one does not touch the other. A
+  grant says a claim *may be about* someone; it does not make the claim true,
+  measured, or safe to emit. `PERSON_CLAIM_TYPES` analyzers are refused under
+  the default profile exactly as before.
+- It does not judge who may grant. Whether a guardian may consent for a child,
+  a ward, a household member is policy the tool defers to the human holding
+  the store; the grantor's name is on the chain and that is all it asserts.
+- It is not granted by a run. `grant` and `revoke` are reached only through
+  `corpuslens consent`, at an operator's terminal, on a hash-chained record.
+  There is still no flag on `run` that grants anything.
 
 ### Grading the classifiers against your own judgment
 

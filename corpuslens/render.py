@@ -148,6 +148,17 @@ def _lens_active(audit) -> bool:
     return subject is not None and subject != SUBJECT_HUMAN
 
 
+def _second_person_off(audit) -> bool:
+    """True iff the report must not say "you"/"your": either the inferred
+    subject is not human (`_lens_active`), OR the operator named a subject
+    who is not themselves (`audit.subject_consent` is set — see
+    corpuslens/subject_consent.py). In the second case the operator role may
+    well be a human, so the human reference points still apply and are NOT
+    withheld; only the pronouns go, because "your prompts" would be
+    addressing the reader about someone else's corpus."""
+    return _lens_active(audit) or bool(getattr(audit, "subject_consent", None))
+
+
 def _apply_subject_lens(results: dict, audit) -> dict:
     """Return a COPY of `results` with pronouns depersonalized and
     cross-subject `reference` blocks withheld, when — and only when —
@@ -155,8 +166,9 @@ def _apply_subject_lens(results: dict, audit) -> dict:
     never mutated: callers (including `render()` below) can hand this the
     same dict a caller still holds elsewhere.
     """
-    if not _lens_active(audit):
+    if not _second_person_off(audit):
         return results
+    withhold = _lens_active(audit)
     subject = audit.subject
     reason = getattr(audit, "subject_reason", None) or "no reason recorded"
     out = {}
@@ -166,7 +178,7 @@ def _apply_subject_lens(results: dict, audit) -> dict:
             v = r.get(field)
             if isinstance(v, str):
                 r[field] = _depersonalize(v)
-        if isinstance(r.get("reference"), dict) and r["reference"]:
+        if withhold and isinstance(r.get("reference"), dict) and r["reference"]:
             del r["reference"]
             r["reference_withheld"] = _REFERENCE_WITHHELD_NOTE.format(subject=subject, reason=reason)
         out[name] = r
@@ -299,7 +311,7 @@ def markdown(results: dict, audit, share: bool = False) -> str:
     # per-analyzer fields `_apply_subject_lens` already rewrote in `results`
     # above) that ALSO says "your" three times — same seam, same reason.
     note = RUBRIC_SCOPE_NOTE.format(unmapped_clause=_unmapped_clause())
-    scope_note = _depersonalize(note) if _lens_active(audit) else note
+    scope_note = _depersonalize(note) if _second_person_off(audit) else note
     out.append(f"> {scope_note}")
     out.append("")
     findings = [(name, res.get("headline")) for name, res in results.items()]
@@ -318,7 +330,7 @@ def markdown(results: dict, audit, share: bool = False) -> str:
         out.append("")
     for name, res in results.items():
         out += _section(name, res)
-    caveat = _depersonalize(CAVEAT) if _lens_active(audit) else CAVEAT
+    caveat = _depersonalize(CAVEAT) if _second_person_off(audit) else CAVEAT
     out.append(f"*{caveat}*")
     return "\n".join(out)
 
@@ -335,7 +347,7 @@ def json_report(results: dict, audit, share: bool = False) -> str:
         "schema_version": SCHEMA_VERSION,
         "audit": audit.as_dict(),
         "results": results,
-        "caveat": _depersonalize(CAVEAT) if _lens_active(audit) else CAVEAT,
+        "caveat": _depersonalize(CAVEAT) if _second_person_off(audit) else CAVEAT,
     }
     if share:
         doc["share_caveat"] = SHARE_CAVEAT

@@ -51,6 +51,7 @@ from . import share as share_mod
 from . import subject as subjectmod
 from .analyze import all_analyzers
 from .guard import DEFAULT_PROFILE, Guard, WallError
+from . import subject_consent as consentmod
 
 SOURCE_HELP = {
     "file": "a single file (e.g. a SQLite .db)",
@@ -291,7 +292,8 @@ def run_discovered(out: str | None, fmt: str, since_day: int | None,
 def run(path: str, adapter: str, out: str | None, table: str | None = None,
         fmt: str = "markdown", since_day: int | None = None,
         until_day: int | None = None, share: bool = False,
-        discovered_path: str | None = None) -> int:
+        discovered_path: str | None = None, subject: str | None = None,
+        consent_store: str | None = None) -> int:
     """`path`/`adapter` are always the REAL location to read from, typed by
     the user or resolved by `run_discovered` — that never changes here.
 
@@ -305,8 +307,19 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
     identifying left the wall (see NOTES-zeroconf.md). Putting it in the
     audit record puts it in the SAME sentence that already names the
     adapter, so a reader of the report alone (not just this run's terminal
-    output) can see what was read."""
+    output) can see what was read.
+
+    `subject`/`consent_store` name a subject who is NOT the owner (see
+    corpuslens/subject_consent.py). Both or neither. When given, the subject's
+    `process_analysis` grant is verified BEFORE the adapter opens anything,
+    fail-closed; after a report clears the egress scan, one counts-only row is
+    appended to that subject's disclosure chain. Without them nothing here
+    changes: this is the owner's own corpus, the case every other line of
+    this function was written for."""
     src = ingest.source_of(adapter)
+    rc = _subject_gate(subject, consent_store)
+    if rc:
+        return rc
     try:
         events, quarantine, dropped, n_files = _ingest(path, adapter, table)
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
@@ -335,6 +348,8 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
     guard.audit.adapter = adapter
     if discovered_path:
         guard.audit.discovered_path = discovered_path
+    if subject:
+        guard.audit.subject_consent = consentmod.SCOPE   # the scope, never the id
     if clause:
         guard.audit.filters.append(clause)
         guard.audit.n_filtered = n_filtered
@@ -388,7 +403,43 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
         print(f"wrote {out}")
     else:
         print(report)
+    if subject:
+        # Only now: a refused or unwritten report leaves no "analysis ran" row.
+        _disclose(subject, consent_store, consentmod.ACTION_RUN, adapter,
+                  guard.audit.n_events, guard.audit.n_dropped)
     return 0
+
+
+def _subject_gate(subject: str | None, consent_store: str | None) -> int:
+    """0 to proceed; a non-zero exit code (already printed) otherwise. Runs
+    BEFORE ingest, so a subject whose grant cannot be verified has their
+    corpus left unopened. Both flags or neither — half a consent object is
+    refused, not guessed at, the same rule `run` applies to PATH/--adapter."""
+    if subject is None and consent_store is None:
+        return 0
+    if subject is None or consent_store is None:
+        print("error: --subject and --consent-store go together: a subject who is not the "
+              "owner needs a store holding their grant, and a store needs a subject to look "
+              "up. Give both, or neither (the owner's own corpus).", file=sys.stderr)
+        return 2
+    try:
+        consentmod.require_grant(consent_store, subject)
+    except consentmod.SubjectRefused as e:
+        print(f"error: subject consent refused: {e}", file=sys.stderr)
+        return 4
+    return 0
+
+
+def _disclose(subject: str, consent_store: str | None, action: str, adapter: str,
+              n_events: int, n_dropped: int) -> None:
+    """Append the counts-only disclosure row; a failure to write it is loud
+    (stderr) but never retracts a report already emitted."""
+    try:
+        consentmod.disclose(consent_store or "", subject, action, adapter=adapter,
+                            n_events=n_events, n_dropped=n_dropped)
+    except consentmod.core.SubjectConsentError as e:
+        print(f"warning: the disclosure row could not be appended ({e.__class__.__name__}); "
+              f"the subject's record does not show this run.", file=sys.stderr)
 
 
 def _diagnose(events, quarantine, dropped, adapter, src, n_files, path) -> dict:
@@ -450,16 +501,22 @@ def _render_doctor(diag: dict, fmt: str) -> str:
     return "\n".join(lines)
 
 
-def doctor(path: str, adapter: str, table: str | None = None, fmt: str = "markdown") -> int:
+def doctor(path: str, adapter: str, table: str | None = None, fmt: str = "markdown",
+           subject: str | None = None, consent_store: str | None = None) -> int:
     """A dry run of ingestion only: what this adapter can see in this corpus,
     how much it had to drop, and which analyzers that corpus can actually feed
     — before committing to a report. Runs no analyzer and emits no rates.
 
     Same wall as `run`: relative days only, counts rather than content, and the
     output passes the same fail-closed egress scan — a diagnostic is an output
-    door too, and must not be the quieter way out.
+    door too, and must not be the quieter way out. Same consent gate as `run`,
+    too: a dry run still opens the subject's files, so a non-owner subject
+    needs the same verified grant, and gets the same disclosure row.
     """
     src = ingest.source_of(adapter)
+    rc = _subject_gate(subject, consent_store)
+    if rc:
+        return rc
     try:
         events, quarantine, dropped, n_files = _ingest(path, adapter, table)
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
@@ -468,6 +525,8 @@ def doctor(path: str, adapter: str, table: str | None = None, fmt: str = "markdo
         return 2
 
     diag = _diagnose(events, quarantine, dropped, adapter, src, n_files, path)
+    if subject:
+        diag["subject_consent"] = consentmod.SCOPE   # the scope verified, never the id
     text = _render_doctor(diag, fmt)
     try:
         text = Guard(quarantine, DEFAULT_PROFILE).scan_egress(text)
@@ -475,7 +534,49 @@ def doctor(path: str, adapter: str, table: str | None = None, fmt: str = "markdo
         print(f"error: {e}", file=sys.stderr)
         return 3
     print(text)
+    if subject:
+        _disclose(subject, consent_store, consentmod.ACTION_DOCTOR, adapter, len(events), dropped)
     return 0 if events else 1
+
+
+def consent_cmd(action: str, subject: str, store: str, by: str | None, fmt: str) -> int:
+    """`corpuslens consent grant|revoke|status SUBJECT --store DIR [--by NAME]`.
+    The operator seat: grants and revocations are made here, by a named
+    grantor, on a hash-chained record, and never from `run`. The subject id
+    is echoed back only on this terminal, never into a report."""
+    try:
+        if action == "grant":
+            if not by:
+                print("error: --by NAME is required: a grant with no grantor is not a grant.",
+                      file=sys.stderr)
+                return 2
+            head = consentmod.grant(store, subject, by)
+            print(f"granted '{consentmod.SCOPE}' (chain head {head[:16]})")
+            return 0
+        if action == "revoke":
+            if not by:
+                print("error: --by NAME is required: a revocation is signed like a grant.",
+                      file=sys.stderr)
+                return 2
+            head = consentmod.revoke(store, subject, by)
+            print(f"revoked '{consentmod.SCOPE}' (chain head {head[:16]})")
+            return 0
+    except consentmod.core.SubjectConsentError as e:
+        print(f"error: {e.__class__.__name__}: {e}", file=sys.stderr)
+        return 4
+    st = consentmod.status(store, subject)
+    if fmt == "json":
+        print(json.dumps(st, indent=2))
+        return 0
+    print("# corpuslens consent status")
+    print()
+    print(f"- **store present**: {st['store_present']}")
+    for scope, ok in st["scopes"].items():
+        print(f"- **{scope}**: {'granted' if ok else 'not granted'}")
+    print(f"- **disclosure chain**: {st['disclosure_chain']} ({len(st['disclosures'])} row(s))")
+    for row in st["disclosures"]:
+        print(f"  - {row['action']}: {row['detail']}")
+    return 0
 
 
 def adapters(fmt: str = "markdown") -> int:
@@ -859,6 +960,14 @@ def main(argv=None) -> int:
     r.add_argument("--until-day", type=int, default=None, metavar="N",
                    help="analyze only events on or before relative day N; a filtered "
                         "run says so in its audit sentence — subset numbers, not corpus numbers")
+    r.add_argument("--subject", default=None, metavar="ID",
+                   help="this corpus is about someone who is NOT you: an opaque local id whose "
+                        "'process_analysis' consent grant must verify in --consent-store before "
+                        "anything is read (fail-closed). Omit for your own corpus. See "
+                        "corpuslens/subject_consent.py.")
+    r.add_argument("--consent-store", default=None, metavar="DIR",
+                   help="the consent store directory (`corpuslens consent grant ...`); "
+                        "required with --subject")
     r.add_argument("--share", action="store_true",
                    help="coarsen the report for sharing off this machine: headline rates "
                         "only, n rounded to a wide band, no tempo quantiles/thread counts/day "
@@ -872,6 +981,8 @@ def main(argv=None) -> int:
     d.add_argument("path", help="same argument `run` takes for this --adapter")
     d.add_argument("--adapter", required=True, choices=ingest.available())
     d.add_argument("--table", default=None, help="db adapters only: the turns table")
+    d.add_argument("--subject", default=None, metavar="ID", help="as for `run`")
+    d.add_argument("--consent-store", default=None, metavar="DIR", help="as for `run`")
     add_format(d)
 
     a = sub.add_parser("adapters", help="list the corpus formats that can be read")
@@ -911,6 +1022,15 @@ def main(argv=None) -> int:
     df.add_argument("report_b", help="second run's JSON file")
     add_format(df)
 
+    cs = sub.add_parser("consent", help="the operator seat for a subject who is not you: "
+                                          "grant, revoke, or show a subject's consent record")
+    cs.add_argument("action", choices=["grant", "revoke", "status"])
+    cs.add_argument("subject", help="the subject's opaque local id")
+    cs.add_argument("--store", required=True, metavar="DIR", help="the consent store directory")
+    cs.add_argument("--by", default=None, metavar="NAME",
+                    help="who is granting/revoking — recorded on the chain (grant/revoke)")
+    add_format(cs)
+
     args = p.parse_args(argv)
     if args.cmd == "run":
         if args.since_day is not None and args.until_day is not None \
@@ -919,15 +1039,23 @@ def main(argv=None) -> int:
                   f"— that window is empty.", file=sys.stderr)
             return 2
         if args.path is None and args.adapter is None:
+            if args.subject is not None or args.consent_store is not None:
+                print("error: --subject cannot be combined with auto-discovery: a corpus that "
+                      "is someone else's is named, never guessed at.", file=sys.stderr)
+                return 2
             return run_discovered(args.out, args.fmt, args.since_day, args.until_day, args.share)
         if args.path is None or args.adapter is None:
             print("error: give both PATH and --adapter, or neither (to auto-discover a corpus "
                   "in conventional locations) — see `corpuslens run --help`.", file=sys.stderr)
             return 2
         return run(args.path, args.adapter, args.out, args.table, args.fmt,
-                   args.since_day, args.until_day, args.share)
+                   args.since_day, args.until_day, args.share,
+                   subject=args.subject, consent_store=args.consent_store)
     if args.cmd == "doctor":
-        return doctor(args.path, args.adapter, args.table, args.fmt)
+        return doctor(args.path, args.adapter, args.table, args.fmt,
+                      subject=args.subject, consent_store=args.consent_store)
+    if args.cmd == "consent":
+        return consent_cmd(args.action, args.subject, args.store, args.by, args.fmt)
     if args.cmd == "adapters":
         return adapters(args.fmt)
     if args.cmd == "analyzers":

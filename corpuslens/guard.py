@@ -119,6 +119,15 @@ class AuditRecord:
     # what derives this value and why it is never a CLI flag.
     subject: Optional[str] = None
     subject_reason: Optional[str] = None
+    # Set by `cli.run()`/`cli.doctor()` ONLY when the operator named a subject
+    # who is not the owner (`--subject`) and that subject's consent grant was
+    # verified BEFORE anything was read — see corpuslens/subject_consent.py.
+    # Holds the scope that was verified (e.g. "process_analysis"), never the
+    # subject's identifier: the sentence that says nothing identifying left
+    # the wall must not carry a person's id, even an opaque one. None on every
+    # run without `--subject`, i.e. every owner == subject run, whose sentence
+    # must read exactly as it always has.
+    subject_consent: Optional[str] = None
 
     def __setattr__(self, name: str, value) -> None:
         """Fail closed on the one field that must never carry a resolved
@@ -158,6 +167,7 @@ class AuditRecord:
             "n_filtered": self.n_filtered,
             "subject": self.subject,
             "subject_reason": self.subject_reason,
+            "subject_consent": self.subject_consent,
             "sentence": self.sentence(),
         }
 
@@ -223,7 +233,18 @@ class AuditRecord:
                     f"{label} ({reason}) — an inferred belief, not a verified fact, and it can "
                     f"be wrong; nothing in this report proves who actually typed a turn, and "
                     f"every 'you'/'your' below should be read as shorthand for that belief.")
-        return base + tail + subj
+        consent = ""
+        if self.subject_consent:
+            # owner != subject: say that the corpus is someone else's, that
+            # their grant was verified before it was opened, and that the run
+            # is on their record — without naming them. The default (owner ==
+            # subject) adds nothing, so every existing sentence is unchanged.
+            consent = (f" This corpus was analyzed as another person's, not the operator's: a "
+                       f"verified consent grant for the '{self.subject_consent}' scope was "
+                       f"found for that subject before anything was read, and this run was "
+                       f"appended to the subject's own disclosure record. The subject's "
+                       f"identifier is not in this report.")
+        return base + tail + subj + consent
 
 
 class Guard:

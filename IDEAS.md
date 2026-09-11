@@ -492,11 +492,29 @@ than a list — needs care that it never says more than the numbers support.
 
 ### The guardian-consent model (owner ≠ subject)
 
-The biggest gap between this toolkit and any family-facing instrument, and the
-reason pointing corpuslens at another person is out of scope by design. Not
-solved, so not shipped. Solving it is a consent-and-ethics design problem first
-and a code problem second; a pull request that adds person-targeting analysis
-without it will be declined on those grounds, not on quality.
+*Half shipped, 2026-09-11 — the representable half.* The fleet built the
+consent object once, in willow-mcp's `subject_consent` core (stdlib-only so
+this package could take it), and this repo now vendors it byte-for-byte
+(`corpuslens/consent/`) with a thin binding (`corpuslens/subject_consent.py`):
+`run --subject ID --consent-store DIR` verifies a hash-chained
+`process_analysis` grant before any file is opened, fail-closed, and appends
+a counts-only disclosure row after. The README section "A corpus that is not
+your own" states what a grant does and does not do.
+
+What is NOT solved, and stays out of scope: the ethics half. Who may consent
+for whom (capacity, relation) is deferred to the human holding the store, and
+`person_inference` is deliberately not wired from a consent grant to the
+Guard's capability of the same name — consent is necessary for a person-shaped
+claim and never sufficient. A pull request that adds person-targeting analysis
+on the strength of a grant alone will be declined on those grounds, not on
+quality.
+
+Original entry: The biggest gap between this toolkit and any family-facing
+instrument, and the reason pointing corpuslens at another person is out of
+scope by design. Not solved, so not shipped. Solving it is a consent-and-ethics
+design problem first and a code problem second; a pull request that adds
+person-targeting analysis without it will be declined on those grounds, not on
+quality.
 
 ### Publish the wall as a reusable mechanism
 
