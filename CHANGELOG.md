@@ -12,7 +12,6 @@ hand-written history below them predates the release pipeline.
 
 ### Fixed
 
-* **ingest:** split doctor's drop warning into structural vs malformed ([77760ab](https://github.com/willow-memory/corpus-lens/commit/77760ab1d5f449d5563bce355bb0cadfcc9364bf))
 * **ingest:** split doctor's drop warning into structural vs malformed ([07a7fb5](https://github.com/willow-memory/corpus-lens/commit/07a7fb59dc0d0adff9afb51380e4c351d02473a8))
 
 ## [0.7.0](https://github.com/willow-memory/corpus-lens/compare/v0.6.0...v0.7.0) (2026-09-11)
