@@ -92,14 +92,22 @@ _MARKERS: tuple[tuple[str, str], ...] = (
     ("unable to open database file", "the database file could not be opened"),
     ("no such table", "the query was rejected"),
     ("no such column", "the query was rejected"),
+    # Postgres phrases a bad table/column reference as `relation "x" does not
+    # exist` / `column "x" does not exist` — it reuses the SAME "does not
+    # exist" wording a missing DATABASE uses (`FATAL: database "x" does not
+    # exist`). "relation "/"column " must be checked before the generic
+    # "does not exist" below, or a rejected query is misreported as a missing
+    # database — a WRONG class, which is worse than `unknown failure` because
+    # it misleads rather than merely saying less. See
+    # tests/test_failure_classes.py::MarkerOrderingTests.
+    ("relation ", "the query was rejected"),
+    ("column ", "the query was rejected"),
     ("does not exist", "the named database does not exist"),
     ("permission denied", "permission denied by the server"),
     ("must be owner", "permission denied by the server"),
     ("ssl", "TLS/SSL negotiation failed"),
     ("certificate", "TLS/SSL negotiation failed"),
     ("syntax error", "the query was rejected"),
-    ("relation ", "the query was rejected"),
-    ("column ", "the query was rejected"),
 )
 
 

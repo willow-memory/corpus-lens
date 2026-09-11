@@ -116,6 +116,43 @@ class ClassificationAccuracyTests(unittest.TestCase):
             self.assertEqual(classify(msg), expected, msg)
 
 
+class MarkerOrderingTests(unittest.TestCase):
+    """`_MARKERS` is first-match-wins, and a broad marker ahead of a more
+    specific one produces a WRONG class rather than merely `unknown failure`
+    — worse, because a wrong class misleads an operator instead of just
+    saying less. Regression for a found-in-audit bug: Postgres phrases both
+    a missing TABLE/COLUMN and a missing DATABASE with the same "does not
+    exist" wording (`relation "x" does not exist` / `column "x" does not
+    exist` vs. `database "x" does not exist`), and the generic "does not
+    exist" marker used to sit ahead of the more specific "relation "/
+    "column " markers, so a rejected query was reported as a missing
+    database."""
+
+    def test_missing_relation_is_a_rejected_query_not_a_missing_database(self):
+        self.assertEqual(
+            classify('ERROR:  relation "turns" does not exist'),
+            "the query was rejected")
+
+    def test_missing_column_is_a_rejected_query_not_a_missing_database(self):
+        self.assertEqual(
+            classify('ERROR:  column "foo" does not exist'),
+            "the query was rejected")
+
+    def test_missing_database_is_still_classified_correctly(self):
+        # the fix must not overcorrect: a genuine missing-database error
+        # (no "relation "/"column " in it) still gets its own class
+        self.assertEqual(
+            classify('FATAL:  database "corpus" does not exist'),
+            "the named database does not exist")
+
+    def test_missing_role_is_still_authentication_failed(self):
+        # unaffected by the reorder: "role \"" is checked well before
+        # "does not exist" already
+        self.assertEqual(
+            classify('FATAL:  role "bob" does not exist'),
+            "authentication failed")
+
+
 class AdapterWiringTests(unittest.TestCase):
     """The vocabulary is only worth anything if the adapters actually route
     through it — the leak was at the call site, not in a helper."""
