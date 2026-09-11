@@ -94,6 +94,43 @@ The report prints to stdout (or `--out FILE`), and always opens with a
 plain-language audit line naming exactly what left the wall and how many input
 records were dropped.
 
+### The other subcommands
+
+```bash
+corpuslens doctor ~/.claude/projects --adapter claude-code   # what WOULD be read
+corpuslens adapters                                          # what can be read
+corpuslens analyzers                                         # what gets computed
+```
+
+`doctor` is a dry run of ingestion only: how many records an adapter could see,
+how many it had to drop and what share that is, how many threads and relative
+days it found, and — the useful part before you commit to a report — which
+analyzers this corpus *cannot* feed (a corpus with no machine turns can't give
+you `clarification_pull`; one with no prompt clock can't give you `tempo`). It
+runs no analyzer and emits no rate, counts rather than content, and its output
+passes the same fail-closed egress scan the report does. `adapters` and
+`analyzers` list what is registered — each adapter with the argument it expects,
+each analyzer with its claim type and its named denominator.
+
+### JSON output, and analyzing a slice
+
+```bash
+corpuslens run ./corpus --adapter claude-code --format json
+corpuslens run ./corpus --adapter claude-code --since-day 30 --until-day 60
+```
+
+`--format json` emits the same run as `{schema_version, audit, results,
+caveat}` — for diffing two runs, tracking one number across months, or piping
+somewhere else. The audit record comes along as structured fields **and** as the
+plain-language sentence: a machine-readable result is not a way to get the
+numbers without the statement of what left the wall.
+
+`--since-day` / `--until-day` restrict the analysis to a **relative-day** window
+(day 0 is the corpus's first event — never a calendar date, and the window never
+re-bases it). A filtered run says so in its audit sentence, names the window, and
+counts the events the window excluded: those are subset numbers, not corpus
+numbers, and the report says that in words.
+
 ### Cursor's store.db
 
 Cursor keeps each chat in its own directory holding a `store.db` and a
@@ -149,9 +186,18 @@ requirement) rather than importing a driver, so `pip install corpuslens` stays
 dependency-free — install `psql` (e.g. `postgresql-client`) to use it.
 
 The battery (v0): `steering_density`, `thread_shape`, `composition_mix`,
-`clarification_pull` — each with a named denominator, dropped-event counts
-reported (never hidden), and reference points from one measured N=1 operator
-corpus plus WildChat/OASST population aggregates.
+`clarification_pull`, `tempo`, `thread_span` — each with a named denominator,
+dropped-event counts reported (never hidden), and reference points from one
+measured N=1 operator corpus plus WildChat/OASST population aggregates.
+
+`tempo` reports the gaps between your own prompts within a thread and within a
+day, with the share of turns it has **no** gap for stated outright — a turn that
+opens a thread, follows a censored midnight crossing, or comes from a store that
+doesn't clock prompts is counted as uncovered, never imputed. It deliberately
+publishes no *cumulative* within-day span: the loose local-clock bound disclosed
+above is disclosed at its current strength, and no analyzer here sharpens it.
+`thread_span` counts the span a thread stays open in and how densely it is worked
+— the complement to `thread_shape`, which counts the resumption gaps inside it.
 
 See [`examples/EXAMPLE.md`](examples/EXAMPLE.md) for a complete annotated run on
 a small synthetic corpus you can reproduce byte-for-byte:
@@ -169,8 +215,10 @@ python3 -m unittest discover -s tests
 The suite covers the wall (fail-closed release, cross-midnight censoring, the
 supported-path anchor-recovery attempt, the granted-profile audit sentence),
 the adapters (drop-count accounting, malformed-line and unreadable-file
-isolation, BOM, out-of-range dates, timezone reproducibility), and a
-regression test for every fixed review finding.
+isolation, BOM, out-of-range dates, timezone reproducibility), the CLI surface
+(the JSON renderer's shape and its egress scan, the window's subset disclosure,
+`doctor`'s counts-not-content output, the listings), and a regression test for
+every fixed review finding.
 
 ## Honesty about the numbers
 
@@ -182,8 +230,9 @@ reference table inherits those corrections, not the first drafts.
 ## Status: spine (v0.1)
 
 Built: event model, the wall, five adapters (claude-code, cursor, cursor-store,
-sqlite, postgres), injection filter, four analyzers, markdown renderer, CLI, test suite
-(wall + pipeline + db-adapter + regression tests for every review finding).
+sqlite, postgres), injection filter, six analyzers, markdown + JSON renderers,
+CLI (`run`, `doctor`, `adapters`, `analyzers`), test suite (wall + pipeline +
+db-adapter + CLI-surface + regression tests for every review finding).
 
 Named and deliberately unbuilt:
 - `distinctive_tokens` and any content-derived token feature — **absent until
@@ -192,7 +241,10 @@ Named and deliberately unbuilt:
 - The guardian-consent model (owner ≠ subject) — the biggest gap between this
   toolkit and any family-facing instrument; not solved, so not shipped.
 - Bootstrap CIs / band-sensitivity on rates; claude.ai web-export and
-  agent-fleet adapters; JSON/prose renderers.
+  agent-fleet adapters; a prose renderer (JSON now ships; prose does not).
+- `turns_to_completion` is on the claim allowlist and has **no analyzer**: these
+  corpora record an abandoned thread and a finished one identically, so a
+  "turns to completion" number would be a guess wearing a denominator.
 - The cursor adapter keeps only turns carrying the runtime's injected
   timestamp tag — conservative, undercounts, and **every dropped turn is
   counted in the audit line** (not silently discarded). On a real corpus it

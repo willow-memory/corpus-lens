@@ -82,11 +82,39 @@ class AuditRecord:
     analyzers_refused: list = field(default_factory=list)
     n_events: int = 0
     n_dropped: int = 0
+    adapter: Optional[str] = None
+    filters: list = field(default_factory=list)   # human-readable filter clauses
+    n_filtered: int = 0                            # events excluded BY those filters
+
+    def as_dict(self) -> dict:
+        """The audit record as structured data — for the JSON renderer. Carries
+        the plain-language sentence too: a machine-readable result must not be a
+        way to get the numbers without the statement of what left the wall."""
+        return {
+            "profile": self.profile,
+            "adapter": self.adapter,
+            "granted": list(self.granted),
+            "denied": list(self.denied),
+            "analyzers_run": list(self.analyzers_run),
+            "analyzers_refused": list(self.analyzers_refused),
+            "n_events": self.n_events,
+            "n_dropped": self.n_dropped,
+            "filters": list(self.filters),
+            "n_filtered": self.n_filtered,
+            "sentence": self.sentence(),
+        }
 
     def sentence(self) -> str:
         g = ", ".join(self.granted) or "nothing beyond process analysis"
         r = f"; refused: {', '.join(self.analyzers_refused)}" if self.analyzers_refused else ""
-        base = (f"This run read {self.n_events} events (dropped {self.n_dropped}, counted not hidden), "
+        f = ""
+        if self.filters:
+            # a filtered run analyzes a SUBSET — say so, and say how big the cut was,
+            # so no number below is mistaken for a whole-corpus number.
+            f = (f"This run was filtered ({'; '.join(self.filters)}): {self.n_filtered} further "
+                 f"event(s) fell outside the window and are excluded from every number below, "
+                 f"so these are subset numbers, not corpus numbers. ")
+        base = (f + f"This run read {self.n_events} events (dropped {self.n_dropped}, counted not hidden), "
                 f"ran {len(self.analyzers_run)} process analyzers under profile '{self.profile}', "
                 f"and was granted {g}{r}. ")
         if self.granted:
