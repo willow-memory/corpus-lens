@@ -93,6 +93,7 @@ installing, straight from a clone, via `python3 -m corpuslens`.
 ## Quickstart
 
 ```bash
+corpuslens run                                          # find a corpus and read it
 corpuslens run ~/.claude/projects --adapter claude-code --out report.md
 corpuslens run ./my-cursor-sessions --adapter cursor
 corpuslens run ~/.cursor/chats --adapter cursor-store  # Cursor's own store.db tree
@@ -146,6 +147,34 @@ you about time.
 The report prints to stdout (or `--out FILE`), and always opens with a
 plain-language audit line naming exactly what left the wall and how many input
 records were dropped.
+
+### The first run, with no arguments
+
+```bash
+corpuslens run
+```
+
+With no path and no `--adapter`, corpuslens looks in the conventional locations
+each adapter declares for itself — `~/.claude/projects`, `~/.cursor/chats`,
+`~/.gemini/tmp` — and tells you what it found **before** it reads anything: which
+locations exist, how many candidate session files are in each, and which adapter
+it would use. If several corpora exist it runs the largest and names the
+runner-up, so the guess is visible rather than silent. If it finds nothing it
+lists every path it checked.
+
+Discovery is a guess about intent, so the run says which corpus it chose in the
+**audit sentence itself** — not just in the terminal — and a saved report
+therefore records what was read.
+
+It reports the location in its declared `~/...` form and never the resolved one.
+That is not cosmetic: a resolved home directory contains the owner's username,
+and printing it in the sentence that says no filename left the wall would put a
+person's name in the one line that claims nothing identifying escaped. The audit
+record refuses a resolved value outright rather than trusting callers not to
+pass one.
+
+The explicit two-argument form is unchanged. Giving only one of the two is an
+error rather than a half-guess.
 
 ### The other subcommands
 
@@ -370,7 +399,36 @@ isolation, BOM, out-of-range dates, timezone reproducibility), the CLI surface
 `doctor`'s counts-not-content output, the listings), and a regression test for
 every fixed review finding.
 
+## Which of the ten questions this actually answers
+
+[GRADING.md](GRADING.md) poses ten questions. The report now names, per section,
+which one that section answers and **how fully** — and leads with the true
+shape rather than the flattering one: the battery fully answers two of the ten,
+partly answers two more, and two of its six analyzers answer none of the
+numbered questions at all and are reported as supporting signal.
+
+That last part was worth saying out loud. `tempo` measures inter-turn gaps that
+no question asks for. `clarification_pull` measures the machine asking and you
+answering, which is the *reverse* of question 3's "do your prompts open a
+discussion channel". Forcing either onto a number would have been a small
+overclaim, so neither is forced.
+
+Questions 5 through 8 (whether a stored claim can be demoted, when a negative
+result was last recorded, whether an agent can grant itself anything, whether
+checks fail closed) and 9 through 10 (whether your timestamps are a fingerprint,
+who carries continuity across a session gap) are **not corpus-measurable**.
+GRADING.md gives each its own manual test. The report says so rather than
+letting the rubric read as a promise the tool kept.
+
 ## Honesty about the numbers
+
+**The reference is one person.** Every analyzer compares you to
+`measured_director` — the author's own corpus, N=1. The report now says that
+where the comparison appears, because a percentage printed beside a reference
+reads as a population. The WildChat and OASST figures beside it *are*
+populations and stay labelled as such. A gap from the N=1 is a gap from one
+person, and until you run `corpuslens label` and `corpuslens score` nobody can
+say how much of it is you and how much is the regex.
 
 The classifiers are regex heuristics: trust direction plus your own
 spot-check, never raw percentages. The reference N=1 was verified by
@@ -417,8 +475,8 @@ say out loud that looking is not a neutral act.
 Built: event model, the wall, six adapters (claude-code, cursor, cursor-store,
 gemini-cli, sqlite, postgres), injection filter, six analyzers with per-analyzer
 semantic versions, markdown + JSON + share renderers, the `timing_fingerprint`
-computation, CLI (`run`, `doctor`, `adapters`, `analyzers`, `label`, `score`,
-`diff`), test suite (wall + pipeline + db-adapter + CLI-surface + render +
+computation, CLI (`run` — with zero-argument discovery — `doctor`, `adapters`,
+`analyzers`, `label`, `score`, `diff`), test suite (wall + pipeline + db-adapter + CLI-surface + render +
 share + label + diff + fingerprint + a regression test for every review and
 dogfooding finding).
 

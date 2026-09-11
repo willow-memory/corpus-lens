@@ -64,6 +64,18 @@ bumping it correctly forever; what moves here is the field and the check.
 
 ### Zero-config first run
 
+*Shipped.* Bare `corpuslens run` reads each adapter's own declared location,
+reports what it found before reading anything, runs the largest and names the
+runner-up. `ccusage` was read first, as this entry suggested. An audit then
+caught the feature putting a resolved home path — and so the owner's username —
+into the audit sentence, one clause from the words "no filename left the wall".
+It now reports the declared `~/...` form and the audit record refuses a resolved
+value structurally. Nothing caught it upstream because the egress scan checks
+quarantined literals, and this value was never quarantined — the third time that
+narrowness has bitten, and exactly what DESIGN-guard-extraction.md predicted from
+reading the code alone.
+
+
 `corpuslens run` currently demands both an adapter and a path. The first run is
 the adoption moment, and it asks the user to know two things they may not.
 
@@ -84,6 +96,13 @@ claim updated in the same pull request.
 
 ### Say which rubric question each analyzer answers
 
+*Shipped.* Each section names its question and how fully, and the report says
+which of the ten are not corpus-measurable. The finding worth keeping: two of
+the six analyzers answer **none** of the numbered questions. `clarification_pull`
+measures the reverse direction from question 3 — the machine asking, not you.
+Neither was forced onto a number.
+
+
 [GRADING.md](GRADING.md) poses ten questions; the battery instruments the first
 four. Questions 5–8 are about a system's honesty machinery and 9–10 about
 continuity — mostly not derivable from session logs at all.
@@ -93,6 +112,11 @@ the rest are not corpus-measurable. That stops the rubric reading like a promise
 the tool did not keep, and costs almost nothing.
 
 ### Lead with the quickstart
+
+*Update:* bare `corpuslens run` now exists, so the quickstart's first line asks
+the reader to know nothing at all. The essay-splitting half is still undone and
+the README is longer again.
+
 
 *Partly done.* The subcommands and their honesty notes are folded into the
 README as of this commit. Splitting the wall essay and the reflexivity section
@@ -206,6 +230,12 @@ proposes pooling it. It does not answer the re-identification question that
 entry asks; it just makes the object the question is about exist.
 
 ### Say whose corpus the reference is
+
+*Shipped.* The rendered report now labels the N=1 as the author's own corpus
+wherever the comparison appears, keeps the genuine population aggregates
+distinct, and points at `label`/`score` for the half of any gap that is the
+classifier rather than the operator.
+
 
 Every reading in the report is "you versus the measured director", and the
 measured director is the author. The analyzers label it `measured_director_n1`
