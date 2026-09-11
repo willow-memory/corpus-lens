@@ -7,6 +7,13 @@ amendments — corrections sit beside the record they correct, never overwrite i
 Versioned sections are written by release-please from the commit messages; the
 hand-written history below them predates the release pipeline.
 
+## [0.7.1](https://github.com/willow-memory/corpus-lens/compare/v0.7.0...v0.7.1) (2026-09-11)
+
+
+### Fixed
+
+* **ingest:** split doctor's drop warning into structural vs malformed ([07a7fb5](https://github.com/willow-memory/corpus-lens/commit/07a7fb59dc0d0adff9afb51380e4c351d02473a8))
+
 ## [0.7.0](https://github.com/willow-memory/corpus-lens/compare/v0.6.0...v0.7.0) (2026-09-11)
 
 
