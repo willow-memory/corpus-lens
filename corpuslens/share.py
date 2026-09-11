@@ -72,6 +72,9 @@ RATE_FIELDS = frozenset({
     "delib_pct",                 # composition_mix
     "clarification_forks_pct",  # clarification_pull
     "delta_coverage_pct",       # tempo — measurability, not the gap shape
+    "human_pct",                 # authorship_mix — plain share of its own
+    "agent_pct",                 # denominator (operator-role turns), same
+    "unknown_pct",                # shape as composition_mix's three _pct fields
 })
 
 # Wide bands for a denominator's size. Never an exact count.

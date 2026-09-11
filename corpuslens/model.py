@@ -54,6 +54,10 @@ PROCESS_CLAIM_TYPES = frozenset({
     "clarification_pull",     # fork/deferral rates
     "turns_to_completion",
     "leakage_demonstration",  # quarantined class: proves a leak, never ships data
+    "authorship_mix",         # HUMAN/AGENT/UNKNOWN share of operator-role turns —
+                               # checks the "operator role is a person" assumption
+                               # every other analyzer inherits, rather than a claim
+                               # about which person (see corpuslens/authorship.py)
 })
 
 PERSON_CLAIM_TYPES = frozenset({
