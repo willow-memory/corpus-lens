@@ -23,6 +23,7 @@ import re
 
 from ..model import AuthorClass, CoarseTime, DataType, Event, Quarantine
 from ..classifiers import _features, _hash  # shared by every adapter, owned by none
+from .drops import DropCounts, EMPTY_TURN
 from .injection import authored_text
 
 # ── role mapping ─────────────────────────────────────────────────────────────
@@ -190,14 +191,21 @@ def as_text(val) -> str:
 # ── the shared assembler (mirrors claude_code.py exactly) ─────────────────────
 def assemble(raw, corpus_id: str, adapter_id: str, surface):
     """raw: iterable of (date, epoch|None, session_key, role, text, real_ref),
-    role ∈ {'operator','machine'}. Returns (events, Quarantine, dropped) applying
+    role ∈ {'operator','machine'}. Returns (events, Quarantine, DropCounts) applying
     the same wall discipline as the claude-code adapter: per-session chronological
     sort, cross-midnight delta censoring, operator-text injection stripping,
-    empty-text turns dropped-and-counted, opaque hashed refs with the real
-    locator kept only in the quarantine map."""
+    empty-text turns dropped-and-counted (reason `EMPTY_TURN` — see
+    `ingest/drops.py`), opaque hashed refs with the real locator kept only in
+    the quarantine map.
+
+    This is the ONE site, shared by every DB-shaped adapter (sqlite, postgres,
+    forge, gemini-cli), where "empty text after de-injection" is judged — the
+    caller's own drops (unreadable rows, missing timestamps, unrecognised
+    roles) are counted separately, in the caller's own `DropCounts`, and
+    merged with this function's result by the caller."""
     raw = list(raw)
     if not raw:
-        return [], Quarantine(), 0
+        return [], Quarantine(), DropCounts()
     base = min(r[0] for r in raw)
     by_session: dict = {}
     for rec in raw:
@@ -207,7 +215,7 @@ def assemble(raw, corpus_id: str, adapter_id: str, surface):
 
     events = []
     ref_map: dict = {}
-    dropped = 0
+    drops = DropCounts()
     for session, recs in by_session.items():
         sid = _hash(corpus_id, session)
         prev_epoch = None
@@ -220,7 +228,7 @@ def assemble(raw, corpus_id: str, adapter_id: str, surface):
             else:
                 author, dtype, stripped = AuthorClass.MACHINE, DataType.RESPONSE, False
             if not text.strip():
-                dropped += 1
+                drops.add(EMPTY_TURN)
                 if epoch is not None:               # keep the clock advancing
                     prev_epoch, prev_day = epoch, day_offset
                 continue
@@ -238,4 +246,4 @@ def assemble(raw, corpus_id: str, adapter_id: str, surface):
                 author_class=author, data_type=dtype,
                 time=CoarseTime(day_offset=day_offset, delta_prev_s=delta),
                 features=_features(text, stripped)))
-    return events, Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map), dropped
+    return events, Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map), drops

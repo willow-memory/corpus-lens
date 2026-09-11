@@ -22,6 +22,8 @@ from ..model import AuthorClass, CoarseTime, DataType, Event, Quarantine, Surfac
 from . import register
 from ..classifiers import _features, _hash
 from .claude_code import _iter_lines
+from .drops import (DropCounts, EMPTY_TURN, MISSING_TIMESTAMP,
+                    NOT_A_TURN_RECORD, UNPARSEABLE_LINE)
 from .injection import authored_text
 
 MON = {m: i + 1 for i, m in enumerate((
@@ -36,12 +38,19 @@ def ingest(path: str, corpus_id: str = "corpus"):
     if root.exists() and not root.is_dir():
         raise NotADirectoryError(f"corpuslens adapters take a directory of *.jsonl, not a file: {path}")
     raw = []          # (date, session_key, text, real_ref, stripped)
-    dropped = 0
+    drops = DropCounts()
     for f in sorted(root.rglob("*.jsonl")):
         rel = f.relative_to(root).as_posix()
         for i, o in _iter_lines(f):
-            if not isinstance(o, dict) or o.get("role") != "user":
-                dropped += 1                        # non-dict / assistant / system
+            if not isinstance(o, dict):
+                drops.add(UNPARSEABLE_LINE)
+                continue
+            if o.get("role") != "user":
+                # assistant/system/tool lines — this adapter is conservative
+                # BY CONSTRUCTION and only ever extracts operator text (see
+                # module docstring); not a turn this adapter reports, not a
+                # failure either.
+                drops.add(NOT_A_TURN_RECORD)
                 continue
             msg = o.get("message")
             if not isinstance(msg, dict):
@@ -49,27 +58,26 @@ def ingest(path: str, corpus_id: str = "corpus"):
             blocks = [b for b in msg.get("content") or []
                       if isinstance(b, dict) and b.get("type") == "text"]
             if not blocks:
-                dropped += 1
+                drops.add(NOT_A_TURN_RECORD)
                 continue
-            any_dated = False
             for bi, blk in enumerate(blocks):
                 txt = blk.get("text") or ""
                 m = TAG.match(txt)
                 if not m or m[1] not in MON:
-                    dropped += 1                    # every non-dated block counted
+                    drops.add(MISSING_TIMESTAMP)    # every non-dated block counted
                     continue
                 try:
                     d = datetime.date(int(m[3]), MON[m[1]], int(m[2]))
                 except ValueError:
-                    dropped += 1
+                    drops.add(MISSING_TIMESTAMP)
                     continue
                 text, stripped = authored_text(txt)
                 if not text:
-                    dropped += 1
+                    drops.add(EMPTY_TURN)
                     continue
                 raw.append((d, rel, text, f"{rel}:{i+1}:{bi}", stripped))
     if not raw:
-        return [], Quarantine(), dropped
+        return [], Quarantine(), drops
     base = min(r[0] for r in raw)
     # sort per session by date (day granularity — cursor has no clock time), so
     # the opener is the chronologically first prompt, matching the claude adapter
@@ -86,4 +94,4 @@ def ingest(path: str, corpus_id: str = "corpus"):
             author_class=AuthorClass.OPERATOR, data_type=DataType.PROMPT,
             time=CoarseTime(day_offset=(d - base).days),
             features=_features(text, stripped)))
-    return events, Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map), dropped
+    return events, Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map), drops

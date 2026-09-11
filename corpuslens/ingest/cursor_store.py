@@ -55,6 +55,9 @@ from pathlib import Path
 from ..model import AuthorClass, CoarseTime, DataType, Event, Quarantine, Surface
 from . import register, register_default_path
 from ..classifiers import _features, _hash
+from .drops import (DropCounts, EMPTY_TURN, MISSING_TIMESTAMP,
+                    NOT_A_TURN_RECORD, TOOL_TRAFFIC, UNKNOWN_REASON,
+                    UNPARSEABLE_LINE, UNREADABLE_FILE, UNRECOGNIZED_ROLE)
 from .injection import authored_text
 
 #: Plausible ms-epoch window. A varint outside it is not a clock — it is a
@@ -191,56 +194,74 @@ def _turn_text(o: dict) -> str:
     return ""
 
 
+#: Roles the store is documented to carry, besides `user`/`assistant`.
+#: `tool` traffic is not a turn by design (`_step_clocks`, elsewhere in this
+#: file, already treats the same kind of content that way for the protobuf
+#: blobs); `system` is a recognized non-turn role this adapter cannot name any
+#: more precisely than that.
+_STRUCTURAL_ROLES = {"tool": TOOL_TRAFFIC, "system": NOT_A_TURN_RECORD}
+
+
 def _read_store(db: Path, rel: str):
-    """One store.db -> (turns, dropped).
+    """One store.db -> (turns, DropCounts).
 
     A turn is (ms, role, text, real_ref). `ms` is the last LOGGED moment at or
     before the turn: the thread start, advanced by each tool step passed in
     insertion order. Rows come back in rowid order, which is insertion order —
     the store's own record of sequence, and the only ordering it offers.
     """
-    dropped = 0
+    drops = DropCounts()
     try:
         con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     except sqlite3.Error:
-        return [], 1
+        drops.add(UNREADABLE_FILE)
+        return [], drops
     try:
         try:
             rows = con.execute("SELECT data FROM blobs ORDER BY rowid").fetchall()
         except sqlite3.DatabaseError:
-            return [], 1          # not a readable store: one counted drop
+            drops.add(UNREADABLE_FILE)    # not a readable store: one counted drop
+            return [], drops
         start_ms = _thread_start_ms(db, con)
         if start_ms is None:
-            return [], len(rows) or 1   # undatable thread: nothing invented
+            # undatable thread: nothing invented. One row's worth of the store
+            # never got its own clock, so this is a genuine failure to date a
+            # would-be turn, not a design choice — malformed.
+            drops.add(MISSING_TIMESTAMP, len(rows) or 1)
+            return [], drops
         turns = []
         clock = start_ms
         for n, (data,) in enumerate(rows):
             if not isinstance(data, (bytes, bytearray)) or not data:
-                dropped += 1
+                drops.add(UNPARSEABLE_LINE)
                 continue
             data = bytes(data)
             if data[:1] == b"{":
                 try:
                     o = json.loads(data)
                 except Exception:
-                    dropped += 1
+                    drops.add(UNPARSEABLE_LINE)
                     continue
                 if not isinstance(o, dict):
-                    dropped += 1
+                    drops.add(UNPARSEABLE_LINE)
                     continue
-                if o.get("role") not in _ROLES:      # tool / system / unknown
-                    dropped += 1
+                role = o.get("role")
+                if role not in _ROLES:
+                    drops.add(_STRUCTURAL_ROLES.get(role, UNRECOGNIZED_ROLE))
                     continue
-                turns.append((clock, o["role"], _turn_text(o), f"{rel}:blob{n}"))
+                turns.append((clock, role, _turn_text(o), f"{rel}:blob{n}"))
                 continue
             clocks = _step_clocks(data)
             if not clocks:
-                dropped += 1                          # opaque, encrypted, or not ours
+                # Opaque, encrypted, or simply not one of ours — this adapter
+                # cannot tell which, so it reports the honest single "unknown
+                # reason" bucket rather than guessing (see ingest/drops.py).
+                drops.add(UNKNOWN_REASON)
                 continue
             for ms in clocks:
                 turns.append((ms, "tool", "", f"{rel}:blob{n}"))
             clock = max(clock, clocks[-1])
-        return turns, dropped
+        return turns, drops
     finally:
         con.close()
 
@@ -254,20 +275,20 @@ def ingest(path: str, corpus_id: str = "corpus"):
             f"the cursor-store adapter takes a directory of **/store.db, not a file: {path}")
 
     by_thread: dict[str, list] = {}
-    dropped = 0
+    drops = DropCounts()
     for db in sorted(root.rglob("store.db")):
         rel = db.relative_to(root).as_posix()
         try:
             turns, d = _read_store(db, rel)
         except Exception:
-            dropped += 1                              # never abort the walk
+            drops.add(UNREADABLE_FILE)                # never abort the walk
             continue
-        dropped += d
+        drops.merge(d)
         if turns:
             by_thread[rel] = turns
 
     if not by_thread:
-        return [], Quarantine(), dropped
+        return [], Quarantine(), drops
 
     def _day(ms: int) -> datetime.date:
         return datetime.datetime.fromtimestamp(ms / 1000.0, datetime.timezone.utc).date()
@@ -296,7 +317,7 @@ def ingest(path: str, corpus_id: str = "corpus"):
                 else:
                     stripped = False
                 if not text.strip():
-                    dropped += 1
+                    drops.add(EMPTY_TURN)
                     continue
                 author, dtype = _ROLES[role]
                 # No clock of its own: the store does not time operator or
@@ -312,4 +333,4 @@ def ingest(path: str, corpus_id: str = "corpus"):
                 author_class=author, data_type=dtype,
                 time=CoarseTime(day_offset=day_offset, delta_prev_s=delta),
                 features=feats))
-    return events, Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map), dropped
+    return events, Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map), drops

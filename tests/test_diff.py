@@ -61,7 +61,7 @@ class DiffFixture(unittest.TestCase):
 class LoadReportTests(DiffFixture):
     def test_a_real_report_loads(self):
         doc = diffmod.load_report(str(self.d / "a.json"))
-        self.assertEqual(doc["schema_version"], 1)
+        self.assertEqual(doc["schema_version"], 2)
 
     def test_missing_file_is_a_clear_error_not_a_traceback(self):
         with self.assertRaises(diffmod.DiffError):
@@ -193,6 +193,29 @@ class RefusalTests(DiffFixture):
         doc_out = json.loads(out)
         self.assertTrue(doc_out["refused"])
         self.assertTrue(any("schema_version differs" in r for r in doc_out["refusal_reasons"]))
+
+    def test_the_real_pre_and_post_drop_breakdown_schema_versions_refuse(self):
+        """The concrete case `render.SCHEMA_VERSION`'s bump to 2 made
+        reachable (BUGS.md, Open #1, Fixed): a report from before the audit
+        record grew `n_dropped_structural`/`n_dropped_malformed`/
+        `dropped_by_reason` (schema_version 1) compared against one from
+        after (schema_version 2, this version's real output) must refuse by
+        name — not silently read the OLD report's absence of those fields as
+        a changed value, the exact class of bug BUGS.md's diff/`analyzer_version`
+        entry already records."""
+        doc = json.loads((self.d / "b.json").read_text())
+        self.assertEqual(doc["schema_version"], 2)   # this version's real output
+        doc["schema_version"] = 1
+        for key in ("n_dropped_structural", "n_dropped_malformed", "dropped_by_reason"):
+            doc["audit"].pop(key, None)
+        old_shaped = self.d / "b-old-schema.json"
+        old_shaped.write_text(json.dumps(doc))
+        rc, out, _ = _run(["diff", str(self.d / "a.json"), str(old_shaped), "--format", "json"])
+        self.assertEqual(rc, 1)
+        doc_out = json.loads(out)
+        self.assertTrue(doc_out["refused"])
+        self.assertTrue(any("schema_version differs" in r for r in doc_out["refusal_reasons"]))
+        self.assertEqual(doc_out["analyzers"], {})   # no numbers at all — nothing read as a delta
 
     def test_refusal_still_shows_both_audit_sentences(self):
         b_other = self._with_audit_field(self.d / "b.json", adapter="cursor")

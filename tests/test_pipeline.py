@@ -69,7 +69,7 @@ class PipelineTests(unittest.TestCase):
 
     def test_battery_runs_and_report_renders(self):
         events, q, dropped = ingest.get("claude-code")(str(self.d))
-        guard = Guard(q); guard.audit.n_events = len(events); guard.audit.n_dropped = dropped
+        guard = Guard(q); guard.audit.n_events = len(events); guard.audit.n_dropped = dropped.total
         results = {a.name: a.run(events) for a in all_analyzers() if guard.admit(a)}
         self.assertEqual(results["steering_density"]["sessions"], 2)
         self.assertEqual(results["thread_shape"]["threads"], 2)
@@ -92,7 +92,7 @@ class PipelineTests(unittest.TestCase):
         openers = [e for e in events if e.author_class == "operator"]
         self.assertTrue(openers and "opener" in "".join(str(e.features) for e in openers) or
                         any(e.features["word_count"] >= 5 for e in openers))
-        self.assertEqual(dropped, 0)   # the BOM line is NOT dropped
+        self.assertEqual(dropped.total, 0)   # the BOM line is NOT dropped
         sub.cleanup()
 
     def test_nondict_and_system_lines_are_counted_dropped(self):
@@ -104,7 +104,7 @@ class PipelineTests(unittest.TestCase):
         Path(sub.name, "junk.jsonl").write_bytes(j.read_bytes())
         events, q, dropped = ingest.get("claude-code")(sub.name)
         self.assertEqual(len(events), 1)
-        self.assertEqual(dropped, 5)   # every skipped line counted, none hidden
+        self.assertEqual(dropped.total, 5)   # every skipped line counted, none hidden
         sub.cleanup()
 
     def test_out_of_order_lines_give_no_negative_delta(self):
@@ -158,7 +158,7 @@ class PipelineTests(unittest.TestCase):
         Path(sub.name, "cur.jsonl").write_bytes(c.read_bytes())
         events, q, dropped = ingest.get("cursor")(sub.name)
         self.assertEqual(len(events), 1)
-        self.assertEqual(dropped, 2)   # untagged user + assistant, both counted
+        self.assertEqual(dropped.total, 2)   # untagged user + assistant, both counted
         sub.cleanup()
 
     def test_malformed_message_shape_does_not_crash_and_is_counted(self):
@@ -171,7 +171,7 @@ class PipelineTests(unittest.TestCase):
         # truthy non-dict message must NOT crash — it degrades to an empty-text drop
         events, q, dropped = ingest.get("claude-code")(sub.name)
         self.assertEqual(len(events), 1)
-        self.assertEqual(dropped, 2)
+        self.assertEqual(dropped.total, 2)
         sub.cleanup()
 
     def test_same_name_files_in_different_dirs_stay_distinct_threads(self):
@@ -246,7 +246,7 @@ class PipelineTests(unittest.TestCase):
         Path(sub.name, "baddate.jsonl").write_bytes(j.read_bytes())
         events, q, dropped = ingest.get("claude-code")(sub.name)   # must not raise
         self.assertEqual(len(events), 1)
-        self.assertEqual(dropped, 1)
+        self.assertEqual(dropped.total, 1)
         sub.cleanup()
 
     def test_casual_aside_corpus_reads_low_code_ref(self):
@@ -371,7 +371,7 @@ class DogfoodRegressions(unittest.TestCase):
         self.assertEqual(len(events), 2)              # only the real session
         self.assertEqual(len(ops), 1)
         self.assertEqual(ops[0].features["word_count"], 8)   # not the 200-word prompt
-        self.assertEqual(dropped, 2)                  # counted, never hidden
+        self.assertEqual(dropped.total, 2)                  # counted, never hidden
         self.assertEqual(len({e.thread_id for e in events}), 1)
 
     def test_a_file_merely_named_subagents_is_still_read(self):
@@ -390,7 +390,7 @@ class DogfoodRegressions(unittest.TestCase):
         ])
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         self.assertEqual(events, [])
-        self.assertEqual(dropped, 1)
+        self.assertEqual(dropped.total, 1)
 
     # ── finding 3: a local slash command replays into the user role ──
     def test_local_command_replay_is_not_three_operator_turns(self):
@@ -421,7 +421,7 @@ class DogfoodRegressions(unittest.TestCase):
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 2)      # the two a person typed, not five
-        self.assertEqual(dropped, 3)       # counted, never hidden
+        self.assertEqual(dropped.total, 3)       # counted, never hidden
         # the backticked stdout must not reach a code-reference rate
         self.assertFalse(any(e.features["code_ref"] for e in ops))
 
@@ -442,7 +442,7 @@ class DogfoodRegressions(unittest.TestCase):
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 2)
-        self.assertEqual(dropped, 1)
+        self.assertEqual(dropped.total, 1)
         # 539, not 540: a dropped record still advances the clock on purpose
         # (see the `keep the clock advancing` branch in claude_code.py), so the
         # gap is measured from the hook's moment rather than the human's last
@@ -470,7 +470,7 @@ class DogfoodRegressions(unittest.TestCase):
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 2)          # the person's two, not the agent's
-        self.assertEqual(dropped, 2)           # counted, never hidden
+        self.assertEqual(dropped.total, 2)           # counted, never hidden
         self.assertTrue(all(e.features["word_count"] < 20 for e in ops))
 
     def test_a_false_sidechain_flag_is_still_the_operator(self):
@@ -501,7 +501,7 @@ class DogfoodRegressions(unittest.TestCase):
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 2)
-        self.assertEqual(dropped, 1)
+        self.assertEqual(dropped.total, 1)
         self.assertTrue(max(e.features["word_count"] for e in ops) < 10)
 
     # ── finding 6: a compaction summary is the runtime, not the operator ──
@@ -521,7 +521,7 @@ class DogfoodRegressions(unittest.TestCase):
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 2)
-        self.assertEqual(dropped, 1)
+        self.assertEqual(dropped.total, 1)
         self.assertTrue(max(e.features["word_count"] for e in ops) < 10)
 
     def test_a_turn_without_the_compaction_flag_is_untouched(self):
@@ -535,7 +535,7 @@ class DogfoodRegressions(unittest.TestCase):
         ])
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         self.assertEqual(len([e for e in events if e.author_class == "operator"]), 2)
-        self.assertEqual(dropped, 0)
+        self.assertEqual(dropped.total, 0)
 
     # ── finding 2: a finished background task arrives in the user role ──
     def test_task_notification_is_stripped_not_counted_as_a_prompt(self):
@@ -553,7 +553,7 @@ class DogfoodRegressions(unittest.TestCase):
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 2)                       # the notification is not one
         self.assertEqual(max(e.features["word_count"] for e in ops), 11)
-        self.assertEqual(dropped, 1)                        # emptied, then counted
+        self.assertEqual(dropped.total, 1)                        # emptied, then counted
 
     def test_a_notification_never_inflates_the_opener(self):
         # the finding itself, end to end: the median opener must be the human's

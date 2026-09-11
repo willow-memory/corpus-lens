@@ -31,6 +31,7 @@ from ..model import Surface
 from . import register
 from ._rows import (assemble, classify_role, parse_db_ts, require_columns,
                     resolve_columns)
+from .drops import DropCounts, MISSING_TIMESTAMP, UNPARSEABLE_LINE, UNRECOGNIZED_ROLE
 
 _TABLE_PREFERENCE = ("turns", "messages", "events", "conversation", "conversations",
                      "chat", "chats", "log", "logs", "records", "sessions")
@@ -141,21 +142,21 @@ def ingest(dsn: str, corpus_id: str = "corpus", table: str | None = None):
     stream = _psql(dsn, f"COPY ({select}) TO STDOUT WITH (FORMAT csv)", copy=True)
 
     raw = []
-    dropped = 0
+    drops = DropCounts()
     for n, rec in enumerate(csv.reader(io.StringIO(stream))):
         if len(rec) != 4:
-            dropped += 1
+            drops.add(UNPARSEABLE_LINE)
             continue
         ts_s, role_s, content_s, sess_s = rec
         d, epoch = parse_db_ts(ts_s)
         if d is None:
-            dropped += 1
+            drops.add(MISSING_TIMESTAMP)
             continue
         role = classify_role(role_s)
         if role is None:
-            dropped += 1
+            drops.add(UNRECOGNIZED_ROLE)
             continue
         raw.append((d, epoch, sess_s or "_all", role, content_s, f"{tbl}:row{n}"))
 
-    events, q, drop2 = assemble(raw, corpus_id, "postgres/1", Surface.DB)
-    return events, q, dropped + drop2
+    events, q, drops2 = assemble(raw, corpus_id, "postgres/1", Surface.DB)
+    return events, q, drops.merge(drops2)

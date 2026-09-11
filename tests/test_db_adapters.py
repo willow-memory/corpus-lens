@@ -113,7 +113,7 @@ class SqliteAdapterTests(unittest.TestCase):
     def test_wall_quarantine_and_drops(self):
         events, q, dropped = ingest.get("sqlite")(self.db)
         self.assertEqual(q.base_date_iso, "2026-02-01")
-        self.assertEqual(dropped, 3)                     # unknown role + bad ts + empty
+        self.assertEqual(dropped.total, 3)                     # unknown role + bad ts + empty
         self.assertEqual(len({e.thread_id for e in events}), 2)
         # injection stripped on the reminder-wrapped operator turn
         stripped = [e for e in events if e.author_class == "operator"
@@ -209,7 +209,7 @@ class PostgresAdapterTests(unittest.TestCase):
     def test_wall_parity_with_sqlite(self):
         events, q, dropped = ingest.get("postgres")(self.dbname)
         self.assertEqual(q.base_date_iso, "2026-02-01")
-        self.assertEqual(dropped, 3)                     # same three unusable rows
+        self.assertEqual(dropped.total, 3)                     # same three unusable rows
         self.assertEqual(len({e.thread_id for e in events}), 2)
         for e in events:
             self.assertFalse(re.search(r"\d{4}-\d\d-\d\d", e.thread_id))
@@ -341,7 +341,7 @@ class ForeignFormatRoleTests(unittest.TestCase):
         events, _, dropped = ingest.get("sqlite")(str(db))
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 2)      # both prompter turns, not zero
-        self.assertEqual(dropped, 0)
+        self.assertEqual(dropped.total, 0)
         # created_date and message_tree_id must resolve too: the table uses
         # OASST's own column names throughout, and the thread id failing to
         # resolve is SILENT (session is optional), which would have collapsed

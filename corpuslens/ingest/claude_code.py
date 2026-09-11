@@ -31,6 +31,9 @@ from pathlib import Path
 
 from ..model import AuthorClass, CoarseTime, DataType, Event, Quarantine, Surface
 from . import register, register_default_path, register_label_text
+from .drops import (ATTACHMENT, COMPACTION_SUMMARY, DropCounts, EMPTY_TURN,
+                    HARNESS_BOOKKEEPING, MISSING_TIMESTAMP, SUBAGENT, THINKING,
+                    TOOL_TRAFFIC, UNPARSEABLE_LINE)
 from .injection import authored_text
 
 ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T")
@@ -147,6 +150,65 @@ def _is_compaction_summary(o: dict) -> bool:
     return o.get("isCompactSummary") is True
 
 
+#: Top-level `type` values, besides "user"/"assistant", this harness is known
+#: to write — observed directly by walking THIS PROJECT'S OWN session log
+#: (2026-09-11, the same log BUGS.md's Open #1 measured): "attachment" (an
+#: attachment record), and "last-prompt", "atis-latch", "mode",
+#: "queue-operation", "system" (harness bookkeeping — session/UI/queue state,
+#: no operator or model authorship). See BUGS.md's "Fixed" entry for this item
+#: for the exact counts. A `type` outside "user"/"assistant" and outside these
+#: sets is still not a turn — only "user"/"assistant" records carry a
+#: `message` at all — but this adapter does not claim to know MORE than that
+#: about a shape nobody has confirmed yet, so it falls into the same
+#: `HARNESS_BOOKKEEPING` bucket rather than a guessed, more specific one.
+_ATTACHMENT_RECORD_TYPES = frozenset({"attachment"})
+
+#: Content-BLOCK `type` values (inside a user/assistant record's
+#: `message.content` list) that make the record's extracted text empty BY
+#: DESIGN rather than by failure. `redacted_thinking` and `image`/`document`
+#: are not confirmed against real bytes the way `tool_use`/`tool_result`/
+#: `thinking` are (from this project's own log), but they are the documented
+#: Anthropic content-block shapes for the same two classes ("thinking" and
+#: "attachment") already established here, so classifying them the same way
+#: is a shape-name extension, not a guess at new evidence.
+_TOOL_BLOCK_TYPES = frozenset({"tool_use", "tool_result"})
+_THINKING_BLOCK_TYPES = frozenset({"thinking", "redacted_thinking"})
+_ATTACHMENT_BLOCK_TYPES = frozenset({"image", "document"})
+
+
+def _drop_reason_for_type(t) -> str:
+    """The reason a non-user/assistant top-level record is not a turn — see
+    the record-type sets above. Closed vocabulary in, closed vocabulary out:
+    never the raw `type` string itself (ingest/drops.py's whole point)."""
+    if t in _ATTACHMENT_RECORD_TYPES:
+        return ATTACHMENT
+    return HARNESS_BOOKKEEPING
+
+
+def _classify_contentless(content) -> str:
+    """The reason a user/assistant record's `message.content` produced no
+    TEXT — inspects the content BLOCK TYPES present (never their text) to
+    tell "not a turn by design" (tool traffic, thinking, an attachment) apart
+    from "a text block was there and it came out blank", which is a genuine
+    empty turn and stays malformed (counted by the caller, not here — this
+    function only names the reason for the not-a-turn-by-design case; an
+    empty TEXT block is reported by the caller as `EMPTY_TURN`)."""
+    if isinstance(content, list) and content:
+        kinds = {b.get("type") for b in content if isinstance(b, dict)}
+        if kinds & _TOOL_BLOCK_TYPES:
+            return TOOL_TRAFFIC
+        if kinds & _THINKING_BLOCK_TYPES:
+            return THINKING
+        if kinds & _ATTACHMENT_BLOCK_TYPES:
+            return ATTACHMENT
+        if "text" not in kinds:
+            # Blocks are present but none are text/tool/thinking/attachment —
+            # an unrecognised block shape. Not a turn either way, but this
+            # adapter cannot name it any more precisely than that.
+            return HARNESS_BOOKKEEPING
+    return EMPTY_TURN
+
+
 @dataclass(frozen=True)
 class LabelCorpus:
     """The fixed return shape of `label_text` below — see its docstring for
@@ -155,7 +217,7 @@ class LabelCorpus:
     than an oversight."""
     events: list
     quarantine: Quarantine
-    dropped: int
+    drops: DropCounts
     text_by_ref: dict
 
 
@@ -169,34 +231,34 @@ def _ingest_impl(path: str, corpus_id: str, want_text: bool):
     if root.exists() and not root.is_dir():
         raise NotADirectoryError(f"corpuslens adapters take a directory of *.jsonl, not a file: {path}")
     raw = []          # (date, epoch|None, session_key, role, text, real_ref)
-    dropped = 0
+    drops = DropCounts()
     for f in sorted(root.rglob("*.jsonl")):
         rel = f.relative_to(root).as_posix()
         if _is_subagent(rel):
             # the model's own dispatch traffic, not the operator's — counted,
             # not hidden (one drop per record in the file)
-            dropped += sum(1 for _ in _iter_lines(f))
+            drops.add(SUBAGENT, sum(1 for _ in _iter_lines(f)))
             continue
         for i, o in _iter_lines(f):
             if not isinstance(o, dict):
-                dropped += 1
+                drops.add(UNPARSEABLE_LINE)
                 continue
             if o.get("type") not in ("user", "assistant"):
-                dropped += 1
+                drops.add(_drop_reason_for_type(o.get("type")))
                 continue
             if _is_sidechain_record(o):
                 # dispatched traffic that landed outside a `subagents/` path —
                 # the model prompting its own agent is not the owner. Counted.
-                dropped += 1
+                drops.add(SUBAGENT)
                 continue
             if _is_compaction_summary(o):
                 # the runtime's own précis of the thread, handed back in the
                 # user role. Not a prompt, whatever it opens with. Counted.
-                dropped += 1
+                drops.add(COMPACTION_SUMMARY)
                 continue
             d, epoch = _parse_ts(o.get("timestamp"))
             if d is None:
-                dropped += 1
+                drops.add(MISSING_TIMESTAMP)
                 continue
             msg = o.get("message")
             if not isinstance(msg, dict):
@@ -207,10 +269,30 @@ def _ingest_impl(path: str, corpus_id: str, want_text: bool):
                                 if isinstance(b, dict) and b.get("type") == "text")
             else:
                 text = content if isinstance(content, str) else ""
+            if not text:
+                # Nothing to featurize yet — before injection stripping, which
+                # only ever REMOVES text, so an empty extraction here can only
+                # get emptier there. Decide now, while the content blocks that
+                # explain WHY are still in hand: tool traffic, thinking, an
+                # attachment (not a turn by design) vs. a text block that was
+                # simply blank (a genuine empty turn, malformed).
+                reason = _classify_contentless(content)
+                if reason == EMPTY_TURN:
+                    # A plain-string content field, or a text block, came back
+                    # empty. User-role text still goes through injection
+                    # stripping below in case a wrapper's OWN stripping would
+                    # matter here — it would not change an already-empty
+                    # string, so counting it now (rather than deferring to the
+                    # assembly loop) is equivalent and keeps this one site
+                    # honest about what it saw.
+                    drops.add(EMPTY_TURN)
+                else:
+                    drops.add(reason)
+                continue
             raw.append((d, epoch, rel, o["type"], text, f"{rel}:{i+1}"))
 
     if not raw:
-        return [], Quarantine(), dropped, {}
+        return [], Quarantine(), drops, {}
 
     base = min(r[0] for r in raw)
     by_session: dict = {}
@@ -234,7 +316,11 @@ def _ingest_impl(path: str, corpus_id: str, want_text: bool):
             else:
                 author, dtype, stripped = AuthorClass.MACHINE, DataType.RESPONSE, False
             if not text.strip():
-                dropped += 1
+                # Injection stripping (authored_text, user role only) removed
+                # everything — a wrapper the harness injects with no authored
+                # text left over. Turn-shaped, dated, correctly roled, and
+                # empty: malformed, not structural (BUGS.md, Open #1, Fixed).
+                drops.add(EMPTY_TURN)
                 if epoch is not None:               # keep the clock advancing
                     prev_epoch, prev_day = epoch, day_offset
                 continue
@@ -255,20 +341,22 @@ def _ingest_impl(path: str, corpus_id: str, want_text: bool):
                 time=CoarseTime(day_offset=day_offset, delta_prev_s=delta),
                 features=_features(text, stripped)))
     quarantine = Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map)
-    return events, quarantine, dropped, text_by_ref
+    return events, quarantine, drops, text_by_ref
 
 
 @register_default_path("claude-code", "~/.claude/projects")
 @register("claude-code")
 def ingest(path: str, corpus_id: str = "corpus"):
-    """(events, quarantine, dropped) — always exactly this 3-tuple, for every
-    call, with no keyword that changes its shape. This is the ONLY entry point
+    """(events, quarantine, drops) — always exactly this 3-tuple, for every
+    call, with no keyword that changes its shape (`drops` is a
+    `ingest.drops.DropCounts`, not a bare int — see `ingest/__init__.py`'s
+    module docstring for the contract and why). This is the ONLY entry point
     every other adapter and the whole CLI (`run`, `doctor`, `score`) call
     through `ingest.get(name)(path, ...)`; see `label_text` below for the
     separate, differently-shaped function `corpuslens label` uses instead of
     overloading this one."""
-    events, quarantine, dropped, _ = _ingest_impl(path, corpus_id, want_text=False)
-    return events, quarantine, dropped
+    events, quarantine, drops, _ = _ingest_impl(path, corpus_id, want_text=False)
+    return events, quarantine, drops
 
 
 @register_label_text("claude-code")
@@ -320,6 +408,6 @@ def label_text(path: str, corpus_id: str = "corpus") -> LabelCorpus:
         never returned from a network call, and never reused across a
         process boundary.
     """
-    events, quarantine, dropped, text_by_ref = _ingest_impl(path, corpus_id, want_text=True)
-    return LabelCorpus(events=events, quarantine=quarantine, dropped=dropped,
+    events, quarantine, drops, text_by_ref = _ingest_impl(path, corpus_id, want_text=True)
+    return LabelCorpus(events=events, quarantine=quarantine, drops=drops,
                        text_by_ref=text_by_ref)

@@ -116,6 +116,57 @@ class ForgotToBandTests(unittest.TestCase):
         self.assertTrue(any("n_events" in v for v in violations), violations)
 
 
+class DroppedByReasonTests(unittest.TestCase):
+    """THE TRAP `share.py`'s docstring names by name: a per-reason drop
+    breakdown left at exact counts is the SAME leak class as the original
+    unbanded `n_events` bug, just sliced by reason instead of reported as one
+    total. These pin that `find_shape_violations` — and, below, the actual
+    enforcing caller `Guard.scan_share_shape` — catch it."""
+
+    def test_a_correctly_banded_breakdown_passes(self):
+        results, audit = _clean_payload()
+        audit["dropped_by_reason"] = {"tool_traffic": band_n(272), "empty_turn": band_n(3)}
+        self.assertEqual(find_shape_violations(results, audit), [])
+
+    def test_an_exact_count_in_the_breakdown_is_caught(self):
+        # The precise hostile case: banding ran for n_dropped itself but a
+        # sibling per-reason breakdown was published at exact counts — the
+        # coarsening step ran, but not everywhere it needed to.
+        results, audit = _clean_payload()
+        audit["dropped_by_reason"] = {"tool_traffic": 272}
+        violations = find_shape_violations(results, audit)
+        self.assertTrue(any("tool_traffic" in v and "not a coarsened band" in v
+                            for v in violations), violations)
+
+    def test_an_unrecognized_drop_reason_is_caught(self):
+        # A reason string outside ingest/drops.py's closed vocabulary — an
+        # adapter that invented a label, or corpus text that leaked into the
+        # key position. Closed vocabulary in, closed vocabulary out.
+        results, audit = _clean_payload()
+        audit["dropped_by_reason"] = {"the user's actual prompt text": band_n(5)}
+        violations = find_shape_violations(results, audit)
+        self.assertTrue(any("unrecognized drop reason" in v for v in violations), violations)
+
+    def test_a_non_mapping_dropped_by_reason_is_caught(self):
+        results, audit = _clean_payload()
+        audit["dropped_by_reason"] = "tool_traffic: 272"
+        violations = find_shape_violations(results, audit)
+        self.assertTrue(any("dropped_by_reason" in v and "not a mapping" in v
+                            for v in violations), violations)
+
+    def test_scan_share_shape_refuses_an_unbanded_breakdown(self):
+        """The enforcing caller, not just the pure checker: an un-banded
+        per-reason breakdown must be refused by `Guard.scan_share_shape`
+        before a share-mode report reaches output, exactly like every other
+        share-shape violation."""
+        results, audit = _clean_payload()
+        audit["dropped_by_reason"] = {"missing_timestamp": 41}
+        guard = Guard(Quarantine(base_date_iso="", local_tz="", ref_map={}), Profile())
+        with self.assertRaises(WallError) as cm:
+            guard.scan_share_shape(results, audit)
+        self.assertIn("share shape scan", str(cm.exception))
+
+
 class StrayShapeFieldTests(unittest.TestCase):
     """A tempo quantile (or any other shape statistic) that coarsening failed
     to strip — the class of leak `RATE_FIELDS`'s exclusions exist to prevent."""
@@ -271,6 +322,7 @@ class AllowlistsAreReviewedSetsTests(unittest.TestCase):
         self.assertEqual(ALLOWED_AUDIT_FIELDS, frozenset({
             "profile", "adapter", "discovered_path", "granted", "denied",
             "analyzers_run", "analyzers_refused", "n_events", "n_dropped",
+            "n_dropped_structural", "n_dropped_malformed", "dropped_by_reason",
             "filters", "n_filtered", "subject", "subject_reason", "subject_consent",
             "sentence",
         }))

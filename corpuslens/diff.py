@@ -11,9 +11,19 @@ HARD REFUSALS — the whole diff is refused, no numbers emitted at all:
     itself may be shaped differently going forward (new/renamed/restructured
     fields); this code was built to read exactly one shape, and guessing that
     a field in a future shape means the same thing as today's would be an
-    overclaim about the tool, not about the reader's process. There is
-    currently only one shape (`render.SCHEMA_VERSION == 1`), so this refusal
-    is presently unreachable in practice — it exists for the day it isn't.
+    overclaim about the tool, not about the reader's process. This used to be
+    presently-unreachable in practice, with only one shape ever having
+    existed (`render.SCHEMA_VERSION == 1`) — it is reachable now:
+    `SCHEMA_VERSION` moved to `2` when the audit record's drop count grew a
+    reason breakdown (BUGS.md, Open #1, Fixed; `n_dropped_structural`,
+    `n_dropped_malformed`, `dropped_by_reason`). A report from before that
+    change refuses to diff against one from after it, by name, rather than
+    reading the OLD report's absence of those fields as if it were a value —
+    the same discipline `_analyzer_diff` below already applies to a missing
+    `analyzer_version` (see BUGS.md's "Fixed" entry for that exact bug: an
+    absent field silently read as "changed" once, and as "no diff needed, two
+    reports agree" the other time — both wrong, both from the same mistake of
+    treating absence as a value).
   * different `adapter`. `claude-code` and `cursor` (and `cursor-store`,
     `sqlite`, `postgres`) are different instruments over different kinds of
     corpus, with different classifiers available (cursor has no assistant

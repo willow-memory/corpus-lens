@@ -70,6 +70,8 @@ from ..model import Surface
 from . import register, register_default_path
 from ._rows import assemble
 from .claude_code import _iter_lines, _parse_ts
+from .drops import (DropCounts, HARNESS_BOOKKEEPING, MISSING_TIMESTAMP,
+                    SUBAGENT, UNPARSEABLE_LINE, UNRECOGNIZED_ROLE)
 
 #: Message types the recording service writes (`ConversationRecordExtra`).
 #: Only `user` / `gemini` are turns; `info` / `error` / `warning` are CLI UI
@@ -122,7 +124,7 @@ def ingest(path: str, corpus_id: str = "corpus"):
         raise NotADirectoryError(
             f"corpuslens adapters take a directory of *.jsonl, not a file: {path}")
     raw = []           # (date, epoch|None, session_key, role, text, real_ref)
-    dropped = 0
+    drops = DropCounts()
     for f in sorted(root.rglob("*.jsonl")):
         rel = f.relative_to(root).as_posix()
         lines = list(_iter_lines(f))
@@ -130,28 +132,33 @@ def ingest(path: str, corpus_id: str = "corpus"):
             # the model's own delegated-task transcript, not the operator's —
             # counted, never hidden (BUGS.md's `subagents/` finding, this
             # runtime's shape: see the module docstring)
-            dropped += len(lines)
+            drops.add(SUBAGENT, len(lines))
             continue
         for i, o in lines:
             if not isinstance(o, dict):
-                dropped += 1
+                drops.add(UNPARSEABLE_LINE)
                 continue
             if isinstance(o.get("$rewindTo"), str) or isinstance(o.get("$set"), dict):
-                dropped += 1                      # bookkeeping, not a turn
+                drops.add(HARNESS_BOOKKEEPING)      # bookkeeping, not a turn
                 continue
             if isinstance(o.get("sessionId"), str) and isinstance(o.get("projectHash"), str):
-                dropped += 1                      # the metadata record itself
+                drops.add(HARNESS_BOOKKEEPING)      # the metadata record itself
                 continue
             if not isinstance(o.get("id"), str):
-                dropped += 1                      # not a recognizable message record
+                drops.add(UNPARSEABLE_LINE)         # not a recognizable message record
                 continue
-            role = _ROLE.get(o.get("type"))
+            t = o.get("type")
+            role = _ROLE.get(t)
             if role is None:
-                dropped += 1                      # info/error/warning, or an unknown type
+                # info/error/warning is UI-only bookkeeping, not a turn either
+                # party authored; anything else is a `type` this adapter's
+                # closed role vocabulary does not recognize.
+                drops.add(HARNESS_BOOKKEEPING if t in ("info", "error", "warning")
+                         else UNRECOGNIZED_ROLE)
                 continue
             d, epoch = _parse_ts(o.get("timestamp"))
             if d is None:
-                dropped += 1
+                drops.add(MISSING_TIMESTAMP)
                 continue
             text = _content_text(o.get("content"))
             # injection stripping and the empty-after-strip drop both happen
@@ -159,5 +166,5 @@ def ingest(path: str, corpus_id: str = "corpus"):
             # adapters use for role=="operator") — not duplicated here.
             raw.append((d, epoch, rel, role, text, f"{rel}:{i+1}"))
 
-    events, q, drop2 = assemble(raw, corpus_id, "gemini-cli/1", Surface.CLI)
-    return events, q, dropped + drop2
+    events, q, drops2 = assemble(raw, corpus_id, "gemini-cli/1", Surface.CLI)
+    return events, q, drops.merge(drops2)

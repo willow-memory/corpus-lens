@@ -84,6 +84,28 @@ class AuditRecord:
     analyzers_refused: list = field(default_factory=list)
     n_events: int = 0
     n_dropped: int = 0
+    # Split from the combined `n_dropped` (BUGS.md, Open #1, Fixed): a record
+    # dropped for NOT BEING A TURN BY DESIGN (tool traffic, thinking,
+    # attachments, harness bookkeeping) tells a reader nothing about whether
+    # to trust the turns that were kept; a record that SHOULD have been a turn
+    # and failed (an unparseable line, a missing timestamp, an unrecognised
+    # role, an empty turn) does. `n_dropped` stays the sum of the two — for
+    # continuity with every sentence and JSON document already written before
+    # this split — while `n_dropped_structural`/`n_dropped_malformed` and the
+    # `dropped_by_reason` breakdown below carry the distinction `doctor`'s
+    # warning now keys on instead of the combined total. All three are exact
+    # counts here; see `share.coarsen_audit` for how they are banded in share
+    # mode, and `share_shape.py` for the check that they always ARE banded
+    # there — an un-banded per-reason breakdown is precisely the new leak the
+    # trap `share.py`'s own docstring warns about ("a first implementation
+    # banded every analyzer's n but still published the corpus's exact
+    # n_events").
+    n_dropped_structural: int = 0
+    n_dropped_malformed: int = 0
+    # {reason: count}, the closed vocabulary from `ingest/drops.py` — only
+    # reasons this run actually saw, so an adapter that never encounters (say)
+    # `thinking` records does not manufacture a zero entry for it.
+    dropped_by_reason: dict = field(default_factory=dict)
     adapter: Optional[str] = None
     # Set only when `corpuslens run` was given no path/--adapter and chose this
     # corpus itself (see cli.py's zero-config discovery). None for every
@@ -165,6 +187,9 @@ class AuditRecord:
             "analyzers_refused": list(self.analyzers_refused),
             "n_events": self.n_events,
             "n_dropped": self.n_dropped,
+            "n_dropped_structural": self.n_dropped_structural,
+            "n_dropped_malformed": self.n_dropped_malformed,
+            "dropped_by_reason": dict(self.dropped_by_reason),
             "filters": list(self.filters),
             "n_filtered": self.n_filtered,
             "subject": self.subject,
@@ -204,7 +229,9 @@ class AuditRecord:
                  f"event(s) fell outside the window and are excluded from every number below, "
                  f"so these are subset numbers, not corpus numbers. ")
         base = (disco + f
-                + f"This run read {self.n_events} events (dropped {self.n_dropped}, counted not hidden), "
+                + f"This run read {self.n_events} events (dropped {self.n_dropped}: "
+                f"{self.n_dropped_structural} not a turn by design, {self.n_dropped_malformed} "
+                f"that should have been a turn and failed; counted not hidden), "
                 f"ran {len(self.analyzers_run)} process analyzers under profile '{self.profile}', "
                 f"and was granted {g}{r}. ")
         if self.granted:

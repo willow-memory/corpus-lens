@@ -61,7 +61,7 @@ class RealLedgerTests(unittest.TestCase):
         # checkpoints/ledger.jsonl: 2 asks (answered), 3 confirms, 2 answers, 2 `seal`
         # projects/rally/…/ledger.jsonl: 2 asks never answered on that ledger
         self.assertEqual(len(events), 7)
-        self.assertEqual(dropped, 4)
+        self.assertEqual(dropped.total, 4)
         roles = [e.author_class for e in events]
         self.assertEqual(roles.count(AuthorClass.MACHINE), 5)
         self.assertEqual(roles.count(AuthorClass.OPERATOR), 2)
@@ -127,7 +127,7 @@ class SyntheticLedgerTests(unittest.TestCase):
             _ask("2026-03-01T10:00:00+00:00", "builder:bob:decision:major", "aaa"),
         ])
         events, _, dropped = ingest.get("forge")(str(self.d))
-        self.assertEqual((len(events), dropped), (0, 1))
+        self.assertEqual((len(events), dropped.total), (0, 1))
 
     def test_ask_answer_confirm_become_three_turns_in_one_thread(self):
         dom = "builder:bob:decision:major"
@@ -141,7 +141,7 @@ class SyntheticLedgerTests(unittest.TestCase):
             _ask("2026-03-03T09:00:00+00:00", dom, "aaa", sealed=True, canonical="web: has a site already"),
         ])
         events, q, dropped = ingest.get("forge")(str(self.d))
-        self.assertEqual(dropped, 1)                       # the `seal` line
+        self.assertEqual(dropped.total, 1)                       # the `seal` line
         self.assertEqual([e.author_class for e in events],
                          [AuthorClass.MACHINE, AuthorClass.OPERATOR, AuthorClass.MACHINE])
         self.assertEqual(len({e.thread_id for e in events}), 1)
@@ -165,7 +165,7 @@ class SyntheticLedgerTests(unittest.TestCase):
         ])
         events, _, dropped = ingest.get("forge")(str(self.d))
         self.assertEqual(len(events), 1)
-        self.assertEqual(dropped, 6)
+        self.assertEqual(dropped.total, 6)
 
     def test_two_builders_are_two_threads_and_neither_name_survives(self):
         for who in ("alice", "bob"):

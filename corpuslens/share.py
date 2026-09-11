@@ -37,10 +37,13 @@ default for everything else is exclusion, never inclusion.
 
 TWO THINGS GET COARSENED, NOT ONE: `coarsen()` (below) handles each
 analyzer's own numbers; `coarsen_audit()` handles the audit record's exact
-`n_events` / `n_dropped` / `n_filtered` the same way. Both matter — an audit
-sentence that still says "This run read 21 events (dropped 0...)" gives away
-the exact corpus size and exact drop count even when every analyzer's `n` is
-a band, and that is the same class of quantity the banding exists to blur.
+`n_events` / `n_dropped` / `n_dropped_structural` / `n_dropped_malformed` /
+`n_filtered` / `dropped_by_reason` the same way. All of them matter — an
+audit sentence that still says "This run read 21 events (dropped 0...)"
+gives away the exact corpus size and exact drop count even when every
+analyzer's `n` is a band, and a per-reason drop breakdown left at exact
+counts is the same leak sliced finer (see `band_dropped_by_reason` below) —
+all of it is the same class of quantity the banding exists to blur.
 """
 from __future__ import annotations
 
@@ -142,9 +145,30 @@ def coarsen(results: dict) -> dict:
     return {name: coarsen_result(res) for name, res in results.items()}
 
 
+def band_dropped_by_reason(by_reason: dict) -> dict:
+    """`{reason: count}` -> `{reason: band}`, one `band_n` per reason.
+
+    THE TRAP THIS FUNCTION EXISTS TO CLOSE. `n_dropped` banding alone is not
+    enough once the audit record carries a per-reason breakdown: publishing
+    `dropped_by_reason` at EXACT counts (e.g. `{"tool_traffic": 272,
+    "tool_result": 271, ...}`) is a new instance of precisely the leak class
+    the original `n_events` bug was — the one recorded in this module's
+    docstring, where a first share-mode implementation banded every
+    analyzer's `n` but still published the corpus's exact `n_events`, and
+    `scan_egress` passed it cleanly the whole time because an exact `n` is
+    not a quarantined literal. A per-reason breakdown is the SAME shape of
+    number, just sliced finer, so it gets the SAME treatment: every value
+    banded, none left exact. `share_shape.py` is extended to enforce this
+    structurally rather than trust that every caller remembers to call this
+    function — see its `_check_dropped_by_reason`."""
+    return {reason: band_n(n) for reason, n in by_reason.items()}
+
+
 def coarsen_audit(audit):
-    """A copy of a `guard.AuditRecord` with `n_events`, `n_dropped` and
-    `n_filtered` replaced by wide bands (`band_n`) instead of exact counts.
+    """A copy of a `guard.AuditRecord` with `n_events`, `n_dropped`,
+    `n_dropped_structural`, `n_dropped_malformed`, `n_filtered` and every
+    value in `dropped_by_reason` replaced by wide bands (`band_n`) instead of
+    exact counts.
 
     FOUND BY REVIEW: the audit sentence names exactly what left the wall, and
     that stays required in share mode — but the FIRST version of this module
@@ -181,5 +205,8 @@ def coarsen_audit(audit):
         audit,
         n_events=band_n(audit.n_events),
         n_dropped=band_n(audit.n_dropped),
+        n_dropped_structural=band_n(audit.n_dropped_structural),
+        n_dropped_malformed=band_n(audit.n_dropped_malformed),
+        dropped_by_reason=band_dropped_by_reason(audit.dropped_by_reason),
         n_filtered=band_n(audit.n_filtered),
     )

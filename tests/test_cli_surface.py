@@ -65,7 +65,7 @@ class JsonRendererTests(CorpusFixture):
         rc, out, _ = _run(["run", str(self.d), "--adapter", "claude-code", "--format", "json"])
         self.assertEqual(rc, 0)
         doc = json.loads(out)
-        self.assertEqual(doc["schema_version"], 1)
+        self.assertEqual(doc["schema_version"], 2)
         self.assertEqual(doc["audit"]["adapter"], "claude-code")
         self.assertEqual(doc["audit"]["n_events"], doc["audit"]["n_events"])
         self.assertIn("steering_density", doc["results"])

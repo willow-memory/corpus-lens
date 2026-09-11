@@ -23,6 +23,7 @@ from . import register
 from ..failure_classes import classify as _classify_failure
 from ._rows import (as_text, assemble, classify_role, parse_db_ts,
                     require_columns, resolve_columns)
+from .drops import DropCounts, MISSING_TIMESTAMP, UNRECOGNIZED_ROLE
 
 # When a db has several tables and none was named, prefer an obvious corpus one.
 _TABLE_PREFERENCE = ("turns", "messages", "events", "conversation", "conversations",
@@ -76,15 +77,15 @@ def ingest(path: str, corpus_id: str = "corpus", table: str | None = None):
         require_columns(m, table, cols)
 
         raw = []
-        dropped = 0
+        drops = DropCounts()
         for n, row in enumerate(con.execute(f'SELECT * FROM "{table}"')):
             d, epoch = parse_db_ts(row[m["ts"]])
             if d is None:
-                dropped += 1
+                drops.add(MISSING_TIMESTAMP)
                 continue
             role = classify_role(row[m["role"]])
             if role is None:
-                dropped += 1
+                drops.add(UNRECOGNIZED_ROLE)
                 continue
             sess = as_text(row[m["session"]]) if m["session"] else "_all"
             raw.append((d, epoch, sess or "_all", role,
@@ -92,5 +93,5 @@ def ingest(path: str, corpus_id: str = "corpus", table: str | None = None):
     finally:
         con.close()
 
-    events, q, drop2 = assemble(raw, corpus_id, "sqlite/1", Surface.DB)
-    return events, q, dropped + drop2
+    events, q, drops2 = assemble(raw, corpus_id, "sqlite/1", Surface.DB)
+    return events, q, drops.merge(drops2)

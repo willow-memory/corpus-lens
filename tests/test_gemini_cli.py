@@ -56,7 +56,7 @@ class GeminiCliAdapterTests(unittest.TestCase):
         ])
         events, q, dropped = ingest.get("gemini-cli")(str(self.d))
         self.assertEqual(len(events), 3)
-        self.assertEqual(dropped, 1)   # only the metadata record
+        self.assertEqual(dropped.total, 1)   # only the metadata record
         ops = [e for e in events if e.author_class == AuthorClass.OPERATOR]
         self.assertEqual(len(ops), 2)
         self.assertEqual(q.base_date_iso, "2026-02-01")
@@ -77,7 +77,7 @@ class GeminiCliAdapterTests(unittest.TestCase):
         ops = [e for e in events if e.author_class == AuthorClass.OPERATOR]
         self.assertEqual(len(ops), 1)
         self.assertLess(ops[0].features["word_count"], 10)
-        self.assertEqual(dropped, 2)   # the metadata record + the emptied wrapper turn
+        self.assertEqual(dropped.total, 2)   # the metadata record + the emptied wrapper turn
 
     def test_hook_context_is_stripped_but_real_text_survives(self):
         _write(self.d / "chats" / "session-b.jsonl", [
@@ -102,7 +102,7 @@ class GeminiCliAdapterTests(unittest.TestCase):
         ])
         events, q, dropped = ingest.get("gemini-cli")(str(self.d))
         self.assertEqual(len(events), 1)
-        self.assertEqual(dropped, 5)   # metadata + $set + $rewindTo + info + error
+        self.assertEqual(dropped.total, 5)   # metadata + $set + $rewindTo + info + error
 
     # ── the subagents/ question, answered for this runtime ──────────────────
 
@@ -130,7 +130,7 @@ class GeminiCliAdapterTests(unittest.TestCase):
         self.assertEqual(len(events), 2)              # only the main session
         self.assertEqual(len(ops), 1)
         self.assertEqual(ops[0].features["word_count"], 8)   # not the 200+-word dispatch prompt
-        self.assertEqual(dropped, 4)                   # main metadata (1) + all 3 subagent lines
+        self.assertEqual(dropped.total, 4)                   # main metadata (1) + all 3 subagent lines
         self.assertEqual(len({e.thread_id for e in events}), 1)
 
     def test_a_directory_not_named_subagents_still_gets_filtered_by_kind(self):
@@ -143,7 +143,7 @@ class GeminiCliAdapterTests(unittest.TestCase):
         ])
         events, q, dropped = ingest.get("gemini-cli")(str(self.d))
         self.assertEqual(events, [])
-        self.assertEqual(dropped, 2)
+        self.assertEqual(dropped.total, 2)
 
     def test_missing_metadata_does_not_default_to_subagent(self):
         # a malformed/truncated file with no metadata record at all must not
@@ -173,7 +173,7 @@ class GeminiCliAdapterTests(unittest.TestCase):
         ]) + "\n")
         events, q, dropped = ingest.get("gemini-cli")(str(self.d))
         self.assertEqual(len(events), 1)
-        self.assertEqual(dropped, 5)
+        self.assertEqual(dropped.total, 5)
 
     def test_unreadable_file_does_not_crash_the_run(self):
         good = self.d / "chats" / "session-e.jsonl"
