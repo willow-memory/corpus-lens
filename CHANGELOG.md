@@ -4,7 +4,13 @@ All notable changes to corpuslens are recorded here. This project keeps to the
 spirit of [Keep a Changelog](https://keepachangelog.com) and dated, in-the-open
 amendments — corrections sit beside the record they correct, never overwrite it.
 
-## [0.1.0] — unreleased (spine)
+## Unreleased — the spine (hand-written)
+
+Everything below this line was written by hand, before the repository had a
+release pipeline. From the first release onward this file is maintained by
+release-please (`release-please-config.json`), which prepends a dated section
+per version above this one — so this section keeps its own heading rather than
+claiming a version number that was never tagged or published.
 
 First cut: the wall, five adapters, six analyzers, hardened across four rounds
 of adversarial review.

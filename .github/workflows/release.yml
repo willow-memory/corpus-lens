@@ -1,0 +1,143 @@
+name: Release
+
+# Publishes to PyPI when a version tag is pushed (e.g. `git tag v0.1.0 && git push --tags`).
+#
+# PORTED from forge-play/Forge — the fleet standard. The reasoning in these
+# comments was paid for in that repo's releases, not this one's; it is written
+# down here so a future edit does not re-learn it. Keep the shape identical
+# unless corpus-lens has a reason of its own.
+#
+# The version is NOT stored in pyproject.toml — hatch-vcs derives it from the
+# tag (see [tool.hatch.version]). The tag is therefore the only place a release
+# number is decided, which is what makes the assertion below meaningful rather
+# than circular: it re-derives from the built artifact and compares.
+#
+# Uses PyPI Trusted Publishing (OIDC) — no API token stored in the repo. The
+# PyPI publisher for project `corpuslens` must be created as a *pending*
+# publisher (the only kind you can create before a project exists), bound to
+# repository `willow-memory/corpus-lens`, workflow `release.yml`, environment
+# `pypi`. All three must match or the upload is rejected with no useful error:
+# this file must keep its name, and the `pypi` environment must exist on the
+# repo. The first successful publish turns the pending publisher into a live one.
+#
+# Two triggers, one implementation:
+#   * `push: tags` — every real release, automated or not. release-please cuts
+#     the tag with a GitHub App installation token (see release-please.yml),
+#     which is not GITHUB_TOKEN, so the push triggers this normally. A human
+#     running `git push origin vX.Y.Z` lands in exactly the same place.
+#   * `workflow_dispatch` — publish an existing tag from the Actions UI. The
+#     recovery path for a tag that exists but never published.
+#
+# Two triggers this deliberately does NOT have, both tried in the fleet and both
+# wrong:
+#   * `release: published` — GitHub suppresses workflow runs for any event
+#     generated with GITHUB_TOKEN, releases included, so it never fires for a
+#     bot-cut release. With an App token the tag push already covers it.
+#   * `workflow_call` — PyPI authenticates a called workflow against
+#     `job_workflow_ref` (the callee) while the PEP 740 attestation certificate
+#     records `workflow_ref` (the caller). The two claims disagree by
+#     construction and every upload is rejected. Running as a top-level
+#     workflow makes both claims name this file, which is what a verifiable
+#     attestation requires.
+#
+# `skip-existing` on the publish step makes any double-run a no-op rather than
+# a red X, whichever trigger started it.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and publish (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # One name for the tag across both triggers: the dispatch input if there
+      # is one, else the pushed ref. The input must win — on workflow_dispatch
+      # github.ref_name is the *branch*, so without the priority the assertion
+      # below would compare the build against "main" and fail confusingly.
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Check out the tag itself, not the branch head it may sit behind.
+          ref: ${{ inputs.tag || github.ref_name }}
+          # hatch-vcs derives the version from the git tag, so the tags must be
+          # present. The default shallow checkout fetches none of them.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+
+      - name: Assert the tag matches the built version
+        # The fleet shipped a v0.0.8 tag whose build produced 0.0.7, and the only
+        # thing that caught it was PyPI refusing the duplicate upload. Fail here
+        # instead, where the error says what is actually wrong.
+        run: |
+          tag="${TAG#v}"
+          built="$(ls dist/*.tar.gz | sed -E 's|.*/corpuslens-(.+)\.tar\.gz|\1|')"
+          echo "tag=${tag}  built=${built}"
+          if [ "$tag" != "$built" ]; then
+            echo "::error::tag v${tag} builds version ${built} — refusing to publish"
+            exit 1
+          fi
+
+      - name: Check metadata
+        run: |
+          python -m pip install --upgrade twine
+          twine check dist/*
+
+      - name: The published artifact must still hold the wall
+        # A release is the thing strangers run on their own logs. Install the
+        # BUILT WHEEL into a clean venv — not the checkout — and prove the
+        # console script works and its audit line is intact. A packaging change
+        # that dropped a module would otherwise be discovered by a user.
+        run: |
+          python -m venv /tmp/relcheck
+          /tmp/relcheck/bin/pip install --quiet dist/*.whl
+          /tmp/relcheck/bin/corpuslens --help > /dev/null
+          /tmp/relcheck/bin/corpuslens adapters | grep -q "claude-code"
+          /tmp/relcheck/bin/corpuslens run examples/sample-corpus \
+            --adapter claude-code > /tmp/relcheck-report.md
+          grep -q "No absolute calendar date, timezone, or filename left the wall" \
+            /tmp/relcheck-report.md
+          /tmp/relcheck/bin/corpuslens run examples/sample-corpus \
+            --adapter claude-code --format json | python -c "import json,sys; json.load(sys.stdin)"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # required for Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true

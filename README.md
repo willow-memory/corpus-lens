@@ -61,7 +61,14 @@ path, and one that documents that weekly cadence *is* reconstructable.
 
 ## Install
 
-Python 3.10+, no dependencies. Not on PyPI yet — install from source:
+Python 3.10+, no dependencies.
+
+Not on PyPI yet, but the pipeline is wired: a merge to `main` opens a
+release-please pull request, merging that cuts the tag, and the tag publishes
+`corpuslens` to PyPI through Trusted Publishing (no token in the repo). Once the
+first release lands, this becomes `pip install corpuslens` — or `uvx corpuslens`
+/ `pipx install corpuslens`, which zero dependencies makes reliable. Until then,
+from source:
 
 ```bash
 git clone https://github.com/willow-memory/corpus-lens
@@ -271,6 +278,6 @@ the `learner-model-ground-rules` made mechanical.
   disclosed limit, by design), and how to report privately.
 - [CHANGELOG.md](CHANGELOG.md) — dated, in-the-open amendments.
 
-CI runs the suite on Python 3.10–3.13 plus a packaging smoke test on every push.
+CI runs the suite on Python 3.10–3.14 plus a packaging smoke test on every push.
 
 Apache-2.0 · ΔΣ = 42

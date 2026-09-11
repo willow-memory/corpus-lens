@@ -1,10 +1,19 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
+# The distribution name is `corpuslens`; `corpus-lens` on PyPI is an unrelated
+# project (a TF-IDF corpus dashboard, MIT, godofecht/corpus-lens). PEP 503
+# normalizes the two differently, so they coexist — but do not "fix" this to
+# the hyphenated form, which is taken.
 name = "corpuslens"
-version = "0.1.0"
+# The git tag is the single source of truth — see [tool.hatch.version]. A
+# literal here is a second copy that drifts: the fleet has shipped a tag whose
+# build produced the previous version because a literal went unbumped, and this
+# file carried `0.1.0` with no tag and no release, a number never true of
+# anything installed.
+dynamic = ["version"]
 description = "Local-first process lens for your own human+agent corpus — reads process; the wall keeps the absolute time anchor out of the analysis"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -13,7 +22,10 @@ requires-python = ">=3.10"
 dependencies = []
 keywords = ["corpus", "agent-sessions", "process-analysis", "local-first", "privacy"]
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -27,10 +39,25 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/willow-memory/corpus-lens"
+Changelog = "https://github.com/willow-memory/corpus-lens/blob/main/CHANGELOG.md"
 Rubric = "https://github.com/willow-memory/corpus-lens/blob/main/GRADING.md"
 
 [project.scripts]
 corpuslens = "corpuslens.cli:main"
 
+[tool.hatch.version]
+# Derived from the git tag (hatch-vcs). At an exact tag `vX.Y.Z` the version is
+# X.Y.Z; an off-tag build gets a `.devN+g<sha>` suffix that PyPI rejects, so a
+# publish from an untagged commit fails loudly instead of shipping something
+# mislabelled. CI must check out with `fetch-depth: 0` or no tags are present.
+#
+# No tag exists yet; `.release-please-manifest.json` starts at 0.0.0 so the
+# first `feat:` proposes v0.1.0. Cutting a release is release-please's job
+# (`release-please-config.json`, `release-type: simple`) — let it pick the
+# number from the commits rather than tagging by hand.
+source = "vcs"
+
 [tool.hatch.build.targets.wheel]
+# The import name stays `corpuslens`; it matches the distribution name here,
+# unlike forge-play/forge where they differ.
 packages = ["corpuslens"]

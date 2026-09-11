@@ -67,7 +67,30 @@ python -W error::ResourceWarning -m unittest discover -s tests   # no leaked han
 Every fixed bug gets a regression test; the wall tests (`tests/test_wall.py`)
 are the acceptance tests for the centerpiece — including one that *documents*
 what the wall does NOT hide, so nobody silently re-introduces an overclaim. CI
-runs the suite on Python 3.10–3.13 plus a packaging smoke test.
+runs the suite on Python 3.10–3.14 plus a packaging smoke test.
+
+## Releasing
+
+Releases are cut by release-please, on the fleet's standard shape (ported from
+forge-play/Forge — keep it identical unless this repo has a reason of its own).
+Two things are asked of a contributor:
+
+- **Conventional commit messages**, because they are what picks the version and
+  writes the changelog. `feat:` cuts a minor, `fix:` a patch, `feat!:` or a
+  `BREAKING CHANGE:` footer goes to 1.0. `docs:`, `test:`, `ci:` and `chore:`
+  are hidden — they ride along with the next real release rather than shipping a
+  version containing nothing a user installs.
+- **A commit that changes what leaves the wall is never `chore:` or
+  `refactor:`.** `guard.py`, the audit sentence, an adapter's quarantine
+  handling — those are `feat:`, `fix:` or `security:`, so the change gets a
+  version number someone can point at.
+
+Nothing publishes from a branch, and nothing publishes by hand. The version
+lives in the git tag only (hatch-vcs); there is deliberately no version literal
+in `pyproject.toml` or `corpuslens/__init__.py`, and the release workflow
+refuses to publish if the tag and the built artifact disagree. It also installs
+the built wheel into a clean environment and re-checks the audit line before
+publishing — the artifact strangers run is the one that gets tested.
 
 ## Scope
 
