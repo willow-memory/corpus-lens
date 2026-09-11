@@ -176,6 +176,27 @@ because the leak was a *number the coarsening step forgot to also apply to*,
 which is precisely the class of leak a literal-string scan cannot see by
 construction.
 
+**Second amendment (2026-09-11), after the same gap was hit a third time.**
+`scan_egress` now runs a second phase after the literal loop: a *structural*
+scan (`corpuslens/egress_shapes.py`) that asks "is this the SHAPE of something
+the wall promises is not here?" rather than "is this a value we hid?" — a
+home-directory path, an email address, a calendar date, a weekday name, a
+wall-clock time, an IANA timezone. It is grant-aware on the same per-capability
+basis as the literal loop, and two shapes (home path, email) are gated by no
+capability at all. This is the general form of the `__setattr__` guard that
+fixed the `discovered_path` leak on one field, and it would have caught that
+leak at the door.
+
+What this does **not** do, stated plainly so the paragraph above keeps its
+force: it does not close the gap this document named. An un-banded `n` or a
+stray tempo quantile in a share payload is a *number that is too identifying*,
+not a recognizable shape, and the structural phase is exactly as blind to it as
+the literal loop was — "goes through `scan_egress`" still does not mean "the
+Guard verified the coarsening." The second, distinct shape/schema assertion
+this document called for is still unbuilt. What changed is narrower: the class
+of leak that is a recognizable *anchor shape* in a never-quarantined field is
+now caught, and the class that is a bare number still is not.
+
 ### 2b. Labelling mode ("A local labelling mode")
 
 The spec, quoted: `corpuslens label <path> --adapter …` "samples fifty

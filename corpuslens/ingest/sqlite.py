@@ -20,6 +20,7 @@ from pathlib import Path
 
 from ..model import Surface
 from . import register
+from ..failure_classes import classify as _classify_failure
 from ._rows import (as_text, assemble, classify_role, parse_db_ts,
                     require_columns, resolve_columns)
 
@@ -62,7 +63,12 @@ def ingest(path: str, corpus_id: str = "corpus", table: str | None = None):
             table = table or _pick_table(con)
             info = con.execute(f'PRAGMA table_info("{table}")').fetchall()
         except sqlite3.DatabaseError as e:
-            raise ValueError(f"not a readable SQLite database: {path} ({e})")
+            # `path` is echoed because the operator typed it (same reasoning as
+            # cli.py's `_empty_message`); sqlite3's own message is NOT, because
+            # this repo did not author it and cannot bound what it carries.
+            raise ValueError(
+                f"not a readable SQLite database: {path} "
+                f"({_classify_failure(str(e))})")
         cols = [r[1] for r in info]
         if not cols:
             raise ValueError(f"table {table!r} not found or has no columns")

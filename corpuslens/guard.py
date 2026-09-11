@@ -45,6 +45,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+from .egress_shapes import find_structural_leaks
 from .model import PERSON_CLAIM_TYPES, PROCESS_CLAIM_TYPES, Quarantine
 
 
@@ -322,6 +323,19 @@ class Guard:
                     "report but its capability was not released this run — refusing "
                     "to emit. The upstream wall was bypassed; this is a highest-class "
                     "bug, report it like one.")
+        # Second phase: shapes, not literals. The loop above can only see values
+        # that were quarantined; a value that was never quarantined is invisible
+        # to it by construction, which is precisely how the `discovered_path`
+        # leak reached output. See egress_shapes.py for why this is not a
+        # duplicate of the check above, and what it does not claim.
+        shapes = find_structural_leaks(text, self._released_caps)
+        if shapes:
+            raise WallError(
+                f"egress scan: the outbound report contains {', '.join(shapes)} — "
+                "a shape the wall promises is not there, and no capability "
+                "released this run accounts for it. Refusing to emit. This value "
+                "was never quarantined, so the literal scan could not see it; "
+                "that is a highest-class bug, report it like one.")
         return text
 
     def n_events(self) -> int:
