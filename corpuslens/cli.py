@@ -48,6 +48,7 @@ from pathlib import Path
 from . import diff as diffmod
 from . import ingest, label as labelmod, render
 from . import share as share_mod
+from . import subject as subjectmod
 from .analyze import all_analyzers
 from .guard import DEFAULT_PROFILE, Guard, WallError
 
@@ -346,6 +347,12 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
                           "grading_question": a.grading_question,
                           **a.run(events)}
         guard.audit.analyzers_run.append(a.name)
+    # DERIVED, never a flag: this run's own authorship_mix result (when that
+    # analyzer is registered) is the only input — see corpuslens/subject.py.
+    # Always set, even when nothing ran to inform it, so the audit sentence
+    # always says what this run believes about who the operator role is,
+    # rather than only saying so on the runs where it changes the answer.
+    guard.audit.subject, guard.audit.subject_reason = subjectmod.infer_subject(results)
     audit = guard.audit
     if share:
         # Coarsening happens on the already-computed numbers, never on the
@@ -534,10 +541,22 @@ def _ask_yes_no(question: str):
 def label(path: str, adapter: str, sample_size: int, store_path: str,
           table: str | None = None) -> int:
     """Sample eligible turns under a fixed seed, show each one's text in the
-    terminal, and ask one yes/no per classifier that applies to it. Writes
-    only {source_ref, classifier, label} per answer, tagged with the
-    classifier set version — never content (see label.py's module docstring
+    terminal, and ask one yes/no per classifier that applies to it, plus (when
+    `corpuslens.authorship` is installed) the one authorship question for
+    every eligible turn. Writes only {source_ref, classifier, label} per
+    regex answer and {source_ref, label} per authorship answer, tagged with
+    their own version each — never content (see label.py's module docstring
     for the exact rule this enforces).
+
+    Authorship is folded into the SAME sample and the SAME per-turn prompt
+    sequence as the regex questions, rather than a separate `label` run: the
+    labeller is already looking at this turn to answer "did you author code
+    here", and "did a person type this at all" is one more question about
+    the same turn, not a reason to make them label the corpus twice. If the
+    authorship module is not installed, that question is silently skipped
+    (with a one-line note) and the regex questions proceed exactly as
+    before — this file must keep grading the four regex classifiers whether
+    or not the sibling classifier has shipped yet.
     """
     if not ingest.text_capable_of(adapter):
         print(f"error: 'label' needs to show you your own turn text, and the {adapter!r} "
@@ -566,6 +585,18 @@ def label(path: str, adapter: str, sample_size: int, store_path: str,
         print(f"error: {version_err}", file=sys.stderr)
         return 2
 
+    authorship_mod = None
+    try:
+        authorship_mod = labelmod.authorship_contract()
+    except labelmod.AuthorshipUnavailable:
+        pass
+    if authorship_mod is not None:
+        authorship_version_err = labelmod.check_authorship_version(
+            store, authorship_mod.AUTHORSHIP_VERSION)
+        if authorship_version_err:
+            print(f"error: {authorship_version_err}", file=sys.stderr)
+            return 2
+
     sample = labelmod.sample_events(events, sample_size)
     if not sample:
         print("error: no eligible turns to sample in this corpus (operator prompts or machine "
@@ -573,12 +604,18 @@ def label(path: str, adapter: str, sample_size: int, store_path: str,
         return 1
 
     labelled = labelmod.already_labelled(store)
-    pending = [(e, [c for c in labelmod.classifiers_for(e.author_class)
-                    if (e.source_ref, c) not in labelled]) for e in sample]
-    pending = [(e, cs) for e, cs in pending if cs]
+    authorship_labelled = labelmod.already_labelled_authorship(store)
+    pending = []
+    for e in sample:
+        classifiers = [c for c in labelmod.classifiers_for(e.author_class)
+                       if (e.source_ref, c) not in labelled]
+        needs_authorship = authorship_mod is not None and e.source_ref not in authorship_labelled
+        if classifiers or needs_authorship:
+            pending.append((e, classifiers, needs_authorship))
     if not pending:
         print(f"nothing new to label: all {len(sample)} sampled turn(s) already have a label "
-              f"for every classifier that applies to them, in {store_path}.")
+              f"for every classifier (and authorship judgment, if applicable) that applies to "
+              f"them, in {store_path}.")
         return 0
 
     if not sys.stdin.isatty():
@@ -589,9 +626,13 @@ def label(path: str, adapter: str, sample_size: int, store_path: str,
 
     print(f"{len(pending)} of {len(sample)} sampled turn(s) still need a label "
           f"(sample fixed by seed — the same corpus and --sample-size sample the same turns).")
-    print("Answer y or n for each question, or q to stop and save what you have so far.\n")
+    print("Answer y or n for each question, or q to stop and save what you have so far.")
+    if authorship_mod is None:
+        print("(the authorship classifier is not installed in this build — skipping its "
+              "question; the classifier questions below are unaffected.)")
+    print()
     asked = 0
-    for e, classifiers in pending:
+    for e, classifiers, needs_authorship in pending:
         text = text_by_ref.get(e.source_ref)
         if text is None:
             continue
@@ -607,12 +648,69 @@ def label(path: str, adapter: str, sample_size: int, store_path: str,
                 break
             labelmod.add_label(store, e.source_ref, c, answer)
             asked += 1
+        if not stopped and needs_authorship:
+            answer = _ask_yes_no(labelmod.AUTHORSHIP_QUESTION)
+            if answer is None:
+                stopped = True
+            else:
+                label_value = authorship_mod.HUMAN if answer else authorship_mod.AGENT
+                labelmod.add_authorship_label(store, e.source_ref, label_value,
+                                              authorship_mod.AUTHORSHIP_VERSION)
+                asked += 1
         print()
         if stopped:
             break
     labelmod.save_store(store_path, store)
     print(f"{asked} label(s) recorded to {store_path}.")
     return 0
+
+
+def _render_authorship(result: dict) -> list:
+    """Render `score_authorship`'s result. Deliberately not a confusion-matrix
+    dump: one coverage line (how often the classifier even answered) up
+    front, then precision/recall per class — the same shape as the regex
+    classifiers above — with each class's `fn` broken into "predicted the
+    other class" versus "declined (unknown)" so those two failure modes
+    never collapse into a single indistinguishable number."""
+    lines = ["## authorship", "",
+             "*Three-valued: human / agent / unknown. UNKNOWN is the classifier declining "
+             "to answer, not a wrong guess — a classifier that answers unknown on every turn "
+             "shows 0% recall below for BOTH classes and \"not computable\" precision, never a "
+             "flattering 100%. Read recall together with the decline rate below it, not alone.*",
+             ""]
+    n = result["n"]
+    lines.append(f"n = {n} authorship-labelled turn(s) found in this corpus.")
+    if result.get("missing"):
+        lines.append(f"*{result['missing']} authorship-labelled turn(s) were not found in this "
+                     f"run of the corpus (counted, not silently dropped).*")
+    if n == 0:
+        lines.append(f"*{result['unknown_note']}*")
+        lines.append("")
+        return lines
+    if 0 < n < render.SMALL_N:
+        lines.append(f"*Small sample (n = {n}): read the direction, not the decimal.*")
+    lines.append(f"- **declined (unknown)**: {result['unknown_pct']}% of turns "
+                 f"({result['unknown_n']} of {n}) — the classifier did not answer at all")
+    lines.append("")
+    for name in ("human", "agent"):
+        r = result[name]
+        lines.append(f"### {name}")
+        lines.append("")
+        if r["precision_pct"] is not None:
+            lines.append(f"- **precision**: {r['precision_pct']}% — out of "
+                         f"{r['precision_denominator']} (tp={r['tp']}, fp={r['fp']})")
+        else:
+            lines.append(f"- **precision**: {r['precision_note']}")
+        if r["recall_pct"] is not None:
+            lines.append(f"- **recall**: {r['recall_pct']}% — out of "
+                         f"{r['recall_denominator']} (tp={r['tp']}, fn={r['fn']})")
+        else:
+            lines.append(f"- **recall**: {r['recall_note']}")
+        lines.append(f"  - of {r['fn']} missed {name} turn(s): {r['fn_wrong']} the classifier "
+                     f"answered wrong (the other class), {r['fn_declined']} it declined "
+                     f"(unknown) — said-unknown and said-wrong are counted separately on purpose.")
+        lines.append("")
+    return lines
 
 
 def _render_score(result: dict, fmt: str) -> str:
@@ -628,7 +726,7 @@ def _render_score(result: dict, fmt: str) -> str:
                      f"corpus (counted, not silently dropped) — the corpus may have changed "
                      f"since labelling.*")
         lines.append("")
-    if not result["classifiers"]:
+    if not result["classifiers"] and not result.get("authorship"):
         lines.append("No labelled turn in the store matched a turn in this corpus.")
         return "\n".join(lines)
     for name, r in result["classifiers"].items():
@@ -649,6 +747,8 @@ def _render_score(result: dict, fmt: str) -> str:
         else:
             lines.append(f"- **recall**: {r['recall_note']}")
         lines.append("")
+    if result.get("authorship"):
+        lines.extend(_render_authorship(result["authorship"]))
     return "\n".join(lines)
 
 
@@ -656,8 +756,12 @@ def score(path: str, adapter: str, table: str | None, store_path: str,
           fmt: str = "markdown") -> int:
     """Re-run the classifiers over `path` and grade them against the labels in
     `store_path`: precision, recall and n per classifier, named denominators
-    throughout. Refuses (does not silently compare) if the store was graded
-    against a different classifier-set version than the one installed."""
+    throughout, plus (when the store has any and `corpuslens.authorship` is
+    installed) per-class precision/recall for the three-valued authorship
+    judgment. Refuses (does not silently compare) if the store was graded
+    against a different classifier-set version, or a different authorship
+    version, than the one installed — the two are checked independently,
+    since they move on independent schedules (see label.py)."""
     try:
         events, quarantine, dropped, n_files = _ingest(path, adapter, table)
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
@@ -673,7 +777,7 @@ def score(path: str, adapter: str, table: str | None, store_path: str,
     except (OSError, ValueError, json.JSONDecodeError) as e:
         print(f"error: could not read --store {store_path}: {e}", file=sys.stderr)
         return 2
-    if not store["labels"]:
+    if not store["labels"] and not store.get("authorship_labels"):
         print(f"error: {store_path} has no labels yet — run `corpuslens label` first.",
               file=sys.stderr)
         return 1
@@ -682,7 +786,21 @@ def score(path: str, adapter: str, table: str | None, store_path: str,
         print(f"error: {version_err}", file=sys.stderr)
         return 2
 
+    authorship_mod = None
+    if store.get("authorship_labels"):
+        try:
+            authorship_mod = labelmod.authorship_contract()
+        except labelmod.AuthorshipUnavailable as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        authorship_version_err = labelmod.check_authorship_version(
+            store, authorship_mod.AUTHORSHIP_VERSION)
+        if authorship_version_err:
+            print(f"error: {authorship_version_err}", file=sys.stderr)
+            return 2
+
     result = labelmod.score(events, store)
+    result["authorship"] = labelmod.score_authorship(events, store) if authorship_mod else None
     text = _render_score(result, fmt)
     try:
         text = Guard(quarantine, DEFAULT_PROFILE).scan_egress(text)

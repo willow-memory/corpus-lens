@@ -399,6 +399,49 @@ isolation, BOM, out-of-range dates, timezone reproducibility), the CLI surface
 `doctor`'s counts-not-content output, the listings), and a regression test for
 every fixed review finding.
 
+## Who the report thinks it is describing
+
+Every headline in this report says **you**. That is an assumption, and until
+0.2.1 it was an unchecked one: pointed at a corpus of agent trajectories the
+tool reported "88.6% of your prompt turns arrive mid-task", which is a true
+statement about turns and a false statement about a person, because there was
+no person in that corpus at all.
+
+The battery now classifies each operator-role turn as **human**, **agent** or
+**unknown**, derives the run's **subject** from the mix, and says so in the
+audit sentence. Where the subject is not a person, the pronouns change and the
+human reference points are withheld with a stated reason rather than silently
+printed — comparing an agent's numbers against a human director's is a category
+error the report used to make in silence.
+
+**How it decides, and how it is deliberately timid.** A turn is an agent only
+if a deterministic marker identifies it (an enumerated wrapper, a sidechain
+flag, a compaction summary) or it is both very long **and** code-referencing.
+That conjunction exists because of a specific person: someone who commissions a
+lesson plan or a feature article writes a long structured brief with no file
+paths in it, and a length rule alone would call them a machine. See
+[`examples/styles-corpus/`](examples/styles-corpus/), a corpus of invented
+operators built to break this classifier rather than to confirm it.
+
+The cost of that timidity is a permanent blind spot, stated rather than hidden:
+**a machine that dispatches in short, code-free commands reads as human or
+unknown, never as an agent.** That is the accepted error direction. Calling a
+real person a machine is the worse failure, and the bar is set to avoid it.
+
+It is also not identification. It says which *class* of author filled a role,
+never which person. `signature_plurality` counts distinct authoring signatures
+without labelling any of them, human-classified turns are structurally
+unsplittable, and clustering by timing is refused outright — that is the
+re-identification mechanism [GRADING.md](GRADING.md) question 9 warns about,
+and using it even to separate two machines would exercise the capability rather
+than disclose it.
+
+**Nobody has measured its error rate on a real corpus.** `corpuslens label` now
+asks one authorship question alongside the four regex ones, and `corpuslens
+score` reports precision and recall per class — with "declined" counted
+separately from "wrong", so a classifier that answers unknown everywhere scores
+as useless rather than perfect.
+
 ## Which of the ten questions this actually answers
 
 [GRADING.md](GRADING.md) poses ten questions. The report now names, per section,

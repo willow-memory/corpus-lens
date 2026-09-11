@@ -20,6 +20,27 @@ object holding ONLY the label values, the opaque `source_ref` hash the `Event`
 already carries, and the classifier version that was graded. Never content,
 never a filename, never a timestamp, never a day offset. `save_store` writes
 exactly that shape and nothing else.
+
+AUTHORSHIP (added after the sibling `corpuslens/authorship.py` classifier —
+HUMAN / AGENT / UNKNOWN, see that module's docstring for the contract this
+file grades but does not reimplement) does NOT fit the shape above and is kept
+visibly separate rather than shoehorned into `labels`/`classifier_version`:
+
+  * it is ONE three-valued judgment per turn ("who actually wrote this"), not
+    a family of independent yes/no classifiers, so it gets its own list
+    (`authorship_labels`) instead of a `classifier` key in `labels`;
+  * its ground-truth label is the STRING "human" or "agent" (the contract's
+    HUMAN/AGENT constants), never a bool — a three-valued judgment is not
+    naturally yes/no, and forcing it into `bool()` (as `save_store` already
+    does for the four regex classifiers) would silently coerce "agent" to
+    `True` and lose the distinction this whole feature exists to keep;
+  * it is tied to `AUTHORSHIP_VERSION`, a SEPARATE version axis from
+    `CLASSIFIER_SET_VERSION` — the regex classifiers and the authorship
+    classifier are different code, will change on different schedules, and a
+    store must never let one's version stand in for the other's.
+
+Still nothing new leaves the wall: `authorship_labels` holds only
+`{source_ref, label}` pairs, same opaque hash, no content.
 """
 from __future__ import annotations
 
@@ -63,6 +84,22 @@ QUESTIONS = {
                 "— something it wants the operator to pick, confirm, or resolve?"),
 }
 
+#: The ONE question that grades `corpuslens.authorship.classify_turn` — asked
+#: for every eligible turn, operator prompt or machine response alike, in
+#: addition to whichever QUESTIONS above apply to that turn's author_class.
+#: Worded so the labeller (the corpus owner, reading their own turn) can
+#: actually answer it: "did a person type this" is a fact they witnessed,
+#: not a guess about intent, deliberation, or code style like the questions
+#: above. It deliberately does NOT ask "is this turn logged as operator or
+#: machine" — the whole point of grading authorship is to check whether the
+#: classifier gets it right independent of, and sometimes despite, how the
+#: source logged it (see authorship.py's module docstring).
+AUTHORSHIP_QUESTION = (
+    "Regardless of how this turn happens to be logged: was it actually typed by a "
+    "person, as opposed to a machine (an AI, an agent, an automated script) "
+    "producing or relaying it?"
+)
+
 
 def classifiers_for(author_class) -> tuple:
     """Which classifier keys apply to a turn of this author_class. Empty tuple
@@ -87,6 +124,44 @@ def eligible_pool(events) -> list:
     return pool
 
 
+def authorship_eligible_pool(events) -> list:
+    """The turns eligible for an authorship judgment. Currently the SAME pool
+    as `eligible_pool` — every turn worth showing a labeller for the regex
+    questions is also one they can answer "did a person type this" for,
+    including a machine turn (the labeller knows whether they dictated a
+    reply verbatim or the agent produced it). Kept as its own name rather
+    than a bare alias so the two pools can diverge later without every call
+    site guessing which one it meant."""
+    return eligible_pool(events)
+
+
+class AuthorshipUnavailable(RuntimeError):
+    """Raised when `corpuslens.authorship` — the sibling module that defines
+    HUMAN/AGENT/UNKNOWN and `classify_turn(features, marked_machine=False)`
+    — is not importable in this build. This file grades that classifier; it
+    does not reimplement it (see the module docstring's AUTHORSHIP section),
+    so authorship labelling/scoring is a graceful no-op with a clear message
+    until the sibling module ships, never a crash and never a silent stub."""
+
+
+def authorship_contract():
+    """Import `corpuslens.authorship` lazily and return the module, or raise
+    `AuthorshipUnavailable` with a ready-to-print message. LAZY on purpose:
+    importing `label` itself (and every test that only exercises the four
+    regex classifiers) must keep working whether or not the authorship
+    classifier has landed yet — a top-level `from . import authorship` would
+    make this whole module unimportable in the meantime."""
+    try:
+        from . import authorship as mod
+    except ImportError as e:
+        raise AuthorshipUnavailable(
+            "the authorship classifier (corpuslens/authorship.py — HUMAN/AGENT/UNKNOWN, "
+            "classify_turn(features, marked_machine=False)) is not available in this build. "
+            "Authorship labelling/scoring needs it; the four regex classifiers are unaffected."
+        ) from e
+    return mod
+
+
 def sample_events(events, n: int = DEFAULT_SAMPLE_SIZE, seed: int = SEED) -> list:
     """A fixed-seed sample of up to `n` eligible turns. The pool is sorted by
     its own opaque `source_ref` hash before sampling — never by anything that
@@ -103,12 +178,16 @@ def sample_events(events, n: int = DEFAULT_SAMPLE_SIZE, seed: int = SEED) -> lis
 # ── the label store ──────────────────────────────────────────────────────────
 
 def empty_store() -> dict:
-    return {"classifier_version": None, "labels": []}
+    return {"classifier_version": None, "labels": [],
+            "authorship_version": None, "authorship_labels": []}
 
 
 def load_store(path) -> dict:
     """The store at `path`, or an empty one if it does not exist yet. Never
-    raises on a missing file — a first `corpuslens label` run creates it."""
+    raises on a missing file — a first `corpuslens label` run creates it.
+    `authorship_version`/`authorship_labels` default to None/[] for a store
+    written before this feature existed — an old store is still a valid,
+    empty-on-authorship store, not a malformed one."""
     p = Path(path)
     if not p.exists():
         return empty_store()
@@ -118,16 +197,30 @@ def load_store(path) -> dict:
         raise ValueError(f"{path} does not look like a corpuslens label store "
                           f"(expected an object with a 'labels' list)")
     return {"classifier_version": data.get("classifier_version"),
-            "labels": list(data.get("labels", []))}
+            "labels": list(data.get("labels", [])),
+            "authorship_version": data.get("authorship_version"),
+            "authorship_labels": list(data.get("authorship_labels", []))}
 
 
 def save_store(path, store: dict) -> None:
-    """Writes exactly {classifier_version, labels: [{source_ref, classifier,
-    label}, ...]} — nothing else is ever added to this dict on the way out,
-    so a future field cannot smuggle content in by accident."""
+    """Writes {classifier_version, labels: [{source_ref, classifier, label}, ...]}
+    plus, ONLY when authorship has ever been used on this store,
+    {authorship_version, authorship_labels: [{source_ref, label}, ...]} — a
+    store that never touched authorship round-trips with exactly the two
+    original keys, so this change is invisible to a store from before
+    authorship existed. Nothing else is ever added to either dict on the way
+    out, so a future field cannot smuggle content in by accident. Note the
+    authorship `label` is a STRING ("human"/"agent"), never coerced through
+    `bool()` like the regex classifiers' labels are — that coercion is
+    exactly what a three-valued judgment cannot survive."""
     labels = [{"source_ref": r["source_ref"], "classifier": r["classifier"],
                "label": bool(r["label"])} for r in store["labels"]]
     out = {"classifier_version": store.get("classifier_version"), "labels": labels}
+    authorship_labels = store.get("authorship_labels") or []
+    if store.get("authorship_version") is not None or authorship_labels:
+        out["authorship_version"] = store.get("authorship_version")
+        out["authorship_labels"] = [{"source_ref": r["source_ref"], "label": str(r["label"])}
+                                     for r in authorship_labels]
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2, sort_keys=True)
         f.write("\n")
@@ -147,6 +240,27 @@ def check_version(store: dict, current: str = CLASSIFIER_SET_VERSION) -> str | N
             f"fresh --store file if the classifiers changed on purpose.")
 
 
+def check_authorship_version(store: dict, current: str) -> str | None:
+    """The same refusal as `check_version`, on the SEPARATE `authorship_version`
+    axis — `current` is `corpuslens.authorship.AUTHORSHIP_VERSION`, passed in
+    rather than defaulted, because getting it at all requires the caller to
+    have already handled `AuthorshipUnavailable` (see `authorship_contract`).
+    None if `store` has no authorship judgments yet, or was graded against
+    `current`; otherwise a message to print and refuse on — grading (or
+    adding) authorship labels against a different version than they were
+    recorded under is refused, never silently compared, exactly like the
+    regex classifiers' own version discipline."""
+    v = store.get("authorship_version")
+    if v is None or v == current:
+        return None
+    return (f"this label store's authorship judgments were graded against authorship "
+            f"version {v!r}, but the installed authorship classifier is {current!r}. "
+            f"Scoring (or adding new authorship labels) against a different version is "
+            f"refused, not silently compared — clear authorship_labels (or start a fresh "
+            f"--store file) if the authorship classifier changed on purpose. The regex "
+            f"classifiers' own labels in this store are unaffected.")
+
+
 def already_labelled(store: dict) -> set:
     return {(r["source_ref"], r["classifier"]) for r in store["labels"]}
 
@@ -156,6 +270,25 @@ def add_label(store: dict, source_ref: str, classifier: str, label: bool,
     store["classifier_version"] = version
     store["labels"].append({"source_ref": source_ref, "classifier": classifier,
                             "label": bool(label)})
+
+
+def already_labelled_authorship(store: dict) -> set:
+    """Source refs that already have an authorship judgment. Unlike
+    `already_labelled`, this is not keyed by (source_ref, classifier) — there
+    is exactly one authorship question per turn, not a family of them."""
+    return {r["source_ref"] for r in store.get("authorship_labels", [])}
+
+
+def add_authorship_label(store: dict, source_ref: str, label: str, version: str) -> None:
+    """Record the human's ground-truth authorship judgment for one turn.
+    `label` must be the contract's HUMAN or AGENT string constant (never a
+    bool — see this module's docstring); `version` must be the installed
+    `corpuslens.authorship.AUTHORSHIP_VERSION`, fetched by the caller through
+    `authorship_contract()` so this function never needs to import the
+    sibling module itself."""
+    store["authorship_version"] = version
+    store.setdefault("authorship_labels", []).append(
+        {"source_ref": source_ref, "label": str(label)})
 
 
 # ── scoring ──────────────────────────────────────────────────────────────────
@@ -209,4 +342,137 @@ def _precision_recall(pairs: list) -> dict:
         out["precision_note"] = "not computable: the classifier never predicted positive in this sample"
     if recall is None:
         out["recall_note"] = "not computable: no labelled turn in this sample was marked positive"
+    return out
+
+
+# ── authorship scoring (three-valued: human / agent / unknown) ─────────────
+#
+# THE SHAPE PROBLEM. The four regex classifiers above are each a single
+# yes/no question graded with one precision and one recall. Authorship is
+# not that shape twice over:
+#
+#   1. It is THREE-VALUED, not binary. `classify_turn` answers human, agent,
+#      or unknown — there is no single "positive" class to build one
+#      precision/recall pair around, so this reports precision and recall
+#      PER CLASS (human, agent) the way a multiclass classifier is normally
+#      graded, rather than forcing a three-valued answer through the
+#      two-valued `_precision_recall` above.
+#
+#   2. UNKNOWN IS A DECLINE, NOT A WRONG ANSWER. A classifier that answers
+#      UNKNOWN on every turn is never wrong in the sense of "said agent when
+#      the truth was human" — it never says either. Folded naively into a
+#      binary positive/negative count, that reads as flawless precision,
+#      which is exactly backwards: it is a classifier that never commits.
+#      The fix here is not a separate "abstention score" bolted on after the
+#      fact; it falls out of the per-class math itself. Each class C is
+#      scored one-vs-rest (true==C vs predicted==C), so a prediction of
+#      UNKNOWN is simply "not C" for BOTH classes — it can never contribute
+#      a true positive to either, only to the "actual positive but not
+#      predicted" side (recall's denominator). An always-UNKNOWN classifier
+#      therefore shows 0% recall on BOTH human and agent (every true
+#      instance of each class went unpredicted) and "not computable"
+#      precision on both (it never predicted either) — the exact opposite of
+#      a flattering number, surfaced by the same arithmetic that grades a
+#      real answer, not a special case for a bad one.
+#
+#   3. "SAID UNKNOWN" AND "SAID THE OTHER CLASS" ARE DIFFERENT FAILURES, so a
+#      declined turn and a confidently wrong one must not collapse into one
+#      undifferentiated "fn" count the way the binary classifiers' `fn`
+#      does. Each class's `fn` here is split into `fn_declined` (predicted
+#      UNKNOWN) and `fn_wrong` (confidently predicted the OTHER class) —
+#      reported separately, summed for `fn` only where the existing
+#      precision/recall math needs a single denominator. A classifier that
+#      hedges (mostly `fn_declined`) and one that is confidently miscalibrated
+#      (mostly `fn_wrong`) look identical on recall alone; they must not look
+#      identical in this output.
+#
+# `unknown_pct` is the headline coverage number precisely so nobody has to
+# reconstruct "how often did it even try" by hand from two per-class blocks.
+
+
+def score_authorship(events, store: dict) -> dict | None:
+    """Per-class (human, agent) precision/recall for
+    `corpuslens.authorship.classify_turn`, re-run over `events` and compared
+    to the ground truth in `store["authorship_labels"]`. Returns None if the
+    store has no authorship judgments at all — same convention as `score`
+    leaving a classifier out of `results` when nobody has labelled it, so a
+    store that never touched authorship renders no authorship section rather
+    than an empty or misleading one.
+
+    Raises `AuthorshipUnavailable` if the store DOES have authorship
+    judgments but `corpuslens.authorship` cannot be imported — there is no
+    honest number to report without the classifier that would produce the
+    predictions, and reporting ground truth alone would silently look like a
+    result. Callers (the CLI) are expected to have already surfaced that
+    error via `authorship_contract()` before reaching here; this function
+    calls it too so it stays correct when used directly (as the tests do).
+
+    `marked_machine`, passed to `classify_turn`, is derived from the Event's
+    OWN `author_class` — the log's say-so about who wrote the turn. That is
+    the exact quantity this whole feature exists to check the classifier
+    against, independently, rather than trust: see corpuslens/authorship.py
+    for why a turn's own logged author_class is a hint, not ground truth."""
+    labels = store.get("authorship_labels") or []
+    if not labels:
+        return None
+    mod = authorship_contract()
+    by_ref = {e.source_ref: e for e in events}
+    pairs = []
+    missing = 0
+    for rec in labels:
+        e = by_ref.get(rec["source_ref"])
+        if e is None:
+            missing += 1
+            continue
+        y_true = rec["label"]
+        marked_machine = e.author_class is AuthorClass.MACHINE
+        y_pred = mod.classify_turn(dict(e.features), marked_machine=marked_machine)
+        pairs.append((y_true, y_pred))
+    result = _three_valued_scores(pairs, human=mod.HUMAN, agent=mod.AGENT, unknown=mod.UNKNOWN)
+    result["missing"] = missing
+    result["total_labels"] = len(labels)
+    return result
+
+
+def _three_valued_scores(pairs: list, human: str, agent: str, unknown: str) -> dict:
+    """The per-class math described above. `pairs` is a list of
+    (y_true, y_pred) where y_true is always `human` or `agent` (the ground
+    truth a labeller can always give) and y_pred is `human`, `agent`, or
+    `unknown` (the classifier's three-valued answer, including a decline)."""
+    n = len(pairs)
+    n_unknown = sum(1 for _, p in pairs if p == unknown)
+    out = {
+        "n": n,
+        "unknown_n": n_unknown,
+        "unknown_pct": round(100 * n_unknown / n, 1) if n else None,
+    }
+    if n == 0:
+        out["unknown_note"] = ("not computable: no authorship-labelled turn in this "
+                                "sample was found in the corpus")
+
+    for name, this_class, other_class in (("human", human, agent), ("agent", agent, human)):
+        tp = sum(1 for t, p in pairs if t == this_class and p == this_class)
+        fp = sum(1 for t, p in pairs if t == other_class and p == this_class)
+        fn_wrong = sum(1 for t, p in pairs if t == this_class and p == other_class)
+        fn_declined = sum(1 for t, p in pairs if t == this_class and p == unknown)
+        fn = fn_wrong + fn_declined
+        tn = sum(1 for t, p in pairs if t == other_class and p != this_class)
+        predicted_pos = tp + fp
+        actual_pos = tp + fn
+        precision = round(100 * tp / predicted_pos, 1) if predicted_pos else None
+        recall = round(100 * tp / actual_pos, 1) if actual_pos else None
+        cls = {
+            "tp": tp, "fp": fp, "fn": fn, "tn": tn,
+            "fn_wrong": fn_wrong, "fn_declined": fn_declined,
+            "precision_pct": precision,
+            "precision_denominator": f"labelled turns the classifier predicted {name} (tp+fp)",
+            "recall_pct": recall,
+            "recall_denominator": (f"labelled turns a human marked {name} (tp+fn — fn split "
+                                    f"into predicted-{other_class} vs declined-unknown below)"),
+        }
+        if precision is None:
+            cls["precision_note"] = f"not computable: the classifier never predicted {name} in this sample"
+        if recall is None:
+            cls["recall_note"] = f"not computable: no labelled turn in this sample was marked {name}"
+        out[name] = cls
     return out

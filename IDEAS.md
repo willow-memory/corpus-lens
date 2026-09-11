@@ -252,6 +252,68 @@ that gap is the operator and how much is the regex.
 
 ## Analyzers worth considering
 
+### `mid_task_share` does not measure what question 1 reads it as
+
+Found 2026-09-11 while building the style corpus, specifically by adding two
+operators who use an agent for one large artefact — a teacher commissioning a
+lesson plan, a journalist commissioning a feature.
+
+`mid_task_share_pct` is `(turns - sessions) / turns`. It is therefore a pure
+function of **turns per session** and nothing else. Eight invented operators,
+spanning seven-word questions to 119-word structured briefs, all land between
+75% and 83%:
+
+| operator | mid-task | opener | follow-up | ratio |
+|---|---|---|---|---|
+| questioner | 83.3% | 7 | 7 | 1.0x |
+| paster | 75.0% | 21 | 22 | 1.0x |
+| second_language | 75.0% | 58 | 41 | 1.4x |
+| spec_writer | 75.0% | 119 | 53 | 2.2x |
+| rambler | 80.0% | 112 | 40 | 2.8x |
+| lesson_planner | 75.0% | 106 | 18 | **5.9x** |
+| article_writer | 80.0% | 106 | 12 | **9.2x** |
+
+GRADING.md question 1 reads this number as *"if ~everything you type is one
+upfront spec, you are using a benchmark harness; if most arrives mid-execution,
+you are directing."* The metric cannot make that distinction. A person who
+front-loads a 106-word brief and then steers in twelve-word corrections scores
+the same as one who asks seven-word questions all afternoon.
+
+**The quantity that does measure front-loading is already computed and is not
+interpreted:** the ratio of `opener_median_words` to `followup_median_words`.
+It separates the big-task operators cleanly (5.9x, 9.2x) from conversational
+ones (1.0-1.4x), and it puts this project's own operator at 1.9x.
+
+It also says something the length alone does not. The dispatched agents measured
+earlier tonight sit at **1.2x** — not because they steer, but because every one
+of their turns is a fresh full specification. A big-task human writes one spec
+and then steers briefly; an agent dispatcher re-specs every time. Those are
+different behaviours that `mid_task_share` renders identically (43.8% vs 75%)
+for reasons that have nothing to do with either.
+
+### And the framing carries a value judgment that is wrong for this operator
+
+"Benchmark harness" versus "directing" is not neutral, and the reference N=1 is
+a software director. For someone commissioning a lesson plan or a feature
+article, a complete brief that lands first time is **the skilled move**, not a
+passive one. Front-loading is what expertise looks like when the artefact is
+large and the work is generative rather than exploratory.
+
+This is [Corpora that are not code](#corpora-that-are-not-code) arriving from an
+unexpected direction. That entry worried about the classifiers going silent on
+non-code corpora, which they do. This is worse and quieter: the numbers compute
+fine, and the *interpretation* is calibrated for one domain and silently
+misreads another as deficient.
+
+**What to do, roughly in order.** Report the opener:follow-up ratio as a first
+class number with its own reading, since it is free. Rewrite question 1's
+guidance so it describes what the number measures. And decide whether the
+rubric's implied ranking survives contact with generative work at all — the
+honest answer may be that front-loading and steering are different tasks rather
+than better and worse ways of doing one.
+
+
+
 Each needs a claim type on the process-only allowlist in `model.py` and a named
 denominator that matches its actual filter. Several of these were arrived at
 independently by other people's tools — noted, because convergence is evidence
@@ -279,6 +341,96 @@ example and is named-and-unbuilt on purpose.
 ---
 
 ## Adapters
+
+### A corpus with no clock is refused whole, and two analyzers do not need one
+
+Measured 2026-09-11 against **SWE-agent's own trajectory files** (`SWE-agent/SWE-agent`,
+MIT, 22 `.traj` files, 489 history steps, cloned and parsed rather than read about).
+
+The corpus is otherwise ideal: roles are `system`/`user`/`assistant`/`tool` and
+every one maps onto the role sets already; content is present; each file is a
+session. It carries **no per-turn timestamp at all** — verified by walking every
+key in every file, not by trusting a schema description. The only time-shaped
+field is `trajectory.execution_time`, which is how long a shell command ran. It
+is a duration with no origin, and using it as an inter-turn gap would invent
+exactly the quantity the wall governs.
+
+So the `sqlite` adapter refuses the table, because `ts` is a hard requirement.
+The refusal itself is good — it names every alias it looked for and the columns
+it found, and exits 2, which I verified by running it after a survey suspected
+(from reading the source) that it would traceback instead.
+
+**But the refusal costs more than it should.** Building the events by hand, with
+`day_offset` a constant and `delta_prev_s` None so that nothing is invented,
+two analyzers run fine on this corpus and answer with real numbers:
+
+- `steering_density` — n=193, 88.6% mid-task
+- `composition_mix` — n=193, 9.8% authored, 77.2% code-reference, 1.0% deliberation
+
+Those two **fully answer GRADING.md questions 1 and 2** and neither needs a
+clock. Only `tempo`, `thread_shape` and `thread_span` do. The `cursor-store`
+adapter already set the precedent for this exact situation — a corpus whose
+prompts have no clock, handled by reporting tempo as uncovered and never
+imputing — but that precedent lives in one file adapter and the database
+adapter does not follow it.
+
+**What would have to be true first.** `day_offset` would need a representable
+"unknown" that is not zero, since zero is a real day and silently means *the
+corpus's first day*. The audit sentence would have to say the corpus has no
+clock, in the sentence rather than a footnote. And the three clock-dependent
+analyzers would have to return `{"error": ...}` rather than compute over a
+constant — a constant day would make `thread_span` report every thread as
+single-day, which is a fabricated finding, not a missing one.
+
+### The harder finding: "operator" was not a person, and nothing noticed
+
+**Answered, in part, 0.2.1.** The battery now classifies operator-role turns as
+human/agent/unknown, derives a subject from the mix, changes the pronouns and
+withholds human reference points when the subject is not a person. The SWE-agent
+corpus that exposed this now reads *agent* rather than an implied human, with
+72.5% of its turns declined outright.
+
+What is **not** solved, and is now a stated permanent limit rather than an
+unknown one: a machine dispatching short, code-free commands still reads human
+or unknown. The bar for calling something an agent is deliberately high because
+the opposite error lands on real people — a teacher commissioning a lesson plan
+writes a long structured brief and would fail a length rule. The accepted
+direction of error is to under-call machines.
+
+Three things this turned up that were not visible before building it:
+
+- **The marked-machine path is dead code.** It is the highest-precision signal
+  the classifier has, and no shipped path sets it, because every adapter drops a
+  marked record before an `Event` exists. The classifier can only ever see turns
+  that already survived the filters.
+- **The subject floor was borrowed from the wrong question.** Gating on corpus
+  size via `SMALL_N` rejected a unanimous 24-of-24 human corpus while accepting
+  a 30-turn 24/6 split. It now gates on the evidence supporting the leading
+  class, with the invariant pinned by a test.
+- **Nobody knows the error rate.** `label` and `score` cover authorship now, but
+  no real corpus has been graded through them. Everything above rests on one
+  operator's n≈18 per side plus a synthetic falsifier that can break the
+  classifier and can never validate it.
+
+
+
+The same run is a warning about the whole battery. In a SWE-agent trajectory the
+`user` turns are the **environment feeding back command output**, not a human.
+The analyzers did not care. `steering_density` reported 88.6% mid-task, which
+reads — to anyone who did not know what they were pointed at — as an unusually
+good director, better than the reference N=1's 96.8% is far above the benchmarks.
+It is an automated loop.
+
+This is the `subagents/` bug again at a different scale, and the escalation
+matters: that one was caught because opener length went visibly absurd (11 words
+to 516). Here every number is *plausible*. Nothing in the output signals that the
+subject is not a person, because nothing in the tool can tell.
+
+`owner == subject` is stated as a scope rule the operator is trusted to honor.
+This is the first measurement showing the tool cannot detect when it has been
+broken, and that a broken run looks exactly like a good one.
+
+
 
 - **claude.ai web export.** Named unbuilt in the README. The export format is
   stable and documented enough to read.
@@ -549,6 +701,54 @@ classifier regex changes without its version bumping would carry most of it,
 and is worth writing with the field.
 
 ### Process when the work is delegated
+
+**A first measurement, 2026-09-11.** This entry says there is no settled
+definition and that the same corpus can defensibly produce different numbers.
+That is now measured rather than argued, on one night's work in this repository:
+the operator's own session, and the nine subagent transcripts dispatched from it,
+run through the battery separately.
+
+|                     | the human | the nine dispatched agents |
+|---------------------|-----------|----------------------------|
+| operator turns (n)  | 13        | 16                         |
+| mid-task share      | 92.3%     | 43.8%                      |
+| opener median words | 21        | 587                        |
+| code-reference      | 0.0%      | 100.0%                     |
+| threads / peak concurrency | 1 / 1 | 9 / 9                   |
+
+**The same work reads as two opposite process shapes depending on which layer
+the instrument is pointed at.** GRADING.md question 1 says that if nearly
+everything you type is one upfront spec you are using a benchmark harness, and
+if most arrives mid-execution you are directing. The human half of this corpus
+is a director: 92.3% mid-task, twenty-one-word openers, not one code reference.
+The dispatched half is a benchmark harness: 43.8% mid-task, 587-word openers,
+and a file path in *every* prompt.
+
+Neither reading is wrong. The intent arrived mid-task, once, from a person — and
+was converted into an upfront spec before it reached the agent that did the work.
+That is the relay this entry predicted, and it is now visible in the numbers
+rather than only in the argument.
+
+What it does NOT settle is the question the entry actually asks: which of those
+two numbers is "the operator's process". It sharpens it. A fleet adapter that
+pooled both layers would average a director and a harness into a number
+describing neither, which is a concrete reason the README calls an agent-fleet
+adapter a *different instrument* rather than a wider net.
+
+Caveats, because this is a measurement and they belong with it: both sides are
+n < 30, so read the direction and not the decimals; both are one night of one
+person's work; the agent corpus needed `isSidechain` stripped to be readable at
+all, which is a fixture step and not something a real corpus would need; and the
+"operator" in the right-hand column is a model, which is the whole point but also
+means the classifiers were built for the wrong subject.
+
+*Incidental validation from the same run:* pointed at those nine transcripts
+with the flag intact, and copied out of any `subagents/` directory, the adapter
+refused all 3,063 records on the record's own marking. And `clarification_pull`
+reported a genuine 0.0% rather than refusing, because `CLARIFY` did fire twice —
+the distinction that feature draws between "the regex found nothing" and "the
+regex works and the rate is zero" behaved correctly on real data.
+
 
 **What it would give.** The battery assumes one operator steering one machine.
 That is already not how the work happens: this project's own session log had one

@@ -11,12 +11,14 @@ wall. Both outputs go through `Guard.scan_egress` at the CLI's output door.
 from __future__ import annotations
 
 import json
+import re
 
 from .analyze import SMALL_N  # noqa: F401 — re-exported; tests import it from here too
+from .subject import SUBJECT_HUMAN
 
 SCHEMA_VERSION = 1
 
-CAVEAT = ("Numbers are heuristics plus your own eyes: spot-check before you cite. "
+CAVEAT = ("Numbers are heuristics plus your own eyes: spot-check before citing them. "
           "Reference points are one measured N=1 plus public population aggregates.")
 
 # Shown once, right after the audit sentence, before any finding — so a reader
@@ -30,10 +32,8 @@ RUBRIC_SCOPE_NOTE = (
     "your intent arrives) and question 2 (who writes the code) — and partly answers two more: "
     "question 3 (your deliberation share, but not whether those prompts pull longer, more "
     "structured responses) and question 4 (resumption gaps and thread span, but not a 30-day "
-    "bucket, per-day/month counts, or whether a return was productive). Two of the battery's six "
-    "analyzers (tempo, clarification_pull) answer none of the ten numbered questions directly and "
-    "are reported here as a supporting signal, not a rubric answer — each section below says "
-    "exactly which case it is. Questions 5-8 (can a stored claim be demoted; when a negative "
+    "bucket, per-day/month counts, or whether a return was productive). {unmapped_clause} "
+    "Questions 5-8 (can a stored claim be demoted; when a negative "
     "result was last recorded; whether an agent can grant itself anything; whether checks fail "
     "closed) and questions 9-10 (whether your timestamps are a fingerprint; who carries the "
     "continuity across a session gap) are not corpus-measurable from session logs at all — "
@@ -59,6 +59,119 @@ def _is_population_reference(key: str) -> bool:
 def _fmt_reference_value(v) -> str:
     return json.dumps(v) if isinstance(v, (dict, list)) else str(v)
 
+
+# ── the subject lens: pronouns and reference points follow the SUBJECT ──────
+#
+# Every analyzer's `headline`/`reading`/`vs_coding_population` prose is
+# written second-person ("your prompt turns"), and every `reference` dict
+# compares the reader to a HUMAN corpus (the measured N=1 director, WildChat,
+# OASST). Both are fine — better than fine, the point of the tool — for the
+# common case this project was built around: a human running corpuslens on
+# their own logs. They are an overclaim the moment `audit.subject` (see
+# corpuslens/subject.py) is anything other than `"human"`: pointed at a
+# SWE-agent trajectory, "88.6% of your prompt turns arrive mid-task" is a true
+# statement about turns and a false statement about a person, because there is
+# no person in that corpus.
+#
+# `_apply_subject_lens` is the ONE seam both changes go through, applied once
+# in `render()` below to a COPY of `results` before either renderer sees it —
+# deliberately not a hand-edit of every analyzer's f-string in steering.py /
+# composition.py / tempo.py, so a future analyzer's headline is covered by
+# construction rather than needing its own opt-in. It is a no-op whenever
+# `audit.subject` is `None` (no subject was ever inferred — every direct
+# construction of a report outside the real `cli.run()` pipeline, including
+# most of this project's own tests) or `"human"` (the run's own authorship
+# classifier believes a human wrote these turns, so the existing wording
+# already says the true thing).
+_PRONOUN_SUBSTITUTIONS = (
+    # Longest / most specific casing first so a later, shorter pattern never
+    # re-matches text a prior substitution already produced.
+    (re.compile(r"\bYOUR\b"), "THE OPERATOR ROLE'S"),
+    (re.compile(r"\bYour\b"), "The operator role's"),
+    (re.compile(r"\byour\b"), "the operator role's"),
+    (re.compile(r"\bYOU\b"), "THE OPERATOR ROLE"),
+    (re.compile(r"\bYou\b"), "The operator role"),
+    (re.compile(r"\byou\b"), "the operator role"),
+)
+
+# Fields depersonalized. Free-text prose only — `_SHOWN` names the same set of
+# fields as the ones this renderer treats as sentences rather than numbers.
+_PRONOUN_FIELDS = ("headline", "reading", "vs_coding_population")
+
+
+def _depersonalize(text: str) -> str:
+    """Swap second-person pronouns for the neutral, already-defined term this
+    project uses for the role in question (`model.AuthorClass.OPERATOR`) —
+    never a guess at WHICH non-human author it was, since inventing that
+    would be a second overclaim stacked on the first.
+
+    KNOWN, DISCLOSED ROUGH EDGE: this is a plain word substitution, not a
+    parser — it does not reconjugate the verb that follows a bare `you` used
+    as a grammatical subject with a present-tense verb ("you steer in
+    volleys" becomes "the operator role steer in volleys", not "...steers...").
+    Every occurrence of `your`/`You ELIDED-PAST-TENSE-VERB` in this codebase
+    today is possessive or past-tense, where English does not conjugate for
+    person/number, so those read correctly; the few present-tense `reading`
+    sentences that do not (composition_mix's "you bring/direct/summon...",
+    tempo's "you steer/leave...", thread_span's "you keep... and return...")
+    read as mildly ungrammatical rather than wrong. A stdlib-only tool has no
+    parser to fix that generally, and a hand-maintained phrase table would
+    silently go stale the moment a `reading` string is edited without a
+    matching table entry — so the trade this module makes on purpose is
+    correctness of REFERENT over polish of PROSE. See NOTES-subject.md.
+    """
+    for pattern, replacement in _PRONOUN_SUBSTITUTIONS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+_REFERENCE_WITHHELD_NOTE = (
+    "Reference withheld: this run's subject is inferred as '{subject}' ({reason}). Every "
+    "reference point this battery has — the measured N=1 human director, and the WildChat/OASST "
+    "population aggregates — is itself a human reference point; comparing a non-human (or "
+    "not-confidently-human) subject against one would be a category error this tool declines to "
+    "make silently. No agent reference point is substituted, because none has been measured — "
+    "'no comparable reference exists for this subject' is itself the finding here, not a gap to "
+    "paper over."
+)
+
+
+def _lens_active(audit) -> bool:
+    """True iff this run inferred a subject other than `"human"` — the one
+    condition that triggers every change in this section (pronouns dropped
+    from analyzer prose AND from the two report-wide constants below, and
+    cross-subject reference points withheld). `None` (no subject was ever
+    inferred — every direct renderer call this project's own tests make)
+    counts as inactive, same as `"human"` — nothing to correct without an
+    inferred subject to correct it towards."""
+    subject = getattr(audit, "subject", None)
+    return subject is not None and subject != SUBJECT_HUMAN
+
+
+def _apply_subject_lens(results: dict, audit) -> dict:
+    """Return a COPY of `results` with pronouns depersonalized and
+    cross-subject `reference` blocks withheld, when — and only when —
+    `audit.subject` names a subject other than `"human"`. `results` itself is
+    never mutated: callers (including `render()` below) can hand this the
+    same dict a caller still holds elsewhere.
+    """
+    if not _lens_active(audit):
+        return results
+    subject = audit.subject
+    reason = getattr(audit, "subject_reason", None) or "no reason recorded"
+    out = {}
+    for name, res in results.items():
+        r = dict(res)
+        for field in _PRONOUN_FIELDS:
+            v = r.get(field)
+            if isinstance(v, str):
+                r[field] = _depersonalize(v)
+        if isinstance(r.get("reference"), dict) and r["reference"]:
+            del r["reference"]
+            r["reference_withheld"] = _REFERENCE_WITHHELD_NOTE.format(subject=subject, reason=reason)
+        out[name] = r
+    return out
+
 # Shown only when `share=True` — see corpuslens/share.py for what "coarsened"
 # means here and, just as load-bearing, what it does NOT mean. This sentence
 # travels with the coarsened numbers wherever they go, same principle as the
@@ -79,7 +192,33 @@ SHARE_CAVEAT = (
 
 # Rendered above the numbers block verbatim, so they are omitted from it rather
 # than printed twice. Only ever strings already shown — no number is dropped.
-_SHOWN = ("headline", "reading", "vs_coding_population", "error", "grading_question", "reference")
+_SHOWN = ("headline", "reading", "vs_coding_population", "error", "grading_question", "reference",
+          "reference_withheld")
+
+
+
+def _unmapped_clause() -> str:
+    """The 'N of M analyzers answer none of the ten questions' clause, computed.
+
+    It was hardcoded, and two analyzers added in parallel each updated it for
+    their own addition without knowing about the other — so the shipped string
+    said three of seven when eight were registered and four answered nothing.
+    A false count in user-visible output is the kind of thing this project
+    treats as a bug, and the durable fix is to stop writing the number down.
+    """
+    from .analyze import all_analyzers
+    every = all_analyzers()
+    unmapped = [a.name for a in every
+                if "none of" in (getattr(a, "grading_question", "") or "")]
+    if not unmapped:
+        return (f"Every one of the battery's {len(every)} analyzers maps onto at least part of "
+                "one of the ten numbered questions.")
+    names = ", ".join(sorted(unmapped))
+    verb = "answers" if len(unmapped) == 1 else "answer"
+    noun = "analyzer" if len(unmapped) == 1 else "analyzers"
+    return (f"{len(unmapped)} of the battery's {len(every)} {noun} ({names}) {verb} none of the "
+            "ten numbered questions directly and are reported here as a supporting signal, not a "
+            "rubric answer — each section below says exactly which case it is.")
 
 
 def _section(name: str, res: dict) -> list:
@@ -129,6 +268,8 @@ def _section(name: str, res: dict) -> list:
             out += [("*Until someone runs `corpuslens label` and `corpuslens score` on this "
                      "corpus, there is no way to know how much of that N=1 gap is the operator "
                      "and how much is the classifier's own error.*"), ""]
+    elif res.get("reference_withheld"):
+        out += [f"*{res['reference_withheld']}*", ""]
     numbers = {k: v for k, v in res.items() if k not in _SHOWN}
     if numbers:
         out += ["```json", json.dumps(numbers, indent=2, default=str), "```", ""]
@@ -154,7 +295,12 @@ def markdown(results: dict, audit, share: bool = False) -> str:
         out.append("")
     out.append(f"> {audit.sentence()}")
     out.append("")
-    out.append(f"> {RUBRIC_SCOPE_NOTE}")
+    # RUBRIC_SCOPE_NOTE is a fixed, report-wide string (not one of the
+    # per-analyzer fields `_apply_subject_lens` already rewrote in `results`
+    # above) that ALSO says "your" three times — same seam, same reason.
+    note = RUBRIC_SCOPE_NOTE.format(unmapped_clause=_unmapped_clause())
+    scope_note = _depersonalize(note) if _lens_active(audit) else note
+    out.append(f"> {scope_note}")
     out.append("")
     findings = [(name, res.get("headline")) for name, res in results.items()]
     if findings:
@@ -172,7 +318,8 @@ def markdown(results: dict, audit, share: bool = False) -> str:
         out.append("")
     for name, res in results.items():
         out += _section(name, res)
-    out.append(f"*{CAVEAT}*")
+    caveat = _depersonalize(CAVEAT) if _lens_active(audit) else CAVEAT
+    out.append(f"*{caveat}*")
     return "\n".join(out)
 
 
@@ -188,7 +335,7 @@ def json_report(results: dict, audit, share: bool = False) -> str:
         "schema_version": SCHEMA_VERSION,
         "audit": audit.as_dict(),
         "results": results,
-        "caveat": CAVEAT,
+        "caveat": _depersonalize(CAVEAT) if _lens_active(audit) else CAVEAT,
     }
     if share:
         doc["share_caveat"] = SHARE_CAVEAT
@@ -203,6 +350,14 @@ def available() -> list[str]:
 
 
 def render(fmt: str, results: dict, audit, share: bool = False) -> str:
+    """The one call site both formats go through from `cli.py` — which is
+    also why `_apply_subject_lens` lives here rather than inside `markdown()`
+    or `json_report()` individually: a caller that reaches either renderer
+    directly (this project's own tests do, extensively, with a bare
+    `AuditRecord()` whose `subject` is `None`) gets the ORIGINAL wording,
+    unchanged, which is correct — the lens has nothing to correct without an
+    inferred subject to correct it towards."""
     if fmt not in RENDERERS:
         raise KeyError(f"no renderer {fmt!r}; available: {available()}")
+    results = _apply_subject_lens(results, audit)
     return RENDERERS[fmt](results, audit, share=share)
