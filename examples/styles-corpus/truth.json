@@ -1,0 +1,179 @@
+{
+  "note": "ground truth per turn; deliberately NOT in the corpus itself",
+  "turns": [
+    {
+      "persona": "rambler",
+      "turn": 0,
+      "true_author": "human",
+      "ref": "0db70042e6711826"
+    },
+    {
+      "persona": "rambler",
+      "turn": 1,
+      "true_author": "human",
+      "ref": "c2ec2662126d701b"
+    },
+    {
+      "persona": "rambler",
+      "turn": 2,
+      "true_author": "human",
+      "ref": "b4b10e924db7465e"
+    },
+    {
+      "persona": "rambler",
+      "turn": 3,
+      "true_author": "human",
+      "ref": "fcc42579acd1f2f9"
+    },
+    {
+      "persona": "rambler",
+      "turn": 4,
+      "true_author": "human",
+      "ref": "8dfc2837c74049c4"
+    },
+    {
+      "persona": "spec_writer",
+      "turn": 0,
+      "true_author": "human",
+      "ref": "43e0155bea7ac650"
+    },
+    {
+      "persona": "spec_writer",
+      "turn": 1,
+      "true_author": "human",
+      "ref": "834748b01a1e896c"
+    },
+    {
+      "persona": "spec_writer",
+      "turn": 2,
+      "true_author": "human",
+      "ref": "019ff35a3e00b22f"
+    },
+    {
+      "persona": "spec_writer",
+      "turn": 3,
+      "true_author": "human",
+      "ref": "c498eac64ced4cb0"
+    },
+    {
+      "persona": "paster",
+      "turn": 0,
+      "true_author": "human",
+      "ref": "394121940bbc7a55"
+    },
+    {
+      "persona": "paster",
+      "turn": 1,
+      "true_author": "human",
+      "ref": "6b425446a118b6dc"
+    },
+    {
+      "persona": "paster",
+      "turn": 2,
+      "true_author": "human",
+      "ref": "99817a1417485137"
+    },
+    {
+      "persona": "paster",
+      "turn": 3,
+      "true_author": "human",
+      "ref": "de324cf5acb3d4e5"
+    },
+    {
+      "persona": "questioner",
+      "turn": 0,
+      "true_author": "human",
+      "ref": "1c7dd7d0764ffbdb"
+    },
+    {
+      "persona": "questioner",
+      "turn": 1,
+      "true_author": "human",
+      "ref": "46e10ca7be1b9a04"
+    },
+    {
+      "persona": "questioner",
+      "turn": 2,
+      "true_author": "human",
+      "ref": "82ee00424c278b40"
+    },
+    {
+      "persona": "questioner",
+      "turn": 3,
+      "true_author": "human",
+      "ref": "3a49451f809c8144"
+    },
+    {
+      "persona": "questioner",
+      "turn": 4,
+      "true_author": "human",
+      "ref": "b359a6758d59fb60"
+    },
+    {
+      "persona": "questioner",
+      "turn": 5,
+      "true_author": "human",
+      "ref": "23d2eb06bcff9956"
+    },
+    {
+      "persona": "second_language",
+      "turn": 0,
+      "true_author": "human",
+      "ref": "c02c087fe2e88ba2"
+    },
+    {
+      "persona": "second_language",
+      "turn": 1,
+      "true_author": "human",
+      "ref": "73ca01d480ded376"
+    },
+    {
+      "persona": "second_language",
+      "turn": 2,
+      "true_author": "human",
+      "ref": "ccf515d5237acd86"
+    },
+    {
+      "persona": "second_language",
+      "turn": 3,
+      "true_author": "human",
+      "ref": "b54911e46455c85e"
+    },
+    {
+      "persona": "terse_dispatcher",
+      "turn": 0,
+      "true_author": "agent",
+      "ref": "774ec2c543d153b0"
+    },
+    {
+      "persona": "terse_dispatcher",
+      "turn": 1,
+      "true_author": "agent",
+      "ref": "42228caf7bc2b464"
+    },
+    {
+      "persona": "terse_dispatcher",
+      "turn": 2,
+      "true_author": "agent",
+      "ref": "d4709c2775cb88ee"
+    },
+    {
+      "persona": "terse_dispatcher",
+      "turn": 3,
+      "true_author": "agent",
+      "ref": "26d82057c12dc874"
+    },
+    {
+      "persona": "terse_dispatcher",
+      "turn": 4,
+      "true_author": "agent",
+      "ref": "8c269f3c727f1f69"
+    },
+    {
+      "persona": "terse_dispatcher",
+      "turn": 5,
+      "true_author": "agent",
+      "ref": "97d4b5dfea512b03"
+    }
+  ]
+}
