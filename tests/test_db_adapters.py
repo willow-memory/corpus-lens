@@ -292,3 +292,59 @@ class PostgresAdapterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ForeignFormatRoleTests(unittest.TestCase):
+    """Role vocabularies from other people's corpora, enumerated not guessed.
+
+    Found 2026-09-11 by surveying what public corpora this tool could actually
+    be pointed at. Two of the most widely used conversation formats had one
+    whole side dropped as unrecognized: OASST pairs `prompter` with
+    `assistant`, and the ShareGPT family pairs `human` with `gpt`. Dropping is
+    the safe failure and it was counted honestly, but it meant an OASST-shaped
+    table reported no operator turns at all.
+    """
+
+    def test_oasst_and_sharegpt_roles_resolve(self):
+        self.assertEqual(classify_role("prompter"), "operator")   # OASST
+        self.assertEqual(classify_role("gpt"), "machine")         # ShareGPT
+        self.assertEqual(classify_role("human"), "operator")      # both
+
+    def test_tool_traffic_stays_unrecognized(self):
+        """Not an oversight — tool events are not a turn anyone authored.
+
+        They travel beside the roles above in both formats. Mapping them to
+        `machine` would inflate `clarification_pull`'s denominator with turns
+        nobody spoke, and the claude-code adapter already drops this whole
+        class by design.
+        """
+        for role in ("function_call", "observation", "tool_call", "tool_result"):
+            self.assertIsNone(classify_role(role), role)
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_an_oasst_shaped_table_reads_end_to_end(self):
+        db = Path(self.tmp.name) / "oasst.db"
+        con = sqlite3.connect(db)
+        con.execute("CREATE TABLE turns (created_date TEXT, role TEXT, text TEXT, "
+                    "message_tree_id TEXT)")
+        con.executemany("INSERT INTO turns VALUES (?,?,?,?)", [
+            ("2026-02-01T10:00:00Z", "prompter", "how do I phrase this more plainly?", "t1"),
+            ("2026-02-01T10:01:00Z", "assistant", "try leading with the verb", "t1"),
+            ("2026-02-01T10:04:00Z", "prompter", "that reads much better, thank you", "t1"),
+        ])
+        con.commit(); con.close()
+        events, _, dropped = ingest.get("sqlite")(str(db))
+        ops = [e for e in events if e.author_class == "operator"]
+        self.assertEqual(len(ops), 2)      # both prompter turns, not zero
+        self.assertEqual(dropped, 0)
+        # created_date and message_tree_id must resolve too: the table uses
+        # OASST's own column names throughout, and the thread id failing to
+        # resolve is SILENT (session is optional), which would have collapsed
+        # every tree in the corpus into one thread with nothing looking wrong.
+        self.assertEqual(len({e.thread_id for e in events}), 1)
+        self.assertTrue(any(e.time.delta_prev_s for e in events))

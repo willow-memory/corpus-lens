@@ -31,9 +31,25 @@ from .injection import authored_text
 # (and counted), because mislabeling who authored a turn corrupts every
 # composition/steering/tempo number downstream. Under-counting beats over-
 # claiming, the same rule the file adapters live by.
-OPERATOR_ROLES = frozenset({"user", "operator", "human", "prompt", "you", "me"})
+# `prompter` and `gpt` added 2026-09-11, enumerated from other people's formats
+# rather than guessed: `prompter` is the operator role in OASST's own message
+# schema (`oasst_data/schemas.py`, where the pair is prompter/assistant), and
+# `gpt` is the machine role in the ShareGPT family (verified on real bytes of a
+# ShareGPT-format corpus, where the pair is human/gpt). Both were previously
+# dropped as unrecognized, which is the safe failure but silently discards one
+# whole side of two of the most widely used conversation formats in existence.
+OPERATOR_ROLES = frozenset({"user", "operator", "human", "prompt", "prompter",
+                            "you", "me"})
 MACHINE_ROLES = frozenset({"assistant", "machine", "agent", "ai", "model",
-                           "response", "bot", "system", "tool"})
+                           "response", "bot", "system", "tool", "gpt"})
+
+#: DELIBERATELY NOT MAPPED, though they turn up constantly beside the roles
+#: above: `function_call`, `observation`, `tool_call`, `tool_result`. They are
+#: tool traffic, not a turn either party authored — the same class the
+#: claude-code adapter drops by design (see BUGS.md open item 1, where they are
+#: the bulk of a "93.7% dropped" figure that means nothing is wrong). Mapping
+#: them to `machine` would quietly inflate `clarification_pull`'s denominator
+#: with turns nobody spoke. They stay unrecognized, and so dropped and counted.
 
 
 def classify_role(raw_role) -> str | None:
@@ -49,15 +65,24 @@ def classify_role(raw_role) -> str | None:
 
 
 # ── column resolution (alias-based, like willow-mcp's schema adaptation) ──────
-TS_ALIASES = ("ts", "timestamp", "created_at", "created", "time", "date",
-              "datetime", "inserted_at", "event_time", "occurred_at", "at")
+# `created_date` added 2026-09-11: it is OASST's own timestamp field name, and
+# the list already had `created_at`, `created` and `date` without it — close
+# enough to look covered while resolving nothing. Found by trying to read an
+# OASST-shaped table rather than by reading the list.
+TS_ALIASES = ("ts", "timestamp", "created_at", "created_date", "created", "time",
+              "date", "datetime", "inserted_at", "event_time", "occurred_at", "at")
 ROLE_ALIASES = ("role", "author", "author_class", "sender", "type", "speaker",
                 "direction", "kind", "who")
 CONTENT_ALIASES = ("content", "text", "message", "body", "prompt", "value",
                    "data", "msg", "payload")
+# `message_tree_id` added 2026-09-11 for the same reason: it is what OASST
+# calls a thread. Session is the one optional column, so this failing resolved
+# silently — the corpus would have collapsed to a single thread and
+# `thread_shape` would have reported one thread for the whole dataset without
+# anything looking wrong.
 SESSION_ALIASES = ("session", "session_id", "thread", "thread_id",
                    "conversation_id", "conversation", "chat_id", "chat",
-                   "thread_key", "dialog_id")
+                   "thread_key", "dialog_id", "message_tree_id")
 
 
 def resolve_columns(columns) -> dict:
