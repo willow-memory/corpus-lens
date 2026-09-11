@@ -20,20 +20,24 @@ CAVEAT = ("Numbers are heuristics plus your own eyes: spot-check before you cite
           "Reference points are one measured N=1 plus public population aggregates.")
 
 # Shown once, right after the audit sentence, before any finding — so a reader
-# meets the rubric's scope before a single number. GRADING.md poses ten
-# questions; this battery answers (fully or partly, per-section below) only
-# the first four. Naming the other six here, once, is what stops the rubric
-# reading like a promise this tool did not keep — see IDEAS.md, "Say which
-# rubric question each analyzer answers".
+# meets the rubric's scope before a single number. This note must never be
+# stronger than the per-section grading_question declarations under it (a
+# review caught an earlier draft claiming "the first four questions" when the
+# real mapping is two full, two partial, and two analyzers answering none) —
+# see IDEAS.md, "Say which rubric question each analyzer answers".
 RUBRIC_SCOPE_NOTE = (
-    "This report's battery answers GRADING.md's first four questions — where your intent "
-    "arrives, who writes the code, whether you deliberate on purpose, and your threads' shape — "
-    "each section below says which one it answers and how fully. Questions 5-8 (can a stored "
-    "claim be demoted; when a negative result was last recorded; whether an agent can grant "
-    "itself anything; whether checks fail closed) and questions 9-10 (whether your timestamps "
-    "are a fingerprint; who carries the continuity across a session gap) are not "
-    "corpus-measurable from session logs at all — GRADING.md gives each of those its own manual "
-    "test, not a number this tool computes."
+    "This report's battery fully answers two of GRADING.md's ten questions — question 1 (where "
+    "your intent arrives) and question 2 (who writes the code) — and partly answers two more: "
+    "question 3 (your deliberation share, but not whether those prompts pull longer, more "
+    "structured responses) and question 4 (resumption gaps and thread span, but not a 30-day "
+    "bucket, per-day/month counts, or whether a return was productive). Two of the battery's six "
+    "analyzers (tempo, clarification_pull) answer none of the ten numbered questions directly and "
+    "are reported here as a supporting signal, not a rubric answer — each section below says "
+    "exactly which case it is. Questions 5-8 (can a stored claim be demoted; when a negative "
+    "result was last recorded; whether an agent can grant itself anything; whether checks fail "
+    "closed) and questions 9-10 (whether your timestamps are a fingerprint; who carries the "
+    "continuity across a session gap) are not corpus-measurable from session logs at all — "
+    "GRADING.md gives each of those its own manual test, not a number this tool computes."
 )
 
 # Reference dicts mix two different kinds of comparison point: a named public

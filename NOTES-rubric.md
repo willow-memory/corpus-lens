@@ -16,8 +16,14 @@ checked in my final report to the orchestrator, and inline in each
 `@register(...)` call. `cli.py` merges `grading_question` into every result
 dict (`run`) and into the `analyzers` listing. `render.py` prints it under
 each section's headline (and in the not-computable branch), and prints a new
-`RUBRIC_SCOPE_NOTE` once, right after the audit sentence, naming questions
-5-8 and 9-10 as not corpus-measurable at all.
+`RUBRIC_SCOPE_NOTE` once, right after the audit sentence. A review pass caught
+the first draft of that note overclaiming — it opened "this report's battery
+answers GRADING.md's first four questions", which reads stronger than the
+per-section mapping underneath it (question 1 and 2 in full, 3 and 4 only
+partly, two analyzers answering none). Reworded to lead with the true shape
+— fully answers two, partly answers two more, two analyzers answer none and
+are reported as supporting signal — before naming questions 5-8 and 9-10 as
+not corpus-measurable at all.
 
 Separately, `render.py._section()` now renders each analyzer's `reference`
 dict in prose (previously it only appeared inside the raw JSON dump): rows
@@ -76,13 +82,19 @@ Old:
 > The rubric this instruments: [GRADING.md](GRADING.md)
 > (ten questions to grade your own system).
 
-New (state the scope up front, matching what the report itself now says):
+New (state the scope up front, matching what the report itself now says —
+and matching it precisely: an earlier draft of this note said "answers the
+first four, in full or in part," which a review correctly flagged as
+stronger than the truth, since two of the four are only partly answered and
+two of the six analyzers answer none of the ten directly):
 > The rubric this instruments: [GRADING.md](GRADING.md) (ten questions to
-> grade your own system) — this tool's battery answers the first four, in
-> full or in part; questions 5-8 (a system's honesty machinery) and 9-10
-> (fingerprinting, continuity) are not corpus-measurable from session logs at
-> all, and the rendered report says so plainly rather than leaving the other
-> six as an implied promise.
+> grade your own system) — this tool's battery fully answers two of the ten,
+> partly answers two more, and two of its six analyzers answer none of the
+> ten numbered questions directly (reported as supporting signal instead);
+> questions 5-8 (a system's honesty machinery) and 9-10 (fingerprinting,
+> continuity) are not corpus-measurable from session logs at all. The
+> rendered report says all of this plainly rather than leaving the other six
+> questions as an implied promise.
 
 **"Honesty about the numbers" section** — the N=1 caveat already exists here
 in general form but doesn't mention that the *rendered report* now repeats it
@@ -170,15 +182,46 @@ analyzers, which the fix had to account for):
 > operator and how much is the regex. The population aggregates keep their
 > names and are never relabelled.
 
+## Decisions confirmed by review (2026-09-11)
+
+The coordinator checked every per-analyzer mapping against GRADING.md's own
+wording independently and confirmed all six hold as declared, including that
+`tempo` and `clarification_pull` answering **none** of the ten numbered
+questions is correct as-is — forcing either onto a number would be exactly
+the small overclaim this project exists not to make, so that stays.
+
+Two implementation calls were explicitly endorsed and are recorded here
+rather than left implicit in the diff:
+
+- **Not renaming the reference-dict keys** (`measured_director` in
+  `steering.py` vs `measured_director_n1` in `composition.py` vs
+  `measured_cli`/`measured_cursor_note` in `clarification_pull`) — a
+  consumer-visible schema change, out of scope for a wording pass. The N=1
+  labelling in the renderer detects population aggregates by name instead of
+  requiring a canonical individual-corpus key, so the inconsistency needed no
+  fix to be handled correctly.
+- **Keeping `RUBRIC_SCOPE_NOTE` out of the JSON envelope** — no
+  `SCHEMA_VERSION` bump needed, since the envelope's keys
+  (`schema_version`/`audit`/`results`/`caveat`) didn't change.
+
+One correction came out of that same review: `RUBRIC_SCOPE_NOTE`'s first
+draft opened "this report's battery answers GRADING.md's first four
+questions," which is stronger than what the per-section declarations under it
+actually say (two full, two partial, two analyzers answering none) — a
+summary must never promise more than the detail under it delivers, which is
+this project's one rule applied to the note's own placement, not just its
+content. Reworded (see `render.py::RUBRIC_SCOPE_NOTE` and the corresponding
+block in `examples/EXAMPLE.md`) to lead with the true shape before naming
+questions 5-8 and 9-10 as out of scope. The README suggestion above was
+updated to match, since it had inherited the same overclaim from the first
+draft.
+
 ## What I deliberately did not touch
 
 - `GRADING.md` itself — the task was to make the *report* honest about the
   rubric, not to edit the rubric.
-- The `reference` dict *keys* inside the analyzers (`measured_director` in
-  `steering.py` vs `measured_director_n1` in `composition.py`) — tempting to
-  rename for consistency, but that's a JSON-consumer-visible key rename with
-  no semantic change, out of scope for a wording-only task, and the render
-  fix works without it (see above).
+- The `reference` dict *keys* inside the analyzers — see "Decisions confirmed
+  by review" above.
 - `fingerprint.py` / `timing_fingerprint()` — already cites GRADING.md
   question 9 in its own docstring and is deliberately not a registered
   analyzer (see its module docstring), so it never reaches

@@ -23,15 +23,21 @@ corpuslens run examples/sample-corpus --adapter claude-code
 > a day a single thread spans for many hours they loosely bound the local
 > time-of-day (never the timezone or the date).
 
-> This report's battery answers GRADING.md's first four questions — where your
-> intent arrives, who writes the code, whether you deliberate on purpose, and
-> your threads' shape — each section below says which one it answers and how
-> fully. Questions 5-8 (can a stored claim be demoted; when a negative result
-> was last recorded; whether an agent can grant itself anything; whether checks
-> fail closed) and questions 9-10 (whether your timestamps are a fingerprint;
-> who carries the continuity across a session gap) are not corpus-measurable
-> from session logs at all — GRADING.md gives each of those its own manual
-> test, not a number this tool computes.
+> This report's battery fully answers two of GRADING.md's ten questions —
+> question 1 (where your intent arrives) and question 2 (who writes the code)
+> — and partly answers two more: question 3 (your deliberation share, but not
+> whether those prompts pull longer, more structured responses) and question 4
+> (resumption gaps and thread span, but not a 30-day bucket, per-day/month
+> counts, or whether a return was productive). Two of the battery's six
+> analyzers (tempo, clarification_pull) answer none of the ten numbered
+> questions directly and are reported here as a supporting signal, not a
+> rubric answer — each section below says exactly which case it is. Questions
+> 5-8 (can a stored claim be demoted; when a negative result was last
+> recorded; whether an agent can grant itself anything; whether checks fail
+> closed) and questions 9-10 (whether your timestamps are a fingerprint; who
+> carries the continuity across a session gap) are not corpus-measurable from
+> session logs at all — GRADING.md gives each of those its own manual test,
+> not a number this tool computes.
 ```
 
 Then the findings, which is what the report leads with:
