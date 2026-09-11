@@ -14,7 +14,15 @@ A "dir" adapter also declares the FILE PATTERN it walks (`pattern=`), because
 they are not all `*.jsonl`: cursor-store walks a tree of `store.db` files. The
 CLI counts matches of that pattern so "no files found under X" names the thing
 it actually looked for, instead of reporting a `*.jsonl` count for an adapter
-that never wanted one."""
+that never wanted one.
+
+An adapter may also declare `text_capable=True` if it accepts a `with_text=True`
+keyword and, in that mode, returns a 4th value: `{opaque_source_ref: raw_text}`
+for every kept event. This is used ONLY by `corpuslens label` to show a human
+their own turn text in the terminal for interactive labelling — the text is
+never written to disk and never reaches an `Event`. Only `claude-code` declares
+it today; `label` refuses loudly on any adapter that does not, rather than
+guessing at a text-extraction convention it has not implemented and tested."""
 from __future__ import annotations
 
 from ..model import Event, Quarantine
@@ -22,13 +30,15 @@ from ..model import Event, Quarantine
 _REGISTRY: dict = {}
 _SOURCE: dict = {}
 _PATTERN: dict = {}
+_TEXT_CAPABLE: dict = {}
 
 
-def register(name: str, source: str = "dir", pattern: str = "*.jsonl"):
+def register(name: str, source: str = "dir", pattern: str = "*.jsonl", text_capable: bool = False):
     def deco(fn):
         _REGISTRY[name] = fn
         _SOURCE[name] = source
         _PATTERN[name] = pattern
+        _TEXT_CAPABLE[name] = text_capable
         return fn
     return deco
 
@@ -47,6 +57,11 @@ def source_of(name: str) -> str:
 def pattern_of(name: str) -> str:
     """The filename glob a 'dir' adapter walks (meaningless for file/dsn)."""
     return _PATTERN.get(name, "*.jsonl")
+
+
+def text_capable_of(name: str) -> bool:
+    """True iff this adapter supports `with_text=True` for `corpuslens label`."""
+    return _TEXT_CAPABLE.get(name, False)
 
 
 def available() -> list[str]:

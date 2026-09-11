@@ -96,6 +96,16 @@ CLARIFY = re.compile(
     r"do you (mean|want)|would you like|should i\b|which (one|of|do|would|approach)"
     r"|to clarify|can you confirm|just to confirm|one question|quick question", re.I)
 
+#: Version of the four regex classifiers directly above (CODE_REF, AUTHORED,
+#: DELIB, CLARIFY) as a set. `corpuslens label` records this in every label
+#: store it writes; `corpuslens score` refuses to grade a store recorded
+#: against a different version rather than silently comparing across a regex
+#: change (IDEAS.md, "A local labelling mode"). Bump this any time any one of
+#: the four patterns above changes — a label is a judgment about what a
+#: SPECIFIC version of a classifier got right, and it stops being a true
+#: judgment about a different version.
+CLASSIFIER_SET_VERSION = "regex-classifiers/1"
+
 
 def _hash(*parts: str) -> str:
     return hashlib.sha256("\x00".join(parts).encode("utf-8", "replace")).hexdigest()[:16]
@@ -174,8 +184,13 @@ def _is_subagent(rel_posix: str) -> bool:
     return any(part in SUBAGENT_DIRS for part in rel_posix.split("/")[:-1])
 
 
-@register("claude-code")
-def ingest(path: str, corpus_id: str = "corpus"):
+@register("claude-code", text_capable=True)
+def ingest(path: str, corpus_id: str = "corpus", with_text: bool = False):
+    """(events, quarantine, dropped) — or, with `with_text=True`, a 4th value
+    `{opaque_source_ref: raw_text}` for every kept event. That text is the
+    SAME de-injected string `_features()` classified: exactly what a labeller
+    needs to judge the classifiers by, and nothing the Event itself carries.
+    Used only by `corpuslens label`; never written to disk by this function."""
     root = Path(path)
     if root.exists() and not root.is_dir():
         raise NotADirectoryError(f"corpuslens adapters take a directory of *.jsonl, not a file: {path}")
@@ -211,7 +226,7 @@ def ingest(path: str, corpus_id: str = "corpus"):
             raw.append((d, epoch, rel, o["type"], text, f"{rel}:{i+1}"))
 
     if not raw:
-        return [], Quarantine(), dropped
+        return ([], Quarantine(), dropped, {}) if with_text else ([], Quarantine(), dropped)
 
     base = min(r[0] for r in raw)
     by_session: dict = {}
@@ -222,6 +237,7 @@ def ingest(path: str, corpus_id: str = "corpus"):
 
     events = []
     ref_map: dict = {}
+    text_by_ref: dict = {}
     for session, recs in by_session.items():
         sid = _hash(corpus_id, session)
         prev_epoch = None
@@ -246,10 +262,15 @@ def ingest(path: str, corpus_id: str = "corpus"):
                 prev_epoch, prev_day = epoch, day_offset
             opaque = _hash(sid, real_ref)
             ref_map[opaque] = real_ref
+            if with_text:
+                text_by_ref[opaque] = text
             events.append(Event(
                 event_id=opaque, corpus_id=corpus_id, adapter_id="claude-code/1",
                 source_ref=opaque, thread_id=sid, surface=Surface.CLI,
                 author_class=author, data_type=dtype,
                 time=CoarseTime(day_offset=day_offset, delta_prev_s=delta),
                 features=_features(text, stripped)))
-    return events, Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map), dropped
+    quarantine = Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map)
+    if with_text:
+        return events, quarantine, dropped, text_by_ref
+    return events, quarantine, dropped
