@@ -7,6 +7,26 @@ amendments — corrections sit beside the record they correct, never overwrite i
 Versioned sections are written by release-please from the commit messages; the
 hand-written history below them predates the release pipeline.
 
+## [0.3.0](https://github.com/willow-memory/corpus-lens/compare/v0.2.0...v0.3.0) (2026-09-11)
+
+
+### Added
+
+* name each analyzer's GRADING.md question and whose corpus the reference is ([049a447](https://github.com/willow-memory/corpus-lens/commit/049a447a0ab059dc3d59f599a1d2fed8c470d2e1))
+* zero-config discovery for `corpuslens run` ([d33138d](https://github.com/willow-memory/corpus-lens/commit/d33138de9caf0a7c19afc550ac4ee329cc605925))
+
+
+### Fixed
+
+* **cli:** a discovered run's failure line must not print what its success line hid ([cb0227d](https://github.com/willow-memory/corpus-lens/commit/cb0227dadc9215c6a1836ab15ecf13ee19cfa082))
+* never resolve discovered_path for display (wall finding, highest class) ([10f0b37](https://github.com/willow-memory/corpus-lens/commit/10f0b37908ee0f07eadb796fcd9c3591562e2dc4))
+* stop the rubric-scope note overclaiming what the sections below deliver ([eb03273](https://github.com/willow-memory/corpus-lens/commit/eb0327359247e7a9fc4a26f499547f9b38a31ac6))
+
+
+### Changed
+
+* the classifiers belong to neither layer, so move them out of one ([9a372dc](https://github.com/willow-memory/corpus-lens/commit/9a372dc4e00d0c3cae5b46ac9ae58e97bf79e581))
+
 ## [0.2.0](https://github.com/willow-memory/corpus-lens/compare/v0.1.0...v0.2.0) (2026-09-11)
 
 
