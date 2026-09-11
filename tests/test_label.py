@@ -198,6 +198,89 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(r["tp"], 1)
 
 
+# ── the text seam: fixed arity, and the three conditions that keep the
+#    ungated hash->content map in `label_text` honest (see its docstring) ───
+
+class LabelTextSeamTests(CorpusFixture):
+    """Pins the two structural requirements from the 2026-09-11 audit:
+
+      1. `ingest.get(name)(path, ...)` always returns the same 3-tuple —
+         no keyword changes its shape. Turn text comes from a SEPARATE
+         function (`ingest.get_label_text`), not a flag on this one.
+      2. The three conditions named in `label_text`'s docstring that keep its
+         ungated hash->content map honest: text never reaches an `Event`,
+         never reaches a renderer/report, and never reaches a label store.
+         (The third is also pinned in `LabelCliTests` below, from the other
+         direction — via the interactive CLI path.)
+    """
+
+    def test_ingest_always_returns_a_plain_three_tuple(self):
+        result = ingest.get("claude-code")(str(self.d))
+        self.assertEqual(len(result), 3)
+        events, quarantine, dropped = result   # must unpack cleanly, unconditionally
+        self.assertTrue(events)
+
+    def test_ingest_has_no_flag_that_changes_its_return_shape(self):
+        # the exact mistake the audit flagged: an adapter whose arity depends
+        # on a keyword. `ingest()` must not accept `with_text` at all anymore.
+        with self.assertRaises(TypeError):
+            ingest.get("claude-code")(str(self.d), with_text=True)
+
+    def test_label_text_is_a_separate_function_with_its_own_fixed_shape(self):
+        lc = ingest.get_label_text("claude-code")(str(self.d))
+        self.assertTrue(hasattr(lc, "events"))
+        self.assertTrue(hasattr(lc, "quarantine"))
+        self.assertTrue(hasattr(lc, "dropped"))
+        self.assertTrue(hasattr(lc, "text_by_ref"))
+        self.assertTrue(lc.text_by_ref)   # this corpus has kept events
+
+    def test_get_label_text_refuses_an_adapter_that_never_registered_one(self):
+        with self.assertRaises(KeyError):
+            ingest.get_label_text("cursor")
+
+    def test_condition_one_no_event_feature_is_ever_a_string(self):
+        # `Event.features` is documented as booleans/counts only. If this ever
+        # stops being true, `label_text`'s reasoning (condition 1) is broken.
+        lc = ingest.get_label_text("claude-code")(str(self.d))
+        for e in lc.events:
+            for k, v in e.features.items():
+                self.assertNotIsInstance(v, str, f"features[{k!r}] is a string on {e.source_ref}")
+        # and the turn text itself never appears in any Event identifier field
+        for e in lc.events:
+            text = lc.text_by_ref.get(e.source_ref, "")
+            for fld in (e.event_id, e.source_ref, e.thread_id):
+                if text.strip():
+                    self.assertNotIn(text.strip()[:10], fld)
+
+    def test_condition_two_run_and_doctor_never_leak_turn_text(self):
+        # label_text is a SEPARATE seam from the one run/doctor use
+        # (`_ingest`, which calls `ingest.get`, never `get_label_text`) — this
+        # asserts that separation holds at the observable-output level too.
+        distinctive = ("build the parser", "cache layer", "mastery.py",
+                       "posterior", "All 12 tests pass")
+        for argv in (["run", str(self.d), "--adapter", "claude-code"],
+                    ["run", str(self.d), "--adapter", "claude-code", "--format", "json"],
+                    ["doctor", str(self.d), "--adapter", "claude-code"],
+                    ["doctor", str(self.d), "--adapter", "claude-code", "--format", "json"]):
+            _, out, _ = _run(argv)
+            for leak in distinctive:
+                self.assertNotIn(leak, out, f"{leak!r} leaked via {argv}")
+
+    def test_condition_three_label_store_never_carries_turn_text(self):
+        # the CLI-level version of this lives in LabelCliTests; this version
+        # checks it straight from the source text, not just a few substrings.
+        store = self.d / "labels.json"
+        with mock.patch("sys.stdin.isatty", return_value=True), \
+             mock.patch("builtins.input", lambda prompt: "y"):
+            _run(["label", str(self.d), "--adapter", "claude-code",
+                 "--sample-size", "50", "--store", str(store)])
+        lc = ingest.get_label_text("claude-code")(str(self.d))
+        raw = store.read_text()
+        for text in lc.text_by_ref.values():
+            if text.strip():
+                self.assertNotIn(text.strip(), raw)
+
+
 # ── CLI: `corpuslens label` ─────────────────────────────────────────────────
 
 class LabelCliTests(CorpusFixture):

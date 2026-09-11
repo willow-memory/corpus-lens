@@ -76,18 +76,19 @@ def _ingest(path: str, adapter: str, table: str | None):
 
 
 def _ingest_for_label(path: str, adapter: str, table: str | None):
-    """Like `_ingest`, but also asks the adapter for turn text (`with_text=True`)
-    so `label` has something to show a human. Only adapters that declare
-    `text_capable=True` implement the kwarg; callers must check
-    `ingest.text_capable_of(adapter)` first."""
+    """Like `_ingest`, but through the adapter's `label_text` seam instead of
+    its ordinary `ingest()` — a differently-shaped function
+    (`ingest.get_label_text`), not the same function under a flag, so `run`/
+    `doctor`'s call to `ingest.get(adapter)(...)` never changes shape. Only
+    adapters registered via `register_label_text` implement it; callers must
+    check `ingest.text_capable_of(adapter)` first."""
     src = ingest.source_of(adapter)
     n_files, err = _check_path(path, adapter, src)
     if err:
         raise ValueError(err)
     kw = {"table": table} if (table is not None and src in ("file", "dsn")) else {}
-    kw["with_text"] = True
-    events, quarantine, dropped, text_by_ref = ingest.get(adapter)(path, **kw)
-    return events, quarantine, dropped, n_files, text_by_ref
+    lc = ingest.get_label_text(adapter)(path, **kw)
+    return lc.events, lc.quarantine, lc.dropped, n_files, lc.text_by_ref
 
 
 def _empty_message(path, adapter, src, n_files, dropped) -> str:

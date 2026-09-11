@@ -76,17 +76,26 @@ just marked done:
 3. New sentence needed (a real, current limitation, not in the original spec
    text at all): interactive labelling needs the corpus's raw turn text to
    show a human, which the wall-respecting `ingest()` pipeline does not carry
-   past feature extraction by design. I added an opt-in `with_text=True` path
-   that only the `claude-code` adapter implements (`ingest.text_capable_of`).
-   `label` refuses loudly on `cursor`, `cursor-store`, `sqlite`, and
-   `postgres` rather than guessing at each one's text-extraction shape. Add,
-   after the paragraph above:
+   past feature extraction by design. I added a SEPARATE function,
+   `label_text(path, ...) -> LabelCorpus`, registered per-adapter via
+   `ingest.register_label_text` — not a keyword on `ingest()` itself, after a
+   2026-09-11 audit finding that a flag changing one function's return arity
+   is exactly the kind of seam a wall bug hides in. Only `claude-code`
+   registers one (`ingest.text_capable_of`); `label` refuses loudly on
+   `cursor`, `cursor-store`, `sqlite`, and `postgres` rather than guessing at
+   each one's text-extraction shape. Add, after the paragraph above:
 
    > Today only the `claude-code` adapter supports `label` (it is the one
-   > adapter that declares it can hand back a turn's text for display,
-   > `with_text=True`) — every other adapter is refused outright rather than
+   > adapter that registers a `label_text` function to hand back a turn's
+   > text for display) — every other adapter is refused outright rather than
    > guessed at. `corpuslens score`, which never needs turn text, works
-   > against any adapter's Events.
+   > against any adapter's Events. `label_text`'s own docstring
+   > (`corpuslens/ingest/claude_code.py`) carries the full argument for why
+   > handing back an opaque-hash-to-content map outside the Guard is allowed
+   > here specifically, and the conditions under which that stops holding —
+   > worth folding a compressed version of that into this IDEAS.md entry,
+   > since it is exactly the kind of reasoning a future contributor would
+   > otherwise have to reconstruct from the code alone.
 
 4. The paragraph beginning "Constraints the reviewer named, kept" is still
    accurate as written — the labeller is the owner, the store is version-tied,
