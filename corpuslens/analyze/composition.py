@@ -46,7 +46,13 @@ REFERENCE = {
 
 @register("composition_mix", claims=("composition_mix",),
           denominator="operator prompt turns with >=12 characters (de-injected)",
-          version=1, semantic_hash=_COMPOSITION_MIX_HASH,
+          version=1,
+          grading_question=("question 2 (authored_code_pct / code_ref_pct, against the domain "
+                             "population — GRADING.md's stated method exactly); and part of "
+                             "question 3 for delib_pct — it reports the discussion-channel share "
+                             "but not whether those prompts pull longer, more structured "
+                             "responses, which question 3 also asks for"),
+          semantic_hash=_COMPOSITION_MIX_HASH,
           semantic_inputs=_COMPOSITION_MIX_INPUTS)
 def composition_mix(events):
     """See the module docstring for why the two code classifiers this
@@ -130,7 +136,13 @@ def composition_mix(events):
 
 @register("clarification_pull", claims=("clarification_pull",),
           denominator="machine response turns (>=12 chars)",
-          version=1, semantic_hash=_CLARIFICATION_PULL_HASH,
+          version=1,
+          grading_question=("none of GRADING.md's numbered questions directly — closest is "
+                             "question 3, but question 3 is about YOUR prompts opening a "
+                             "discussion channel; this measures the machine asking and you "
+                             "answering, the reverse direction, which GRADING.md does not pose "
+                             "as a question"),
+          semantic_hash=_CLARIFICATION_PULL_HASH,
           semantic_inputs=_CLARIFICATION_PULL_INPUTS)
 def clarification_pull(events):
     """See the module docstring: `CLARIFY` is a list of English phrases
