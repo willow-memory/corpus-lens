@@ -252,6 +252,68 @@ that gap is the operator and how much is the regex.
 
 ## Analyzers worth considering
 
+### `mid_task_share` does not measure what question 1 reads it as
+
+Found 2026-09-11 while building the style corpus, specifically by adding two
+operators who use an agent for one large artefact — a teacher commissioning a
+lesson plan, a journalist commissioning a feature.
+
+`mid_task_share_pct` is `(turns - sessions) / turns`. It is therefore a pure
+function of **turns per session** and nothing else. Eight invented operators,
+spanning seven-word questions to 119-word structured briefs, all land between
+75% and 83%:
+
+| operator | mid-task | opener | follow-up | ratio |
+|---|---|---|---|---|
+| questioner | 83.3% | 7 | 7 | 1.0x |
+| paster | 75.0% | 21 | 22 | 1.0x |
+| second_language | 75.0% | 58 | 41 | 1.4x |
+| spec_writer | 75.0% | 119 | 53 | 2.2x |
+| rambler | 80.0% | 112 | 40 | 2.8x |
+| lesson_planner | 75.0% | 106 | 18 | **5.9x** |
+| article_writer | 80.0% | 106 | 12 | **9.2x** |
+
+GRADING.md question 1 reads this number as *"if ~everything you type is one
+upfront spec, you are using a benchmark harness; if most arrives mid-execution,
+you are directing."* The metric cannot make that distinction. A person who
+front-loads a 106-word brief and then steers in twelve-word corrections scores
+the same as one who asks seven-word questions all afternoon.
+
+**The quantity that does measure front-loading is already computed and is not
+interpreted:** the ratio of `opener_median_words` to `followup_median_words`.
+It separates the big-task operators cleanly (5.9x, 9.2x) from conversational
+ones (1.0-1.4x), and it puts this project's own operator at 1.9x.
+
+It also says something the length alone does not. The dispatched agents measured
+earlier tonight sit at **1.2x** — not because they steer, but because every one
+of their turns is a fresh full specification. A big-task human writes one spec
+and then steers briefly; an agent dispatcher re-specs every time. Those are
+different behaviours that `mid_task_share` renders identically (43.8% vs 75%)
+for reasons that have nothing to do with either.
+
+### And the framing carries a value judgment that is wrong for this operator
+
+"Benchmark harness" versus "directing" is not neutral, and the reference N=1 is
+a software director. For someone commissioning a lesson plan or a feature
+article, a complete brief that lands first time is **the skilled move**, not a
+passive one. Front-loading is what expertise looks like when the artefact is
+large and the work is generative rather than exploratory.
+
+This is [Corpora that are not code](#corpora-that-are-not-code) arriving from an
+unexpected direction. That entry worried about the classifiers going silent on
+non-code corpora, which they do. This is worse and quieter: the numbers compute
+fine, and the *interpretation* is calibrated for one domain and silently
+misreads another as deficient.
+
+**What to do, roughly in order.** Report the opener:follow-up ratio as a first
+class number with its own reading, since it is free. Rewrite question 1's
+guidance so it describes what the number measures. And decide whether the
+rubric's implied ranking survives contact with generative work at all — the
+honest answer may be that front-loading and steering are different tasks rather
+than better and worse ways of doing one.
+
+
+
 Each needs a claim type on the process-only allowlist in `model.py` and a named
 denominator that matches its actual filter. Several of these were arrived at
 independently by other people's tools — noted, because convergence is evidence

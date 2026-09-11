@@ -61,6 +61,26 @@ PERSONAS = [
         "Very good. This is clear.",
         "One more question please. If I have two files with same session, will it join them or count as two sessions? In my case the tool was restarted in the middle of the work and I think it made two files.",
     ]),
+    # THE BIG-TASK OPERATORS. A person who uses an agent to produce one large
+    # artefact — an article, a lesson plan, a report — writes a long structured
+    # brief and then short refinements. That is the same SHAPE as a machine
+    # dispatching a task, and it is also the shape GRADING.md question 1 calls
+    # "using a benchmark harness" rather than "directing". Both readings are
+    # wrong about these people: a complete brief that lands first time is the
+    # skilled move for this kind of work, not a passive one.
+    ("lesson_planner", "human", [
+        "I need a lesson plan for Year 8 science on photosynthesis, one hour, mixed ability class of about thirty. Please include: clear learning objectives written as 'students will be able to' statements; a five minute starter that surfaces prior knowledge; a main activity that works without a lab, because we have lost our lab slot this term; a differentiated extension for the four students working above level; a plenary that checks understanding rather than just recapping; and a simple assessment rubric with three bands. Keep the language accessible — several students have EAL. Do not use American spellings or grade levels, this is a UK school.",
+        "The starter is too long, cut it to three minutes.",
+        "Swap the extension for something practical. They will have finished early and I need them occupied, not reading.",
+        "Good. Now the same again for photosynthesis part two, next lesson, assuming they have done all of the above.",
+    ]),
+    ("article_writer", "human", [
+        "Draft me an 1800 word feature on why small towns are losing their bus routes. Angle: not nostalgia, but the specific funding mechanism that makes rural routes unviable once subsidy falls below a threshold. Structure: open with one town as a concrete case, widen to the mechanism, then the counter-argument from transport economists that demand-responsive services are more efficient, then why that counter-argument fails in practice for people without smartphones. Tone: plain, no rhetorical questions, no 'imagine a world where'. British English. Do not invent statistics or quotes — leave placeholders marked TK where a number or a source is needed and I will fill them.",
+        "The third section is too sympathetic to the economists. Push back harder.",
+        "Cut 300 words from the middle.",
+        "Replace the opening anecdote, it is too neat. Find something messier.",
+        "Good. Send me the TK list separately so I can start calling people.",
+    ]),
     # THE REVERSE CASE: a machine that dispatches tersely. Word count says human.
     ("terse_dispatcher", "agent", [
         "Run the test suite and report failures.",

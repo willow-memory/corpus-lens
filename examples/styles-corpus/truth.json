@@ -140,6 +140,60 @@
       "ref": "b54911e46455c85e"
     },
     {
+      "persona": "lesson_planner",
+      "turn": 0,
+      "true_author": "human",
+      "ref": "fc1b23e28ae931ed"
+    },
+    {
+      "persona": "lesson_planner",
+      "turn": 1,
+      "true_author": "human",
+      "ref": "0131be30cc350b63"
+    },
+    {
+      "persona": "lesson_planner",
+      "turn": 2,
+      "true_author": "human",
+      "ref": "3be6b4e9c5580046"
+    },
+    {
+      "persona": "lesson_planner",
+      "turn": 3,
+      "true_author": "human",
+      "ref": "cbb371904c13df0c"
+    },
+    {
+      "persona": "article_writer",
+      "turn": 0,
+      "true_author": "human",
+      "ref": "20001d1987f37f88"
+    },
+    {
+      "persona": "article_writer",
+      "turn": 1,
+      "true_author": "human",
+      "ref": "60b58d3b757258c3"
+    },
+    {
+      "persona": "article_writer",
+      "turn": 2,
+      "true_author": "human",
+      "ref": "0755a7174f79ef5f"
+    },
+    {
+      "persona": "article_writer",
+      "turn": 3,
+      "true_author": "human",
+      "ref": "3c53e83d1362a3b0"
+    },
+    {
+      "persona": "article_writer",
+      "turn": 4,
+      "true_author": "human",
+      "ref": "17fde7c52181e0bb"
+    },
+    {
       "persona": "terse_dispatcher",
       "turn": 0,
       "true_author": "agent",
