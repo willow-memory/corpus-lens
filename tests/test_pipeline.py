@@ -504,6 +504,39 @@ class DogfoodRegressions(unittest.TestCase):
         self.assertEqual(dropped, 1)
         self.assertTrue(max(e.features["word_count"] for e in ops) < 10)
 
+    # ── finding 6: a compaction summary is the runtime, not the operator ──
+    def test_compaction_summary_is_skipped_by_its_own_flag(self):
+        """The summary was caught only by the prose it happens to open with.
+        `isCompactSummary` is the producer's own marking, so wording drift
+        cannot slip it past. The field name is unverified on this side — see
+        the provenance note in claude_code.py — so this test also pins that a
+        record WITHOUT the field is unaffected, which is what makes the check
+        safe to carry while the claim is outstanding."""
+        _write(self.d / "s.jsonl", [
+            _cc_line("user", "walk me through the adapter seam", "2026-02-01T10:00:00Z"),
+            _cc_line_with("user", "Here is a summary of the conversation so far. " * 40,
+                          "2026-02-01T10:01:00Z", isCompactSummary=True),
+            _cc_line("user", "good, carry on from there", "2026-02-01T10:02:00Z"),
+        ])
+        events, _, dropped = ingest.get("claude-code")(str(self.d))
+        ops = [e for e in events if e.author_class == "operator"]
+        self.assertEqual(len(ops), 2)
+        self.assertEqual(dropped, 1)
+        self.assertTrue(max(e.features["word_count"] for e in ops) < 10)
+
+    def test_a_turn_without_the_compaction_flag_is_untouched(self):
+        # the check is inert unless the runtime actually sets the field: an
+        # ordinary turn, and one carrying an explicit False, both survive.
+        _write(self.d / "s.jsonl", [
+            _cc_line("user", "summarise what we decided about the wall",
+                     "2026-02-01T10:00:00Z"),
+            _cc_line_with("user", "and what did the second agent find?",
+                          "2026-02-01T10:01:00Z", isCompactSummary=False),
+        ])
+        events, _, dropped = ingest.get("claude-code")(str(self.d))
+        self.assertEqual(len([e for e in events if e.author_class == "operator"]), 2)
+        self.assertEqual(dropped, 0)
+
     # ── finding 2: a finished background task arrives in the user role ──
     def test_task_notification_is_stripped_not_counted_as_a_prompt(self):
         notification = ("<task-notification> <task-id>abc</task-id> "

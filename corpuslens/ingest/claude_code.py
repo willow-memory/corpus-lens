@@ -224,6 +224,33 @@ def _is_sidechain_record(o: dict) -> bool:
     return o.get("isSidechain") is True
 
 
+#: A compaction summary is the runtime writing a précis of the conversation so
+#: far and handing it back in the USER role. Nobody typed it.
+#:
+#: It was already caught, but only by the prose branch in `injection.py` that
+#: matches "This session is being continued from a previous conversation" — a
+#: match on the text a summary happens to open with. That is the same fragility
+#: the `subagents/` path check had before `isSidechain` replaced it: it holds
+#: exactly as long as the wording does.
+#:
+#: PROVENANCE, because this one is mixed and the mix matters. That compaction
+#: records exist on disk was verified by the owner grepping his own transcripts
+#: on another machine, which found `"subtype":"compact_boundary"` in three
+#: files. This session's own corpus contains none — it never compacted — so the
+#: absence proved nothing either way, and an early grep here that appeared to
+#: find them was matching a message that merely discussed them.
+#:
+#: The FIELD NAME below comes from a description of the producer's source that
+#: nobody on this side can reach, and is therefore unverified. It is written
+#: anyway because the check is inert if the description is wrong: a record that
+#: never carries the field is never skipped by it, and no human turn carries
+#: it. The prose branch stays as the belt to this pair of braces. If a real
+#: compacted transcript ever reaches this repository, it belongs in the
+#: fixtures, and this comment should be rewritten to cite it instead.
+def _is_compaction_summary(o: dict) -> bool:
+    return o.get("isCompactSummary") is True
+
+
 @dataclass(frozen=True)
 class LabelCorpus:
     """The fixed return shape of `label_text` below — see its docstring for
@@ -264,6 +291,11 @@ def _ingest_impl(path: str, corpus_id: str, want_text: bool):
             if _is_sidechain_record(o):
                 # dispatched traffic that landed outside a `subagents/` path —
                 # the model prompting its own agent is not the owner. Counted.
+                dropped += 1
+                continue
+            if _is_compaction_summary(o):
+                # the runtime's own précis of the thread, handed back in the
+                # user role. Not a prompt, whatever it opens with. Counted.
                 dropped += 1
                 continue
             d, epoch = _parse_ts(o.get("timestamp"))

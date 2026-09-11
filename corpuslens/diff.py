@@ -133,12 +133,31 @@ def _analyzer_diff(name: str, res_a: Optional[dict], res_b: Optional[dict]) -> d
         return {"status": "a_only",
                 "note": f"'{name}' has a result only in the first report — not diffed."}
     ver_a, ver_b = res_a.get("analyzer_version"), res_b.get("analyzer_version")
+    if ver_a is None or ver_b is None:
+        # Per-analyzer versions did not exist before they were introduced, so a
+        # report older than that carries no version at all. Saying "the
+        # classifier changed" here would state something the tool does not know
+        # — nothing changed, the field simply was not written. The comparison is
+        # still withheld, because absence of a version is absence of evidence
+        # that the semantics match, and this project reads absence as denial.
+        which = ("Both reports predate" if (ver_a is None and ver_b is None)
+                 else ("The first report predates" if ver_a is None
+                       else "The second report predates"))
+        return {"status": "unversioned", "a_version": ver_a, "b_version": ver_b,
+                "note": (f"{which} per-analyzer versioning, so '{name}' carries no version to "
+                         f"check. That is not evidence the two runs mean the same thing, and it "
+                         f"is not evidence they differ — the tool cannot tell. NOT DIFFED. Re-run "
+                         f"the older corpus with this version of corpuslens to get a comparison "
+                         f"it can stand behind.")}
     if ver_a != ver_b:
         return {"status": "version_mismatch", "a_version": ver_a, "b_version": ver_b,
                 "note": (f"'{name}' ran as analyzer_version {ver_a} in the first report and "
                         f"{ver_b} in the second: the classifier or threshold behind this number "
                         f"changed between the two runs, so a delta here could report a software "
-                        f"change as if it were a change in your process. NOT DIFFED — see "
+                        f"change as if it were a change in your process. NOT DIFFED. Which "
+                        f"direction that change moved the number, and by how much, is not "
+                        f"derivable from the two documents — read the changelog between "
+                        f"analyzer_version {ver_a} and {ver_b} for what actually changed. See "
                         f"IDEAS.md, \"Metrics that stay comparable across tool versions\".")}
     err_a, err_b = res_a.get("error"), res_b.get("error")
     if err_a or err_b:
@@ -232,16 +251,29 @@ def compare(doc_a: dict, doc_b: dict) -> dict:
     results_a, results_b = doc_a["results"], doc_b["results"]
     names = sorted(set(results_a) | set(results_b))
     version_mismatches = []
+    unversioned = []
     for name in names:
         entry = _analyzer_diff(name, results_a.get(name), results_b.get(name))
         out["analyzers"][name] = entry
         if entry["status"] == "version_mismatch":
             version_mismatches.append(name)
+        elif entry["status"] == "unversioned":
+            unversioned.append(name)
     if version_mismatches:
         out["comparability_warnings"].append(
             "ANALYZER VERSION MISMATCH for " + ", ".join(version_mismatches) + ": not diffed "
             "(see each analyzer's own note below). Every other shared analyzer ran the same "
             "version on both sides and IS diffed normally.")
+    if unversioned:
+        # Two reports that BOTH predate versioning used to compare as equal in
+        # silence — the most misleading outcome available, because the reader
+        # saw a clean diff and no hint that nothing had been checked.
+        out["comparability_warnings"].append(
+            "OLDER RUN PREDATES VERSIONING for " + ", ".join(unversioned) + ": not diffed. "
+            "These results carry no analyzer_version, which happens when a report was produced "
+            "before per-analyzer versions existed. Nothing here says the analyzers changed — it "
+            "says the tool has no way to check, which is not the same thing and is not treated "
+            "as the same thing.")
     return out
 
 
@@ -272,7 +304,8 @@ def render_markdown(d: dict) -> str:
     for name, entry in d["analyzers"].items():
         out.append(f"### {name}")
         status = entry["status"]
-        if status in ("a_only", "b_only", "not_computable", "version_mismatch"):
+        if status in ("a_only", "b_only", "not_computable", "version_mismatch",
+                      "unversioned"):
             out += [f"*{entry['note']}*", ""]
             continue
         if entry.get("headline_a") or entry.get("headline_b"):
