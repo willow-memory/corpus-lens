@@ -251,3 +251,39 @@ class ContainmentTests(FakeHomeTests):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DiscoveredFailurePathTests(unittest.TestCase):
+    """A discovered run that FAILS must not print what the successful one hid.
+
+    The success line says `~/.claude/projects`. Until this test, the failure
+    line for the same corpus said `/home/<name>/.claude/projects`, because the
+    shared `_empty_message` echoes whatever path it was given. On an explicit
+    run that is right — the user typed it. On a discovered run they did not,
+    and the tool has already demonstrated it knows the username-free form.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = Path(self.tmp.name)
+        d = self.home / ".claude" / "projects"
+        d.mkdir(parents=True)
+        (d / "junk.jsonl").write_text("not json at all\n")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _run_discovered(self):
+        out, err = io.StringIO(), io.StringIO()
+        home = self.home
+        with mock.patch.dict(os.environ, {"HOME": str(home)}), \
+                mock.patch.object(Path, "home", staticmethod(lambda: home)), \
+                redirect_stdout(out), redirect_stderr(err):
+            code = cli_main(["run"])
+        return code, out.getvalue() + err.getvalue()
+
+    def test_a_failing_discovered_run_never_prints_the_resolved_home(self):
+        code, text = self._run_discovered()
+        self.assertNotEqual(code, 0)
+        self.assertNotIn(str(self.home), text)
+        self.assertIn("~/.claude/projects", text)

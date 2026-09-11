@@ -112,7 +112,17 @@ def _ingest_for_label(path: str, adapter: str, table: str | None):
     return lc.events, lc.quarantine, lc.dropped, n_files, lc.text_by_ref
 
 
-def _empty_message(path, adapter, src, n_files, dropped) -> str:
+def _empty_message(path, adapter, src, n_files, dropped, display_path=None) -> str:
+    """`display_path` overrides `path` in the text. `run_discovered` passes the
+    adapter's declared `~/...` form, because on a DISCOVERED run the user never
+    typed the path: echoing the resolved one back would print their username in
+    a place they could not have predicted, and the success line for the same
+    run already says `~/.claude/projects`. A failure line that says
+    `/home/<name>/.claude/projects` for the same corpus is the one place this
+    feature was still inconsistent with itself. When the user typed the path,
+    `display_path` is None and it is echoed as typed, which is right — it is
+    already theirs, and changing it would make the error harder to act on."""
+    path = display_path or path
     pat = ingest.pattern_of(adapter)
     if src == "dir" and n_files == 0:
         return f"no {pat} files found under {path}. Wrong directory?"
@@ -300,11 +310,16 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
         events, quarantine, dropped, n_files = _ingest(path, adapter, table)
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
             RuntimeError) as e:
-        print(f"error: {e}", file=sys.stderr)
+        # the ingest error text can quote the resolved path; on a discovered run
+        # the user never typed it, so swap it for the declared form.
+        msg = str(e).replace(str(Path(path).expanduser().resolve()), discovered_path) \
+            if discovered_path else str(e)
+        print(f"error: {msg}", file=sys.stderr)
         return 2
 
     if not events:
-        print(f"error: {_empty_message(path, adapter, src, n_files, dropped)}", file=sys.stderr)
+        print(f"error: {_empty_message(path, adapter, src, n_files, dropped, discovered_path)}",
+              file=sys.stderr)
         return 1
 
     events, n_filtered, clause = _window(events, since_day, until_day)
