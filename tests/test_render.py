@@ -55,7 +55,7 @@ class RubricScopeTests(unittest.TestCase):
         self.assertIn(head.strip(), md)
         self.assertIn(tail.strip(), md)
         self.assertLess(md.index("left the wall"), md.index(head.strip()))
-        self.assertLess(md.index(RUBRIC_SCOPE_NOTE), md.index("What this run found"))
+        self.assertLess(md.index(tail.strip()), md.index("What this run found"))
 
     def test_rubric_scope_note_names_the_unmeasurable_questions(self):
         # The exact numbers matter — this is the sentence that stops the
