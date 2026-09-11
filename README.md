@@ -284,11 +284,13 @@ Three consequences worth holding:
 - **A second run does not measure a pristine baseline.** It measures someone who
   has read the first. The deeper you go into a longitudinal comparison, the more
   of the trend may be response to the instrument rather than change in the work.
-- **The reference points are not exempt.** The measured N=1 in the reference
-  table was taken from an operator's own corpus during the sessions that
-  designed these instruments — measuring and being measured at once. It is a
-  different kind of number from the WildChat/OASST population aggregates beside
-  it, which came from people who had no idea anyone would measure this.
+- **The reference N=1 is a clean baseline; your later runs may not be.** That
+  corpus was gathered *before* its operator began reading these numbers, so it
+  is not itself subject to this effect. The asymmetry is the useful part: your
+  first run is comparable to it under the same conditions, while a run made
+  after months of watching your own metrics is not — you have changed, the
+  reference has not. Drift from the reference over time is therefore not
+  automatically drift in your work.
 - **The effect is unmeasured.** Quantifying it would need a before/after on your
   own corpus with a control, and you cannot un-see your own numbers. Named in
   [IDEAS.md](IDEAS.md) as a stretch goal for that reason, not a to-do.
