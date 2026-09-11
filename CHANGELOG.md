@@ -7,6 +7,31 @@ amendments — corrections sit beside the record they correct, never overwrite i
 Versioned sections are written by release-please from the commit messages; the
 hand-written history below them predates the release pipeline.
 
+## [0.2.0](https://github.com/willow-memory/corpus-lens/compare/v0.1.0...v0.2.0) (2026-09-11)
+
+
+### Added
+
+* **cli:** corpuslens diff — compare two --format json runs ([385dd78](https://github.com/willow-memory/corpus-lens/commit/385dd78d95fc605f826b2f8ad520538c3a136ace))
+* add Gemini CLI adapter, read from writer source (no corpus available) ([9715802](https://github.com/willow-memory/corpus-lens/commit/9715802c58db33bfe8f0eedb1f5956e8bea73d64))
+* add `corpuslens label` and `corpuslens score` for classifier precision/recall ([52de679](https://github.com/willow-memory/corpus-lens/commit/52de6796275bd58a7a9fd603805f9044c7614e6c))
+* share-safe report mode (--share, composes with --format) ([34bbf9a](https://github.com/willow-memory/corpus-lens/commit/34bbf9a8e617c23679774555773f3f9988c839ac))
+* add timing_fingerprint(), the leakage-demonstration computation ([96c3b25](https://github.com/willow-memory/corpus-lens/commit/96c3b25462ae6fc8507a805ec1be8969db1274ce))
+* refuse a corpus the code/clarify classifiers cannot read ([56f5d93](https://github.com/willow-memory/corpus-lens/commit/56f5d93652439164145a16f10b0f66ff65a68024))
+* **analyze:** per-analyzer semantic versions + classifier-hash discipline test ([6801e74](https://github.com/willow-memory/corpus-lens/commit/6801e748b55b3fd769d5aa4e1b2dc18d8a722da9))
+
+
+### Fixed
+
+* **diff:** an absent analyzer version is not a changed classifier ([ab90256](https://github.com/willow-memory/corpus-lens/commit/ab902563932b951988df9df846a19b757213ff50))
+* **ingest:** read the producer's own marking, not the layout ([dd20123](https://github.com/willow-memory/corpus-lens/commit/dd2012351a38b8126b7c5db28f6b588a564647f9))
+* **ingest:** a local slash command is not three operator prompts ([881c56c](https://github.com/willow-memory/corpus-lens/commit/881c56c7139f90dcd10114320798d0431373a2e8))
+* correct sample-size bias in the hour-of-week entropy estimate ([4f767f7](https://github.com/willow-memory/corpus-lens/commit/4f767f730a87c8337b4a9368a1525df7e8d9a58b))
+* correct fabricated commit citation in Gemini CLI provenance ([8e74eb5](https://github.com/willow-memory/corpus-lens/commit/8e74eb5c517a55cc4d936d059322fcf03788973b))
+* give label text its own fixed-shape function, and justify the ungated map ([0ddd64f](https://github.com/willow-memory/corpus-lens/commit/0ddd64f810e8d5c0713087499684e681f2d5c2a6))
+* band the audit record's exact counts in share mode too ([e18f417](https://github.com/willow-memory/corpus-lens/commit/e18f41765c88c79a2035f1a633cd632e6ab85b9e))
+* the code-reference regex knows nine extensions, not eight ([e4b0cef](https://github.com/willow-memory/corpus-lens/commit/e4b0cef6721d3c6872721d441353a21212d1d4b4))
+
 ## [0.1.0](https://github.com/willow-memory/corpus-lens/compare/v1.0.0...v0.1.0) (2026-09-11)
 
 
