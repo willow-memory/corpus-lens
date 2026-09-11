@@ -19,6 +19,46 @@ SCHEMA_VERSION = 1
 CAVEAT = ("Numbers are heuristics plus your own eyes: spot-check before you cite. "
           "Reference points are one measured N=1 plus public population aggregates.")
 
+# Shown once, right after the audit sentence, before any finding — so a reader
+# meets the rubric's scope before a single number. This note must never be
+# stronger than the per-section grading_question declarations under it (a
+# review caught an earlier draft claiming "the first four questions" when the
+# real mapping is two full, two partial, and two analyzers answering none) —
+# see IDEAS.md, "Say which rubric question each analyzer answers".
+RUBRIC_SCOPE_NOTE = (
+    "This report's battery fully answers two of GRADING.md's ten questions — question 1 (where "
+    "your intent arrives) and question 2 (who writes the code) — and partly answers two more: "
+    "question 3 (your deliberation share, but not whether those prompts pull longer, more "
+    "structured responses) and question 4 (resumption gaps and thread span, but not a 30-day "
+    "bucket, per-day/month counts, or whether a return was productive). Two of the battery's six "
+    "analyzers (tempo, clarification_pull) answer none of the ten numbered questions directly and "
+    "are reported here as a supporting signal, not a rubric answer — each section below says "
+    "exactly which case it is. Questions 5-8 (can a stored claim be demoted; when a negative "
+    "result was last recorded; whether an agent can grant itself anything; whether checks fail "
+    "closed) and questions 9-10 (whether your timestamps are a fingerprint; who carries the "
+    "continuity across a session gap) are not corpus-measurable from session logs at all — "
+    "GRADING.md gives each of those its own manual test, not a number this tool computes."
+)
+
+# Reference dicts mix two different kinds of comparison point: a named public
+# population aggregate (WildChat, OASST — or a benchmark construction fact
+# like SWE-bench/tau-bench) and the author's own corpus, one person. A key is
+# treated as the population kind only if it names one of these; everything
+# else in a `reference` dict is the N=1 corpus, whatever its key is spelled
+# (`measured_director`, `measured_director_n1`, `measured_cli`,
+# `measured_cursor_note` all appear across the analyzers) — see IDEAS.md,
+# "Say whose corpus the reference is".
+_POPULATION_MARKERS = ("wildchat", "oasst", "swe_bench", "tau_bench")
+
+
+def _is_population_reference(key: str) -> bool:
+    k = key.lower()
+    return any(m in k for m in _POPULATION_MARKERS)
+
+
+def _fmt_reference_value(v) -> str:
+    return json.dumps(v) if isinstance(v, (dict, list)) else str(v)
+
 # Shown only when `share=True` — see corpuslens/share.py for what "coarsened"
 # means here and, just as load-bearing, what it does NOT mean. This sentence
 # travels with the coarsened numbers wherever they go, same principle as the
@@ -39,7 +79,7 @@ SHARE_CAVEAT = (
 
 # Rendered above the numbers block verbatim, so they are omitted from it rather
 # than printed twice. Only ever strings already shown — no number is dropped.
-_SHOWN = ("headline", "reading", "vs_coding_population", "error")
+_SHOWN = ("headline", "reading", "vs_coding_population", "error", "grading_question", "reference")
 
 
 def _section(name: str, res: dict) -> list:
@@ -50,10 +90,14 @@ def _section(name: str, res: dict) -> list:
         out += [f"**Not computable on this corpus.** {res['error']}", ""]
         if res.get("denominator"):
             out += [f"Denominator would be: {res['denominator']}.", ""]
+        if res.get("grading_question"):
+            out += [f"GRADING.md: {res['grading_question']}.", ""]
         return out
     headline = res.get("headline")
     if headline:
         out += [f"**{headline}**", ""]
+    if res.get("grading_question"):
+        out += [f"*GRADING.md: {res['grading_question']}.*", ""]
     bits = []
     if res.get("denominator"):
         bits.append(f"Out of {res['denominator']}")
@@ -68,6 +112,23 @@ def _section(name: str, res: dict) -> list:
         out += [f"Against the reference: {res['vs_coding_population']}.", ""]
     if res.get("reading"):
         out += [f"> {res['reading']}", ""]
+    ref = res.get("reference")
+    if isinstance(ref, dict) and ref:
+        out.append("Reference:")
+        n1_seen = False
+        for k, v in ref.items():
+            val = _fmt_reference_value(v)
+            if _is_population_reference(k):
+                out.append(f"- `{k}`: {val}")
+            else:
+                out.append(f"- `{k}`: {val} — the author's own corpus (N=1); a gap from this "
+                           "reference is a gap from one person, not a population.")
+                n1_seen = True
+        out.append("")
+        if n1_seen:
+            out += [("*Until someone runs `corpuslens label` and `corpuslens score` on this "
+                     "corpus, there is no way to know how much of that N=1 gap is the operator "
+                     "and how much is the classifier's own error.*"), ""]
     numbers = {k: v for k, v in res.items() if k not in _SHOWN}
     if numbers:
         out += ["```json", json.dumps(numbers, indent=2, default=str), "```", ""]
@@ -92,6 +153,8 @@ def markdown(results: dict, audit, share: bool = False) -> str:
         out.append(f"> {SHARE_CAVEAT}")
         out.append("")
     out.append(f"> {audit.sentence()}")
+    out.append("")
+    out.append(f"> {RUBRIC_SCOPE_NOTE}")
     out.append("")
     findings = [(name, res.get("headline")) for name, res in results.items()]
     if findings:

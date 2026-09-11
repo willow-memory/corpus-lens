@@ -106,22 +106,41 @@ class Analyzer:
     denominator: str                  # what every rate is out of — named, always
     run: Callable                     # (events) -> dict of results
     version: int = 1                  # ANALYZER SEMANTICS version — see module docstring
+    grading_question: str = ""        # which GRADING.md question this answers — see below
     semantic_hash: str = ""           # pinned hash of this version's classifiers/thresholds
     semantic_inputs: tuple = field(default_factory=tuple)   # the live inputs the hash covers
 
 
 def register(name: str, claims: tuple, denominator: str, version: int,
-             semantic_hash: str = "", semantic_inputs: tuple = ()):
+             grading_question: str = "", semantic_hash: str = "", semantic_inputs: tuple = ()):
     """`version` is required, on purpose — an analyzer's author has to make a
     deliberate choice rather than inherit a silent default. `semantic_hash` and
     `semantic_inputs` are optional (an analyzer with no classifier/threshold
     dependency, like `thread_span`, can leave them empty), but when either is
-    given the other should be too — see `tests/test_analyzer_versions.py`."""
+    given the other should be too — see `tests/test_analyzer_versions.py`.
+
+    `grading_question` names which of GRADING.md's ten questions this analyzer
+    answers, checked against that document's actual wording, not assumed from
+    the analyzer's name — see IDEAS.md, "Say which rubric question each
+    analyzer answers". Required and never blank, on the same principle as
+    `denominator`: a number with no denominator is a raw count wearing a
+    percent sign, and a rubric mapping nobody had to state out loud is one
+    nobody checked. Say "question N" only when the analyzer's own filter
+    matches that question's stated measurement; say "part of question N" the
+    moment it only partially does (a missing bucket, a check the question
+    also asks for that this analyzer does not make); and say plainly that an
+    analyzer answers none of GRADING.md's numbered questions when that is the
+    honest reading — forcing a fit there would be the overclaim this field
+    exists to prevent, not the honesty it is for."""
     if not denominator or not denominator.strip():
         raise ValueError(f"analyzer {name!r} names no denominator — raw counts are rejected")
+    if not grading_question or not grading_question.strip():
+        raise ValueError(f"analyzer {name!r} names no grading_question — say which GRADING.md "
+                          "question it answers (or partly answers), or say plainly it answers none")
     def deco(fn):
         _REGISTRY.append(Analyzer(name=name, claims=claims, denominator=denominator, run=fn,
-                                  version=version, semantic_hash=semantic_hash,
+                                  version=version, grading_question=grading_question,
+                                  semantic_hash=semantic_hash,
                                   semantic_inputs=tuple(semantic_inputs)))
         return fn
     return deco

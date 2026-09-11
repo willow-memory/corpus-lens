@@ -22,7 +22,7 @@ import datetime
 import re
 
 from ..model import AuthorClass, CoarseTime, DataType, Event, Quarantine
-from .claude_code import _features, _hash  # reuse the proven, tested helpers
+from ..classifiers import _features, _hash  # shared by every adapter, owned by none
 from .injection import authored_text
 
 # ── role mapping ─────────────────────────────────────────────────────────────

@@ -40,34 +40,28 @@ a design change rather than a patch — hence open rather than done.
 **Workaround:** on an agent corpus, read the `operator_turns` / `machine_turns`
 / `threads` counts and ignore `drop_pct`.
 
-### 2. `tempo`'s headline says "your prompts", its computation says "any event"
+### 2. `tempo` measures from the previous event, and a prompt-to-prompt number
+would be a different measurement
 
-`tempo` reports "Your prompts arrive a median N seconds apart within a thread."
-The number under that sentence is `delta_prev_s`, which `claude_code.py`
-defines as seconds since the previous **event** in the thread — usually the
-machine's own response, not the operator's previous prompt.
+**Half of this is fixed.** The headline used to read "your prompts arrive a
+median N seconds apart", which claimed something narrower than the number:
+`delta_prev_s` is the gap since the previous **event** in the thread, usually
+the machine's own reply. The sentence now says that, in the report and in the
+README. No number moved, so no analyzer version bump.
 
-Those differ by however long the machine's turn sat in between. On a corpus
-where the assistant answers in ten seconds the gap is small; on one where it
-works for four minutes the headline understates the operator's real
-prompt-to-prompt rhythm by roughly that much, every time.
+What is still open is whether the *measurement* should change. A
+prompt-to-prompt gap — human turn to human turn, skipping whatever the machine
+did in between — is a different and arguably more interesting quantity: it is
+the one the reference N=1 in GRADING.md reads as a rhythm of a person. Adopting
+it would move every tempo number, so it needs a `version` bump on the analyzer
+and a re-based reference point, and it should probably be an additional field
+rather than a replacement.
 
-Dropped records advance the clock too, on purpose — the `keep the clock
-advancing` branch in `claude_code.py`. So a machine turn that the injection
-filter correctly refuses to count as a prompt still contributes its timestamp
-to the next real turn's delta. Found 2026-09-11 while writing the regression
-test for finding 3 below, where a stop hook's output one second after a prompt
-left the next gap reading 539s instead of 540s.
-
-Neither half is a coding error; both are deliberate and the docstrings say what
-they do. The bug is that the **sentence claims something narrower than the
-number measures**, and this project's first rule is that claims match code.
-
-Fixing it means either rewording the headline to say what is measured, or
-measuring prompt-to-prompt and re-basing every tempo reference point. The
-second changes what the number means, so it needs an analyzer `version` bump —
-the mechanism for which now exists. Open rather than patched because picking
-between those two is a design decision, not a typo.
+Note also that dropped records advance the clock on purpose (the `keep the
+clock advancing` branch in `claude_code.py`), so a machine turn the injection
+filter correctly refuses to count still contributes its timestamp to the next
+real gap. Under the corrected wording that is consistent rather than wrong, but
+it would have to be revisited alongside any prompt-to-prompt measurement.
 
 ### 3. A compaction boundary is invisible to `thread_shape` and `thread_span`
 

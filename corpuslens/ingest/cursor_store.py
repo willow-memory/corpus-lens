@@ -53,8 +53,8 @@ import sqlite3
 from pathlib import Path
 
 from ..model import AuthorClass, CoarseTime, DataType, Event, Quarantine, Surface
-from . import register
-from .claude_code import _features, _hash
+from . import register, register_default_path
+from ..classifiers import _features, _hash
 from .injection import authored_text
 
 #: Plausible ms-epoch window. A varint outside it is not a clock — it is a
@@ -245,6 +245,7 @@ def _read_store(db: Path, rel: str):
         con.close()
 
 
+@register_default_path("cursor-store", "~/.cursor/chats")
 @register("cursor-store", source="dir", pattern="store.db")
 def ingest(path: str, corpus_id: str = "corpus"):
     root = Path(path)

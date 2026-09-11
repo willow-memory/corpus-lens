@@ -22,7 +22,8 @@ _STEERING_DENSITY_HASH = "d189e509a912fc3e"
 
 @register("steering_density", claims=("steering_density",),
           denominator="operator prompt turns with >=12 characters (de-injected)",
-          version=1, semantic_hash=_STEERING_DENSITY_HASH,
+          version=1, grading_question="question 1",
+          semantic_hash=_STEERING_DENSITY_HASH,
           semantic_inputs=_STEERING_DENSITY_INPUTS)
 def steering_density(events):
     sess = defaultdict(list)
@@ -66,7 +67,12 @@ _THREAD_SHAPE_HASH = "7bc2e182895dfa7c"
 
 @register("thread_shape", claims=("thread_shape",),
           denominator="threads with >=1 active day (relative days only)",
-          version=1, semantic_hash=_THREAD_SHAPE_HASH,
+          version=1,
+          grading_question=("part of question 4 — it counts resumption gaps in disjoint "
+                             "2-7/7-14/14+ day buckets and same-day concurrency, but GRADING.md "
+                             "also asks for a >=30-day bucket and monthly counts, and for whether "
+                             "a resumption was a PRODUCTIVE return, which this does not check"),
+          semantic_hash=_THREAD_SHAPE_HASH,
           semantic_inputs=_THREAD_SHAPE_INPUTS)
 def thread_shape(events):
     days = defaultdict(set)

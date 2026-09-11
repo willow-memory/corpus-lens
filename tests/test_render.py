@@ -11,7 +11,7 @@ import unittest
 
 from corpuslens.analyze import all_analyzers
 from corpuslens.guard import AuditRecord
-from corpuslens.render import SMALL_N, json_report, markdown
+from corpuslens.render import RUBRIC_SCOPE_NOTE, SMALL_N, json_report, markdown
 
 
 def _audit(**kw):
@@ -40,6 +40,108 @@ class HeadlineTests(unittest.TestCase):
         md = markdown({"a": {"denominator": "turns", "count_of_things": 7}}, _audit())
         self.assertIn("## a", md)
         self.assertIn("count_of_things", md)
+
+
+class RubricScopeTests(unittest.TestCase):
+    """GRADING.md poses ten questions; this battery answers (fully or partly)
+    only the first four. The report must say that once, plainly, naming the
+    rest — see IDEAS.md, "Say which rubric question each analyzer answers"."""
+
+    def test_rubric_scope_note_appears_after_the_audit_sentence(self):
+        md = markdown({"a": {"headline": "h", "n": 1}}, _audit())
+        self.assertIn(RUBRIC_SCOPE_NOTE, md)
+        self.assertLess(md.index("left the wall"), md.index(RUBRIC_SCOPE_NOTE))
+        self.assertLess(md.index(RUBRIC_SCOPE_NOTE), md.index("What this run found"))
+
+    def test_rubric_scope_note_names_the_unmeasurable_questions(self):
+        # The exact numbers matter — this is the sentence that stops the
+        # rubric reading like a promise the tool did not keep.
+        for marker in ("5-8", "9-10", "not corpus-measurable"):
+            self.assertIn(marker, RUBRIC_SCOPE_NOTE)
+
+    def test_grading_question_is_shown_in_its_section(self):
+        md = markdown({"a": {"headline": "h", "n": 1, "grading_question": "question 1"}}, _audit())
+        self.assertIn("GRADING.md: question 1.", md)
+
+    def test_grading_question_is_shown_even_when_not_computable(self):
+        md = markdown({"a": {"error": "no data", "grading_question": "question 1"}}, _audit())
+        self.assertIn("GRADING.md: question 1.", md)
+
+    def test_grading_question_is_omitted_from_the_raw_json_block(self):
+        md = markdown({"a": {"headline": "h", "n": 1, "grading_question": "question 1"}}, _audit())
+        block = json.loads(md.split("```json")[1].split("```")[0])
+        self.assertNotIn("grading_question", block)
+
+    def test_every_registered_analyzer_declares_a_grading_question(self):
+        for a in all_analyzers():
+            with self.subTest(analyzer=a.name):
+                self.assertIsInstance(a.grading_question, str)
+                self.assertTrue(a.grading_question.strip())
+
+    def test_register_rejects_a_blank_grading_question(self):
+        from corpuslens.analyze import register
+        with self.assertRaises(ValueError):
+            register("bad", claims=("tempo",), denominator="turns", version=1,
+                      grading_question="  ")(lambda ev: {})
+
+    def test_a_partial_mapping_says_part_of(self):
+        # thread_shape and thread_span only partly cover GRADING.md question 4
+        # (no >=30-day bucket, no "productive return" check) — the declaration
+        # must say so rather than claim the whole question.
+        by_name = {a.name: a for a in all_analyzers()}
+        for name in ("thread_shape", "thread_span"):
+            self.assertIn("part of question 4", by_name[name].grading_question)
+
+
+class ReferenceProvenanceTests(unittest.TestCase):
+    """Every analyzer compares the reader to `measured_director_n1` (or a
+    sibling key) — the author's own corpus, one person. The rendered report
+    must say so beside the comparison, and keep the named population
+    aggregates (WildChat, OASST) distinct from it — see IDEAS.md, "Say whose
+    corpus the reference is"."""
+
+    def test_the_n1_reference_is_labelled_one_person(self):
+        res = {"headline": "h", "n": 1,
+               "reference": {"measured_director": "96.8% mid-task"}}
+        md = markdown({"a": res}, _audit())
+        self.assertIn("measured_director", md)
+        self.assertIn("the author's own corpus (N=1)", md)
+        self.assertIn("a gap from this reference is a gap from one person, not a population", md)
+
+    def test_population_aggregates_are_not_relabelled_as_n1(self):
+        res = {"headline": "h", "n": 1,
+               "reference": {"wildchat_coding_population": {"authored_pct": 14.5},
+                             "oasst_general_chat": {"delib_pct": 7.3}}}
+        md = markdown({"a": res}, _audit())
+        # both population rows print, neither gets the N=1 sentence attached
+        wildchat_line = next(l for l in md.splitlines() if "wildchat_coding_population" in l)
+        oasst_line = next(l for l in md.splitlines() if "oasst_general_chat" in l)
+        self.assertNotIn("N=1", wildchat_line)
+        self.assertNotIn("N=1", oasst_line)
+
+    def test_classifier_error_sentence_appears_once_beside_an_n1_reference(self):
+        res = {"headline": "h", "n": 1,
+               "reference": {"measured_director": "x", "measured_cursor_note": "y"}}
+        md = markdown({"a": res}, _audit())
+        self.assertEqual(md.count("corpuslens label"), 1)
+        self.assertIn("corpuslens score", md)
+
+    def test_no_reference_means_no_classifier_error_sentence(self):
+        md = markdown({"a": {"headline": "h", "n": 1}}, _audit())
+        self.assertNotIn("corpuslens label", md)
+
+    def test_reference_is_omitted_from_the_raw_json_block(self):
+        res = {"headline": "h", "n": 1, "reference": {"measured_director": "x"}}
+        md = markdown({"a": res}, _audit())
+        block = json.loads(md.split("```json")[1].split("```")[0])
+        self.assertNotIn("reference", block)
+
+    def test_json_renderer_keeps_reference_and_grading_question_verbatim(self):
+        res = {"headline": "h", "n": 1, "grading_question": "question 1",
+               "reference": {"measured_director": "x"}}
+        doc = json.loads(json_report({"a": res}, _audit()))
+        self.assertEqual(doc["results"]["a"]["grading_question"], "question 1")
+        self.assertEqual(doc["results"]["a"]["reference"], {"measured_director": "x"})
 
 
 class NotComputableTests(unittest.TestCase):

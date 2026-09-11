@@ -93,9 +93,11 @@ installing, straight from a clone, via `python3 -m corpuslens`.
 ## Quickstart
 
 ```bash
+corpuslens run                                          # find a corpus and read it
 corpuslens run ~/.claude/projects --adapter claude-code --out report.md
 corpuslens run ./my-cursor-sessions --adapter cursor
 corpuslens run ~/.cursor/chats --adapter cursor-store  # Cursor's own store.db tree
+corpuslens run ~/.gemini/tmp --adapter gemini-cli       # Gemini CLI's chat JSONL
 corpuslens run ./corpus.db --adapter sqlite            # a SQLite corpus (a file)
 corpuslens run "dbname=mycorpus" --adapter postgres    # a Postgres corpus (a DSN)
 # equivalently, from a clone without installing:
@@ -124,6 +126,20 @@ corpus has machine-authored turns this filter does not know, the symptom is the
 same: an opener median in the hundreds or thousands of words. `corpuslens doctor`
 will show you the drop share; a look at `opener_median_words` will show you the
 rest.
+`--adapter gemini-cli` reads Gemini CLI's own session JSONL. Read the honesty
+note on it first: unlike every other adapter here, it was built by reading the
+**source that writes the format** rather than a real corpus, because nobody on
+this project has one. The field names and the file layout come from that source
+and are cited in the adapter's docstring; what has never happened is a run
+against a real Gemini CLI log. Point it at yours and check `doctor`'s drop share
+before trusting a rate.
+
+It also does not filter dispatched traffic by directory. Gemini CLI nests a
+subagent's transcript under the **parent session's id**, where a path filter
+finds nothing, so the adapter keys on the runtime's own `kind` field instead.
+The claude-code adapter learned the same lesson from the other end and now reads
+`isSidechain` rather than trusting a directory name.
+
 `--adapter cursor-store` reads the chat store Cursor keeps for itself — a tree
 of `store.db` SQLite files under `~/.cursor/chats`, one per thread. See
 [Cursor's store.db](#cursor-storedb) for what that corpus can and cannot tell
@@ -132,12 +148,43 @@ The report prints to stdout (or `--out FILE`), and always opens with a
 plain-language audit line naming exactly what left the wall and how many input
 records were dropped.
 
+### The first run, with no arguments
+
+```bash
+corpuslens run
+```
+
+With no path and no `--adapter`, corpuslens looks in the conventional locations
+each adapter declares for itself — `~/.claude/projects`, `~/.cursor/chats`,
+`~/.gemini/tmp` — and tells you what it found **before** it reads anything: which
+locations exist, how many candidate session files are in each, and which adapter
+it would use. If several corpora exist it runs the largest and names the
+runner-up, so the guess is visible rather than silent. If it finds nothing it
+lists every path it checked.
+
+Discovery is a guess about intent, so the run says which corpus it chose in the
+**audit sentence itself** — not just in the terminal — and a saved report
+therefore records what was read.
+
+It reports the location in its declared `~/...` form and never the resolved one.
+That is not cosmetic: a resolved home directory contains the owner's username,
+and printing it in the sentence that says no filename left the wall would put a
+person's name in the one line that claims nothing identifying escaped. The audit
+record refuses a resolved value outright rather than trusting callers not to
+pass one.
+
+The explicit two-argument form is unchanged. Giving only one of the two is an
+error rather than a half-guess.
+
 ### The other subcommands
 
 ```bash
 corpuslens doctor ~/.claude/projects --adapter claude-code   # what WOULD be read
 corpuslens adapters                                          # what can be read
 corpuslens analyzers                                         # what gets computed
+corpuslens label ~/.claude/projects --adapter claude-code    # grade the classifiers yourself
+corpuslens score ~/.claude/projects --adapter claude-code    # what your labels say they score
+corpuslens diff a.json b.json                                # the delta between two runs
 ```
 
 `doctor` is a dry run of ingestion only: how many records an adapter could see,
@@ -149,6 +196,96 @@ runs no analyzer and emits no rate, counts rather than content, and its output
 passes the same fail-closed egress scan the report does. `adapters` and
 `analyzers` list what is registered — each adapter with the argument it expects,
 each analyzer with its claim type and its named denominator.
+
+### Grading the classifiers against your own judgment
+
+Every headline percentage rests on four regex classifiers, and until you measure
+them the honest guidance is the one below: read the direction, spot-check before
+you cite. `label` and `score` let you replace that advice with a number.
+
+```bash
+corpuslens label ~/.claude/projects --adapter claude-code   # then answer y/n
+corpuslens score ~/.claude/projects --adapter claude-code
+```
+
+`label` samples eligible turns under a **fixed seed** — the same corpus and
+sample size draw the same turns, so a session you abandon resumes rather than
+re-rolls — shows you each one, and asks one yes/no per classifier that applies
+to it. `score` then re-runs the classifiers over the same corpus and reports
+**precision, recall and n per classifier**, with named denominators like every
+other rate here.
+
+**You** do the labelling. No model reads your turns and no heuristic guesses a
+label, because the whole point is to grade the heuristics against a judgment
+that is not another heuristic. The store keeps only the label, the turn's opaque
+hash, and the version of the classifier set you graded — never content, never a
+filename, never a timestamp. Grade a different version and it refuses rather
+than silently comparing across a definition change.
+
+The default sample of 50 is a **convention**, like the small-sample threshold in
+the report. It is not a power analysis, and corpuslens does not compute how
+large a sample would have to be for a given confidence.
+
+`label` works only on the `claude-code` adapter, because it has to show you your
+own text and no one has implemented or tested that path for the other stores.
+It refuses the rest rather than guessing at their content shape.
+
+### Sharing a reading without the fingerprint
+
+```bash
+corpuslens run ./corpus --adapter claude-code --share
+corpuslens run ./corpus --adapter claude-code --share --format json
+```
+
+`--share` is a modifier, not a third format, so it composes with either
+renderer. It emits the headline rates and nothing else: every `n` becomes a
+band, and the shapes are dropped rather than rounded — no tempo quantiles, no
+thread counts, no day spans, no concurrency, no active-day counts. The audit
+sentence stays, with its own counts banded too, because a reading without the
+statement of what left the wall is not a corpuslens result.
+
+The filter is an **allowlist of field names**. A field a future analyzer invents
+is excluded by default rather than included by default, which is the same
+fail-closed rule the Guard follows: absence of policy reads as denial.
+
+**Read what it claims carefully.** Share mode is *coarsened*. It is not
+anonymized and not de-identified, and this project has **not measured** whether
+a coarsened report can still re-identify its owner — that question is open in
+[IDEAS.md](IDEAS.md). The output says so itself rather than leaving you to
+infer it. `doctor` is deliberately not covered: it prints exact counts by
+design and is not a share-safe surface.
+
+### Diffing two runs
+
+```bash
+corpuslens run ./corpus --adapter claude-code --format json > june.json
+corpuslens run ./corpus --adapter claude-code --format json > sept.json
+corpuslens diff june.json sept.json
+```
+
+A single reading has only a stranger's N=1 to sit against. The interesting form
+is the trend, and `diff` reports the delta for every shared headline number,
+carrying both runs' audit sentences with it.
+
+It is built to refuse more readily than it reports, because a diff's failure
+mode is presenting a change in the software as a change in you:
+
+- **Different adapters, or different `schema_version`** — refused outright. A
+  claude-code run and a cursor run are two instruments over two kinds of corpus.
+- **Either side filtered** with `--since-day`/`--until-day` — diffed, under a
+  loud banner saying these are subset numbers.
+- **A shared analyzer's `version` differs** — that analyzer alone is withheld,
+  and the rest still diff. Which direction the definition change moved the
+  number is not derivable from the two documents; the note says so and points
+  at the changelog.
+- **Either side predates per-analyzer versions** — withheld, with a note saying
+  the run is older than the versioning rather than pretending a classifier
+  changed. Two such runs warn instead of comparing silently, because a clean
+  diff that checked nothing is the most misleading answer available.
+
+Every analyzer now records a `version` alongside its number, and a test pins
+each classifier's pattern to a hash, so editing a regex without bumping its
+version fails the suite rather than quietly moving every rate downstream.
 
 ### JSON output, and analyzing a slice
 
@@ -228,8 +365,12 @@ The battery (v0): `steering_density`, `thread_shape`, `composition_mix`,
 dropped-event counts reported (never hidden), and reference points from one
 measured N=1 operator corpus plus WildChat/OASST population aggregates.
 
-`tempo` reports the gaps between your own prompts within a thread and within a
-day, with the share of turns it has **no** gap for stated outright — a turn that
+`tempo` reports how long passes before each of your prompts, within a thread and
+within a day — measured from **whatever the thread recorded last**, which is
+usually the machine's reply rather than your own previous turn. Those differ by
+however long the machine took, so this is a rhythm-of-the-session number, not a
+how-fast-you-type one. It states the share of turns it has **no** gap for
+outright — a turn that
 opens a thread, follows a censored midnight crossing, or comes from a store that
 doesn't clock prompts is counted as uncovered, never imputed. It deliberately
 publishes no *cumulative* within-day span: the loose local-clock bound disclosed
@@ -258,7 +399,36 @@ isolation, BOM, out-of-range dates, timezone reproducibility), the CLI surface
 `doctor`'s counts-not-content output, the listings), and a regression test for
 every fixed review finding.
 
+## Which of the ten questions this actually answers
+
+[GRADING.md](GRADING.md) poses ten questions. The report now names, per section,
+which one that section answers and **how fully** — and leads with the true
+shape rather than the flattering one: the battery fully answers two of the ten,
+partly answers two more, and two of its six analyzers answer none of the
+numbered questions at all and are reported as supporting signal.
+
+That last part was worth saying out loud. `tempo` measures inter-turn gaps that
+no question asks for. `clarification_pull` measures the machine asking and you
+answering, which is the *reverse* of question 3's "do your prompts open a
+discussion channel". Forcing either onto a number would have been a small
+overclaim, so neither is forced.
+
+Questions 5 through 8 (whether a stored claim can be demoted, when a negative
+result was last recorded, whether an agent can grant itself anything, whether
+checks fail closed) and 9 through 10 (whether your timestamps are a fingerprint,
+who carries continuity across a session gap) are **not corpus-measurable**.
+GRADING.md gives each its own manual test. The report says so rather than
+letting the rubric read as a promise the tool kept.
+
 ## Honesty about the numbers
+
+**The reference is one person.** Every analyzer compares you to
+`measured_director` — the author's own corpus, N=1. The report now says that
+where the comparison appears, because a percentage printed beside a reference
+reads as a population. The WildChat and OASST figures beside it *are*
+populations and stay labelled as such. A gap from the N=1 is a gap from one
+person, and until you run `corpuslens label` and `corpuslens score` nobody can
+say how much of it is you and how much is the regex.
 
 The classifiers are regex heuristics: trust direction plus your own
 spot-check, never raw percentages. The reference N=1 was verified by
@@ -300,19 +470,34 @@ the drops still counted, the wall still holds. It changes what the numbers
 *mean* — and a tool that describes itself as a lens for studying yourself should
 say out loud that looking is not a neutral act.
 
-## Status: spine (0.1.0, on PyPI)
+## Status: spine (0.2.0, on PyPI)
 
-Built: event model, the wall, five adapters (claude-code, cursor, cursor-store,
-sqlite, postgres), injection filter, six analyzers, markdown + JSON renderers,
-CLI (`run`, `doctor`, `adapters`, `analyzers`), test suite (wall + pipeline +
-db-adapter + CLI-surface + render + regression tests for every review finding).
+Built: event model, the wall, six adapters (claude-code, cursor, cursor-store,
+gemini-cli, sqlite, postgres), injection filter, six analyzers with per-analyzer
+semantic versions, markdown + JSON + share renderers, the `timing_fingerprint`
+computation, CLI (`run` — with zero-argument discovery — `doctor`, `adapters`,
+`analyzers`, `label`, `score`, `diff`), test suite (wall + pipeline + db-adapter + CLI-surface + render +
+share + label + diff + fingerprint + a regression test for every review and
+dogfooding finding).
 
-**0.1.0 is a spine, and the version number says so.** The wall, the adapters and
-the analyzers are tested and the report is honest about its own denominators —
-but the classifiers are heuristics, the reference numbers are one verified N=1,
-and the list below is real. This is not a 1.x compatibility promise, and the one
-time the release pipeline accidentally published it as one, it was withdrawn
+**0.2.0 is still a spine, and the version number still says so.** The wall, the
+adapters and the analyzers are tested and the report is honest about its own
+denominators — but the classifiers are heuristics whose error nobody has
+measured yet (`label` is how you measure it; nobody has run it on a large
+corpus), the reference numbers are one verified N=1, and the list below is
+real. This is not a 1.x compatibility promise, and the one time the release
+pipeline accidentally published it as one, it was withdrawn
 ([BUGS.md](BUGS.md)).
+
+**What 0.2.0 added, and what it cost.** Seven features landed at once, each
+built in isolation and then audited against these rules before merging. The
+audit found five defects the builders had not reported — among them a share
+mode that banded every denominator and published the exact corpus size anyway,
+and a fingerprint that read a strong schedule out of uniformly random
+timestamps. Running the tool on its own session log then found four more doors
+through which machine-authored text was reaching the operator's count. All nine
+are written up in [BUGS.md](BUGS.md) rather than quietly fixed, because a
+project whose value is not overclaiming does not get to hide the times it did.
 
 Named and deliberately unbuilt — the long version, with reasoning, is
 [IDEAS.md](IDEAS.md):
@@ -326,14 +511,21 @@ Named and deliberately unbuilt — the long version, with reasoning, is
 - `turns_to_completion` is on the claim allowlist and has **no analyzer**: these
   corpora record an abandoned thread and a finished one identically, so a
   "turns to completion" number would be a guess wearing a denominator.
-- `leakage_demonstration` is on the claim allowlist and has **no analyzer**
-  either: the one analyzer that would *request* a capability — a fingerprint
-  check on any timestamped export the owner holds, reporting only whether its
-  timing shape re-identifies, never the schedule — is designed in IDEAS.md and
-  waits on a decision about how a non-default profile may be constructed.
-- A local labelling mode, a share-safe report, and a corpus-type refusal are
-  the next things in IDEAS.md's near list; none exists yet, and the report says
-  "trust direction plus your own spot-check" until the first one does.
+- `leakage_demonstration` is on the claim allowlist and still has **no
+  registered analyzer**. The computation behind it ships as
+  `corpuslens.analyze.fingerprint.timing_fingerprint()`, which takes timestamps
+  you pass it and reports how re-identifying their shape is — never the
+  schedule, never a weekday, never an hour, and never a safe/unsafe verdict,
+  because no defensible cutoff exists. There is deliberately **no
+  `corpuslens fingerprint` command**: it would need a non-default profile, and
+  whether a subcommand may construct one is exactly the question `cli.py`'s
+  no-capability-flag claim leaves open. Designed in IDEAS.md, unresolved on
+  purpose.
+- The Guard is **not** extracted as a library. The design for doing it is
+  [DESIGN-guard-extraction.md](DESIGN-guard-extraction.md), which argues for
+  waiting until two independently motivated callers want the same primitive —
+  and records that share mode, the first of them, turned out to need almost
+  nothing from the Guard at all.
 - The cursor adapter keeps only turns carrying the runtime's injected
   timestamp tag — conservative, undercounts, and **every dropped turn is
   counted in the audit line** (not silently discarded). On a real corpus it
@@ -345,7 +537,17 @@ Named and deliberately unbuilt — the long version, with reasoning, is
 The classifiers are regex heuristics with known false-positive/negative modes
 (a mixed personal + coding corpus is where they are weakest); the reference
 numbers are one verified N=1, not a population you belong to. Grade direction,
-spot-check before you cite.
+spot-check before you cite — or run `corpuslens label` and replace that advice
+with your own measured precision and recall.
+
+They are also **English-and-Python shaped**, which is a narrower limit than
+"heuristic" suggests: the code-reference regex knows nine file extensions, the
+authored-code regex knows a handful of languages' block syntax, and the
+deliberation and clarification regexes are lists of English phrases. A coding
+corpus in an unlisted language, or a conversation in another language, scores
+identically to one with no code and no deliberation in it. Past a threshold the
+analyzers now **refuse** rather than report that zero, naming both readings and
+choosing neither.
 
 Lineage: consolidates the ad-hoc instruments of the willow personal-research
 sessions (2026-07) into the architecture planned there; the inference wall is

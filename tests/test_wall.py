@@ -7,7 +7,7 @@ absolute anchor, plus a test that DOCUMENTS weekly cadence is reconstructable
 """
 import unittest
 
-from corpuslens.guard import DEFAULT_PROFILE, Guard, Profile, WallError
+from corpuslens.guard import DEFAULT_PROFILE, AuditRecord, Guard, Profile, WallError
 from corpuslens.model import CoarseTime, Event, Quarantine
 from corpuslens.analyze import Analyzer
 
@@ -88,6 +88,55 @@ class AuditSentenceTests(unittest.TestCase):
         s = g.audit.sentence()
         self.assertNotIn("No absolute calendar date, timezone, or filename left the wall", s)
         self.assertIn("released under owner grant", s)
+
+
+class DiscoveredPathStructuralGuardTests(unittest.TestCase):
+    """Highest-class finding, fixed on the zero-config discovery branch: a
+    resolved `discovered_path` (e.g. '/home/sean-campbell/.claude/projects')
+    put the owner's real username in the same sentence that claims nothing
+    identifying left the wall — `scan_egress` never caught it because it
+    checks for quarantined LITERALS, and this value was never quarantined.
+    `AuditRecord.discovered_path` may hold ONLY `None` or the adapter's
+    declared, unexpanded conventional form (starts with '~') — enforced by
+    `__setattr__`, not by convention, because the leak was a plain attribute
+    assignment AFTER construction, which a constructor-only check would have
+    missed entirely."""
+
+    def test_a_resolved_path_is_refused_at_construction(self):
+        with self.assertRaises(WallError):
+            AuditRecord(profile="default", discovered_path="/home/sean-campbell/.claude/projects")
+
+    def test_a_resolved_path_is_refused_on_later_assignment(self):
+        # this is the ACTUAL shape of the bug that shipped: cli.py sets the
+        # field after the record already exists (`guard.audit.discovered_path
+        # = path`), not through the constructor.
+        a = AuditRecord(profile="default")
+        with self.assertRaises(WallError):
+            a.discovered_path = "/home/sean-campbell/.claude/projects"
+        self.assertIsNone(a.discovered_path)   # the refused assignment did not stick
+
+    def test_a_relative_but_unexpanded_path_is_also_refused(self):
+        # not just absolute paths -- anything that is not the declared,
+        # tilde-prefixed convention is refused, so a future contributor
+        # cannot smuggle a resolved value through by stripping the leading
+        # slash.
+        a = AuditRecord(profile="default")
+        with self.assertRaises(WallError):
+            a.discovered_path = "home/sean-campbell/.claude/projects"
+
+    def test_the_declared_tilde_form_is_accepted(self):
+        a = AuditRecord(profile="default", adapter="claude-code", n_events=3)
+        a.discovered_path = "~/.claude/projects"
+        s = a.sentence()
+        self.assertIn("~/.claude/projects", s)
+        self.assertIn("claude-code", s)
+        self.assertEqual(a.as_dict()["discovered_path"], "~/.claude/projects")
+
+    def test_none_is_always_accepted(self):
+        a = AuditRecord(profile="default")
+        a.discovered_path = "~/.claude/projects"
+        a.discovered_path = None   # clearing it back out must never raise
+        self.assertIsNone(a.discovered_path)
 
 
 class HonestBoundaryTests(unittest.TestCase):

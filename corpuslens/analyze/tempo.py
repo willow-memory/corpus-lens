@@ -43,7 +43,12 @@ def _pct(part: int, whole: int) -> float:
 
 @register("tempo", claims=("tempo",),
           denominator="operator prompt turns (>=12 chars) carrying a within-day tempo delta",
-          version=1, semantic_hash=_TEMPO_HASH, semantic_inputs=_TEMPO_INPUTS)
+          version=1,
+          grading_question=("none of GRADING.md's numbered questions directly — thematically "
+                             "closest to question 1 (arrival) and question 4 (thread rhythm), but "
+                             "neither asks for second/minute-level inter-turn gaps; this is a "
+                             "supporting signal, not one of the ten measurements"),
+          semantic_hash=_TEMPO_HASH, semantic_inputs=_TEMPO_INPUTS)
 def tempo(events):
     """Inter-turn gaps between your own prompts, within a thread and within a day.
 
@@ -71,8 +76,18 @@ def tempo(events):
     median = round(statistics.median(deltas), 1)
     cov = _pct(n, eligible)
     return {
-        "headline": (f"Your prompts arrive a median {median}s apart within a thread "
-                     f"(measurable on {cov}% of eligible turns; the rest have no gap to measure)."),
+        # SAY WHAT IS MEASURED. This sentence used to read "your prompts arrive
+        # a median Ns apart", which claimed something narrower than the number:
+        # `delta_prev_s` is the gap since the PREVIOUS EVENT in the thread —
+        # usually the machine's own reply — not since the operator's previous
+        # prompt. The two differ by however long the machine took. Filed as a
+        # claim/code mismatch in BUGS.md and fixed here in the honest direction:
+        # the wording now matches the computation, and no number moved, so no
+        # analyzer version bump. Measuring prompt-to-prompt instead remains a
+        # real option, and it WOULD move every number and need the bump.
+        "headline": (f"A median {median}s passes before each of your prompts — measured from "
+                     f"whatever the thread recorded last, usually the machine's reply, not from "
+                     f"your previous prompt (measurable on {cov}% of eligible turns)."),
         "n": n,
         "n_deltas": n,
         "eligible_turns": eligible,
@@ -95,7 +110,12 @@ def tempo(events):
 
 @register("thread_span", claims=("thread_shape",),
           denominator="threads with >=1 event (relative days only)",
-          version=1, semantic_hash=_THREAD_SPAN_HASH, semantic_inputs=_THREAD_SPAN_INPUTS)
+          version=1,
+          grading_question=("part of question 4 — span and density are the complement to "
+                             "thread_shape's resumption gaps, but GRADING.md's question 4 also "
+                             "asks for per-day/month activity counts and whether a return was "
+                             "productive, neither of which this reports"),
+          semantic_hash=_THREAD_SPAN_HASH, semantic_inputs=_THREAD_SPAN_INPUTS)
 def thread_span(events):
     """How long a thread stays open, and how densely it is worked.
 

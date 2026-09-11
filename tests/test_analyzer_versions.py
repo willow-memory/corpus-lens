@@ -17,7 +17,7 @@ from corpuslens.analyze import all_analyzers, register, semantic_hash
 from corpuslens.analyze import composition as composition_mod
 from corpuslens.analyze import steering as steering_mod
 from corpuslens.analyze import tempo as tempo_mod
-from corpuslens.ingest.claude_code import AUTHORED, CLARIFY, CODE_REF, DELIB
+from corpuslens.classifiers import AUTHORED, CLARIFY, CODE_REF, DELIB
 
 
 class VersionFieldTests(unittest.TestCase):
@@ -119,3 +119,32 @@ class DiscoveryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LayeringTests(unittest.TestCase):
+    """The analyzer layer must not import an adapter.
+
+    Until 0.2.1 `analyze/composition.py` imported the four classifiers from
+    `ingest/claude_code.py` — one adapter, by name — because that is where they
+    happened to be written first. Three features added in 0.2.0 all needed the
+    classifier set, and all three reached into that same adapter for it. They
+    now live in top-level `corpuslens.classifiers`, owned by neither layer.
+
+    This test is the thing that keeps it that way. It fails if any analyzer
+    imports from `corpuslens.ingest` again, which is the shape the coupling had
+    the first time and the shape it would take the next time.
+    """
+
+    def test_no_analyzer_imports_the_ingest_layer(self):
+        import pathlib
+        analyze_dir = pathlib.Path(__file__).resolve().parent.parent / "corpuslens" / "analyze"
+        offenders = []
+        for f in sorted(analyze_dir.glob("*.py")):
+            for i, line in enumerate(f.read_text().splitlines(), 1):
+                stripped = line.strip()
+                if not (stripped.startswith("import ") or stripped.startswith("from ")):
+                    continue
+                if "ingest" in stripped:
+                    offenders.append(f"{f.name}:{i}: {stripped}")
+        self.assertEqual(offenders, [], "analyzers must not import the ingest layer; "
+                                        "shared things belong in corpuslens/classifiers.py")

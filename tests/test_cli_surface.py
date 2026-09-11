@@ -72,6 +72,7 @@ class JsonRendererTests(CorpusFixture):
         for res in doc["results"].values():
             self.assertIn("denominator", res)   # every result names what it is out of
             self.assertIsInstance(res["analyzer_version"], int)   # semantics version, not schema
+            self.assertTrue(res["grading_question"].strip())      # which GRADING.md question
 
     def test_json_carries_the_audit_sentence(self):
         # the machine-readable form must not be a way to get numbers WITHOUT the
@@ -241,6 +242,13 @@ class ListingTests(unittest.TestCase):
         for r in rows.values():
             self.assertTrue(r["denominator"].strip())   # never a bare count
             self.assertTrue(r["claims"])
+            self.assertTrue(r["grading_question"].strip())   # every analyzer declares one
+
+    def test_analyzers_markdown_names_which_rubric_question_each_answers(self):
+        rc, out, _ = _run(["analyzers"])
+        self.assertEqual(rc, 0)
+        self.assertIn("GRADING.md: question 1", out)
+        self.assertIn("not corpus-measurable", out)   # questions 5-10 named as out of scope
 
     def test_markdown_listings_are_human_readable(self):
         _, ad, _ = _run(["adapters"])

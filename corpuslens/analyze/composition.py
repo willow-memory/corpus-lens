@@ -2,7 +2,7 @@
 (GRADING.md questions 2–3.) Feature-based; content never reaches here.
 
 The code classifiers this module leans on (`CODE_REF`, `AUTHORED` — see
-`ingest/claude_code.py`) are English-and-Python shaped: `CODE_REF` knows nine
+`corpuslens/classifiers.py`) are English-and-Python shaped: `CODE_REF` knows nine
 file extensions and Python's own traceback line, `AUTHORED` knows a handful of
 languages' block syntax (Python/JS/TS/Java/C#/shell/SQL). A corpus in a
 language they don't recognize — a different programming language's block
@@ -16,13 +16,13 @@ from __future__ import annotations
 
 import statistics
 
-from ..ingest.claude_code import AUTHORED, CLARIFY, CODE_REF, DELIB
+from ..classifiers import AUTHORED, CLARIFY, CODE_REF, DELIB
 from ..model import AuthorClass, DataType
 from . import SMALL_N, register, semantic_hash
 
 # What these two analyzers' numbers MEAN depends on the classifier regexes
-# that set `code_authored`/`code_ref`/`delib`/`clarify` at ingest (only the
-# claude-code adapter populates them; see corpuslens/ingest/claude_code.py) and
+# that set `code_authored`/`code_ref`/`delib`/`clarify` at ingest (they live in
+# top-level corpuslens/classifiers.py, shared by every adapter) and
 # on the >=12-char turn filter both apply. Pin the regex TEXT (not the compiled
 # object) plus the thresholds: `tests/test_analyzer_versions.py` recomputes
 # `semantic_hash(*inputs)` from these same live values and fails the moment one
@@ -46,7 +46,13 @@ REFERENCE = {
 
 @register("composition_mix", claims=("composition_mix",),
           denominator="operator prompt turns with >=12 characters (de-injected)",
-          version=1, semantic_hash=_COMPOSITION_MIX_HASH,
+          version=1,
+          grading_question=("question 2 (authored_code_pct / code_ref_pct, against the domain "
+                             "population — GRADING.md's stated method exactly); and part of "
+                             "question 3 for delib_pct — it reports the discussion-channel share "
+                             "but not whether those prompts pull longer, more structured "
+                             "responses, which question 3 also asks for"),
+          semantic_hash=_COMPOSITION_MIX_HASH,
           semantic_inputs=_COMPOSITION_MIX_INPUTS)
 def composition_mix(events):
     """See the module docstring for why the two code classifiers this
@@ -130,7 +136,13 @@ def composition_mix(events):
 
 @register("clarification_pull", claims=("clarification_pull",),
           denominator="machine response turns (>=12 chars)",
-          version=1, semantic_hash=_CLARIFICATION_PULL_HASH,
+          version=1,
+          grading_question=("none of GRADING.md's numbered questions directly — closest is "
+                             "question 3, but question 3 is about YOUR prompts opening a "
+                             "discussion channel; this measures the machine asking and you "
+                             "answering, the reverse direction, which GRADING.md does not pose "
+                             "as a question"),
+          semantic_hash=_CLARIFICATION_PULL_HASH,
           semantic_inputs=_CLARIFICATION_PULL_INPUTS)
 def clarification_pull(events):
     """See the module docstring: `CLARIFY` is a list of English phrases
