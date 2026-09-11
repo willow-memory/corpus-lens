@@ -43,7 +43,12 @@ def _pct(part: int, whole: int) -> float:
 
 @register("tempo", claims=("tempo",),
           denominator="operator prompt turns (>=12 chars) carrying a within-day tempo delta",
-          version=1, semantic_hash=_TEMPO_HASH, semantic_inputs=_TEMPO_INPUTS)
+          version=1,
+          grading_question=("none of GRADING.md's numbered questions directly — thematically "
+                             "closest to question 1 (arrival) and question 4 (thread rhythm), but "
+                             "neither asks for second/minute-level inter-turn gaps; this is a "
+                             "supporting signal, not one of the ten measurements"),
+          semantic_hash=_TEMPO_HASH, semantic_inputs=_TEMPO_INPUTS)
 def tempo(events):
     """Inter-turn gaps between your own prompts, within a thread and within a day.
 
@@ -95,7 +100,12 @@ def tempo(events):
 
 @register("thread_span", claims=("thread_shape",),
           denominator="threads with >=1 event (relative days only)",
-          version=1, semantic_hash=_THREAD_SPAN_HASH, semantic_inputs=_THREAD_SPAN_INPUTS)
+          version=1,
+          grading_question=("part of question 4 — span and density are the complement to "
+                             "thread_shape's resumption gaps, but GRADING.md's question 4 also "
+                             "asks for per-day/month activity counts and whether a return was "
+                             "productive, neither of which this reports"),
+          semantic_hash=_THREAD_SPAN_HASH, semantic_inputs=_THREAD_SPAN_INPUTS)
 def thread_span(events):
     """How long a thread stays open, and how densely it is worked.
 

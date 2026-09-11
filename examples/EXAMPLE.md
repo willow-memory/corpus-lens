@@ -22,6 +22,16 @@ corpuslens run examples/sample-corpus --adapter claude-code
 > relative day and within-day tempo did — these preserve weekly cadence, and on
 > a day a single thread spans for many hours they loosely bound the local
 > time-of-day (never the timezone or the date).
+
+> This report's battery answers GRADING.md's first four questions — where your
+> intent arrives, who writes the code, whether you deliberate on purpose, and
+> your threads' shape — each section below says which one it answers and how
+> fully. Questions 5-8 (can a stored claim be demoted; when a negative result
+> was last recorded; whether an agent can grant itself anything; whether checks
+> fail closed) and questions 9-10 (whether your timestamps are a fingerprint;
+> who carries the continuity across a session gap) are not corpus-measurable
+> from session logs at all — GRADING.md gives each of those its own manual
+> test, not a number this tool computes.
 ```
 
 Then the findings, which is what the report leads with:
@@ -56,6 +66,9 @@ property, demonstrated.
 
 ### steering_density — where does your intent arrive?
 
+*GRADING.md: question 1 — this is the analyzer's own declared mapping,
+rendered in the report right under the headline.*
+
 ```json
 {
   "sessions": 3,
@@ -72,8 +85,17 @@ prompt — this is a directing pattern, not a one-shot-spec pattern. The referen
 poles: a measured power-user director sits at 96.8% mid-task; SWE-bench / τ-bench
 permit 0% by construction (one upfront spec, no mid-task turns). A higher number
 means more of your intent lands while the machine is already working.
+`measured_director` is **one person's own corpus (N=1)**, not a population — the
+report says so beside that row, and adds that until `corpuslens label` +
+`corpuslens score` measure the classifiers' own error on this corpus, nobody
+knows how much of a gap from it is you and how much is the regex.
 
 ### thread_shape — how do you drop and resume work?
+
+*GRADING.md: part of question 4 — this analyzer counts resumption gaps and
+same-day concurrency, but question 4 also asks for a >=30-day bucket, monthly
+counts, and whether a return was productive; none of those are computed, so
+the declaration says "part of", not "question 4".*
 
 ```json
 { "threads": 3, "resumptions_2to6d": 1, "concurrency_peak": 2 }
@@ -87,6 +109,11 @@ content, which once inflated a count 10×. The dates are relative offsets, so th
 weekly rhythm survives but the calendar does not.
 
 ### composition_mix — who writes the code, and do you deliberate?
+
+*GRADING.md: question 2 for authored/code-ref (this is exactly GRADING.md's
+stated method — a domain-population comparison); part of question 3 for
+`delib_pct`, which reports the discussion-channel share but not whether those
+prompts pull longer responses, the other half of what question 3 asks.*
 
 ```
 Against the reference: authored 0.0% vs 14.5% (below), code-ref 0.0% vs 36.0%
@@ -116,8 +143,19 @@ above the coding population's 3.2% — because one session opened with "lets tal
 about options … the tradeoffs" before any building. That is the teaching channel,
 summoned on purpose. (These are regex heuristics — grade the direction against
 the reference, spot-check before you cite a number.)
+`wildchat_coding_population` (and `wildchat_all`, `oasst_general_chat`) are
+named population aggregates and stay that way in the report; only
+`measured_director_n1` gets the "author's own corpus (N=1)" label and the
+one-person-gap sentence — the two kinds of reference point are never merged.
 
 ### clarification_pull — does the machine ask, and do you answer?
+
+*GRADING.md: none of the numbered questions directly. Question 3 is the
+closest in theme, but it asks about YOUR prompts opening a discussion channel
+— this measures the machine asking and you answering, the reverse direction,
+which GRADING.md does not pose as a question. Naming that plainly, rather than
+filing this under "question 3" because the module is about deliberation, is
+the check IDEAS.md asks for.*
 
 ```json
 { "assistant_turns": 10, "clarification_forks_pct": 10.0,
@@ -129,8 +167,16 @@ it?") and the operator answered it — that is the one clarification fork. On a
 CLI corpus this is the steering seam; on a Cursor corpus it is near-absent (and
 the analyzer can't compute it there — Cursor logs carry no assistant turns, which
 the reference note says plainly rather than printing a number it didn't measure).
+Both `measured_cli` and `measured_cursor_note` are the same one person's data,
+split by tool — the report labels both rows N=1, not a population.
 
 ### tempo — how fast do your turns arrive?
+
+*GRADING.md: none of the numbered questions directly — thematically closest
+to question 1 (arrival) and question 4 (thread rhythm), but neither asks for
+second/minute-level inter-turn gaps. A supporting signal, not one of the ten
+measurements, and the report says so rather than borrowing a question number
+for it.*
 
 ```json
 { "n_deltas": 6, "eligible_turns": 10, "delta_coverage_pct": 60.0,
@@ -154,6 +200,11 @@ discloses that a long span loosely bounds the local clock hour; percentiles over
 individual gaps do not sharpen that bound, and no analyzer may.
 
 ### thread_span — how long does a thread stay open?
+
+*GRADING.md: part of question 4 — span and density are the complement to
+thread_shape's resumption gaps, but question 4 also asks for per-day/month
+activity counts and whether a return was productive; neither is reported
+here either.*
 
 ```json
 { "threads": 3, "single_day_threads_pct": 66.7, "median_span_days": 1,
@@ -184,3 +235,9 @@ offsets, so they carry weekly cadence and no calendar date.
 - **Reference, not verdict.** The tool sits your numbers beside a measured N=1
   and public population aggregates. It does not grade you; it gives you something
   to grade *against*.
+- **Whose corpus, and which question.** `measured_director`/`measured_director_n1`/
+  `measured_cli` are one person's own corpus, labelled N=1 beside every row so a
+  gap from them never reads as a gap from a population — the named WildChat/OASST
+  rows stay visibly distinct. And each section names which of GRADING.md's ten
+  questions it answers, in full or "part of"; the report also says once, up
+  front, that questions 5-8 and 9-10 are not corpus-measurable at all.

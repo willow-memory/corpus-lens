@@ -158,6 +158,7 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
         if not guard.admit(a):
             continue
         results[a.name] = {"denominator": a.denominator, "analyzer_version": a.version,
+                          "grading_question": a.grading_question,
                           **a.run(events)}
         guard.audit.analyzers_run.append(a.name)
     audit = guard.audit
@@ -302,7 +303,7 @@ def adapters(fmt: str = "markdown") -> int:
 
 def analyzers(fmt: str = "markdown") -> int:
     rows = [{"analyzer": a.name, "claims": list(a.claims), "denominator": a.denominator,
-            "version": a.version}
+            "version": a.version, "grading_question": a.grading_question}
             for a in all_analyzers()]
     if fmt == "json":
         print(json.dumps(rows, indent=2))
@@ -312,12 +313,15 @@ def analyzers(fmt: str = "markdown") -> int:
         for r in rows:
             print(f"- **{r['analyzer']}** (v{r['version']}) — claims {', '.join(r['claims'])}; "
                   f"out of {r['denominator']}")
+            print(f"  - GRADING.md: {r['grading_question']}")
         print()
         print("*Every rate names its denominator, and every claim type is on the process-only "
               "allowlist in `model.py` — a person-shaped claim has no representation here. The "
               "version is the analyzer's SEMANTICS (classifiers/thresholds), not the JSON document "
               "shape — see `corpuslens.analyze.Analyzer` — and `corpuslens diff` withholds the "
-              "delta for any analyzer whose version disagrees between the two runs.*")
+              "delta for any analyzer whose version disagrees between the two runs. GRADING.md "
+              "questions 5-8 (honesty machinery) and 9-10 (fingerprinting, continuity) are not "
+              "corpus-measurable and have no analyzer here at all — see GRADING.md itself.*")
     return 0
 
 
