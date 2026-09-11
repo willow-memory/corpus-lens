@@ -205,6 +205,25 @@ def _is_subagent(rel_posix: str) -> bool:
     return any(part in SUBAGENT_DIRS for part in rel_posix.split("/")[:-1])
 
 
+#: The runtime marks dispatched traffic on the RECORD, not just by where the
+#: file sits: every `user`/`assistant` record carries `isSidechain`. Observed
+#: 2026-09-11 on this project's own session log — 459 records in the operator's
+#: own thread, every one `False`; 1,634 records across seven subagent
+#: transcripts, every one `True`. Perfect separation, and a first-class field
+#: rather than a naming convention.
+#:
+#: The directory skip above stays as the outer guard (it avoids reading those
+#: files at all). This is the inner one, and it is the more robust of the two:
+#: a path check only works while the runtime keeps writing sidechains to a
+#: directory with that exact name, whereas the field travels with the record.
+#: The `gemini-cli` adapter reached the same conclusion from the other
+#: direction — that runtime nests subagent logs under the PARENT SESSION'S id,
+#: where a path filter finds nothing, so it keys on the record's own `kind`.
+#: Two runtimes, one lesson: read the producer's own marking, not the layout.
+def _is_sidechain_record(o: dict) -> bool:
+    return o.get("isSidechain") is True
+
+
 @dataclass(frozen=True)
 class LabelCorpus:
     """The fixed return shape of `label_text` below — see its docstring for
@@ -240,6 +259,11 @@ def _ingest_impl(path: str, corpus_id: str, want_text: bool):
                 dropped += 1
                 continue
             if o.get("type") not in ("user", "assistant"):
+                dropped += 1
+                continue
+            if _is_sidechain_record(o):
+                # dispatched traffic that landed outside a `subagents/` path —
+                # the model prompting its own agent is not the owner. Counted.
                 dropped += 1
                 continue
             d, epoch = _parse_ts(o.get("timestamp"))

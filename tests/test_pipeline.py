@@ -20,6 +20,13 @@ def _cc_line(role, text, ts):
                        "message": {"content": [{"type": "text", "text": text}]}})
 
 
+def _cc_line_with(role, text, ts, **extra):
+    """A _cc_line record carrying extra top-level fields (e.g. isSidechain)."""
+    o = json.loads(_cc_line(role, text, ts))
+    o.update(extra)
+    return json.dumps(o)
+
+
 def _write(path, lines, bom=False):
     data = "\n".join(lines) + "\n"
     with open(path, "w", encoding="utf-8-sig" if bom else "utf-8") as f:
@@ -442,6 +449,60 @@ class DogfoodRegressions(unittest.TestCase):
         # turn. Pinned here because it is the documented behaviour, and because
         # BUGS.md now records the claim it sits awkwardly with.
         self.assertEqual([e.time.delta_prev_s for e in ops][1], 539.0)
+
+    # ── finding 4: dispatched traffic is marked on the record, not the path ──
+    def test_sidechain_records_are_skipped_wherever_they_live(self):
+        """The runtime marks dispatched traffic with `isSidechain` on every
+        record. Observed 2026-09-11 across this project's own logs: 459 records
+        in the operator's thread, all False; 1,634 across seven subagent
+        transcripts, all True. The directory skip is the outer guard; this is
+        the inner one, and it holds when the layout does not."""
+        _write(self.d / "s.jsonl", [
+            _cc_line("user", "walk me through what the parser does here",
+                     "2026-02-01T10:00:00Z"),
+            # same file, no `subagents/` anywhere in the path
+            _cc_line_with("user", "Research the four runtimes and report back. " * 20,
+                          "2026-02-01T10:01:00Z", isSidechain=True),
+            _cc_line_with("assistant", "here is what I found", "2026-02-01T10:02:00Z",
+                          isSidechain=True),
+            _cc_line("user", "good, open a pull request", "2026-02-01T10:03:00Z"),
+        ])
+        events, _, dropped = ingest.get("claude-code")(str(self.d))
+        ops = [e for e in events if e.author_class == "operator"]
+        self.assertEqual(len(ops), 2)          # the person's two, not the agent's
+        self.assertEqual(dropped, 2)           # counted, never hidden
+        self.assertTrue(all(e.features["word_count"] < 20 for e in ops))
+
+    def test_a_false_sidechain_flag_is_still_the_operator(self):
+        # the skip keys on True specifically — an explicit False, or a runtime
+        # version that omits the field, leaves the operator's turn alone.
+        _write(self.d / "s.jsonl", [
+            _cc_line_with("user", "what does this return on an empty file?",
+                          "2026-02-01T10:00:00Z", isSidechain=False),
+        ])
+        events, _, _ = ingest.get("claude-code")(str(self.d))
+        self.assertEqual(len(events), 1)
+
+    # ── finding 5: a peer agent's relay is not the owner typing ──
+    def test_cross_session_message_is_not_an_operator_prompt(self):
+        """A message relayed from another agent session arrives in the user
+        role. It is one agent's output delivered to another, and `owner ==
+        subject` is the scope rule. Observed 2026-09-11: one such turn ran 505
+        words against a human median of 6, pulling the mean from 8.9 to 70.9."""
+        relay = ("Another Claude session sent a message:\n"
+                 "<cross-session-message from=\"bridge:session_01\" from-name=\"peer\" "
+                 "from-mode=\"prompting\">\n" + "schema findings relayed at request. " * 60 +
+                 "\n</cross-session-message>\nThis came from another Claude session.")
+        _write(self.d / "s.jsonl", [
+            _cc_line("user", "test it against this session", "2026-02-01T10:00:00Z"),
+            _cc_line("user", relay, "2026-02-01T10:01:00Z"),
+            _cc_line("user", "fix what that turned up", "2026-02-01T10:05:00Z"),
+        ])
+        events, _, dropped = ingest.get("claude-code")(str(self.d))
+        ops = [e for e in events if e.author_class == "operator"]
+        self.assertEqual(len(ops), 2)
+        self.assertEqual(dropped, 1)
+        self.assertTrue(max(e.features["word_count"] for e in ops) < 10)
 
     # ── finding 2: a finished background task arrives in the user role ──
     def test_task_notification_is_stripped_not_counted_as_a_prompt(self):

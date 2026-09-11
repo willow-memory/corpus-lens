@@ -59,6 +59,15 @@ _INJECTED_TAGS = (
     # code-reference rate for a human whose real rate was 0.0%.
     "local-command-caveat", "local-command-stdout",
     "command-name", "command-message", "command-args",
+    # A message relayed from ANOTHER agent session, observed 2026-09-11 in this
+    # project's own log. It arrives in the user role wrapped in
+    # `<cross-session-message from=… from-name=… from-mode=…>`, followed by
+    # harness guidance on how to treat it. None of it is the owner typing: it is
+    # one agent's output delivered to another, and `owner == subject` is this
+    # tool's scope rule. On that corpus a single such turn ran 505 words against
+    # a human whose median was 6, pulling the operator's mean word count from
+    # 8.9 to 70.9 — the front-loading shape again, from a fourth door.
+    "cross-session-message",
 )
 
 #: An injected block may carry attributes — `<mcp_instructions description="…">`
@@ -83,6 +92,9 @@ MACHINE_TURN = re.compile(
     # and it lands about a second after the turn it follows — a
     # burst-shaped delta nobody typed.
     r"|Stop hook feedback:"
+    # The relay preamble the harness writes above a cross-session message.
+    # Anchored, so a person writing the phrase mid-sentence is untouched.
+    r"|Another Claude session sent a message:"
     r").*",
     re.DOTALL | re.IGNORECASE,
 )

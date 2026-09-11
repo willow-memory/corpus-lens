@@ -121,6 +121,46 @@ person at all.
 Fixed by skipping any file under a `subagents/` directory component, counting
 every skipped record as a drop. `tests/test_pipeline.py::DogfoodRegressions`.
 
+### Dispatched traffic was skipped by directory name, not by its own marking
+
+The `claude-code` adapter skipped subagent transcripts by looking for a
+`subagents/` component in the path. That works for the layout it was written
+against and nothing more.
+
+The runtime marks the traffic on the **record**: every `user`/`assistant`
+record carries `isSidechain`. Measured 2026-09-11 across this project's own
+logs — 459 records in the operator's own thread, every one `False`; 1,634
+records across seven subagent transcripts, every one `True`. Perfect
+separation, from a first-class field rather than a naming convention.
+
+The path check stays as the outer guard, because not reading those files at
+all is cheaper. The field check is the inner one and is the more robust half:
+a sidechain written anywhere else, or a runtime that renames the directory,
+slips straight past a path filter.
+
+The `gemini-cli` adapter reached the same conclusion from the opposite
+direction — that runtime nests subagent logs under the *parent session's* id,
+where a path filter finds nothing at all, so it keys on the record's own
+`kind`. Two runtimes, one lesson: read the producer's marking, not the layout.
+
+`tests/test_pipeline.py::DogfoodRegressions`.
+
+### A peer agent's relayed message was counted as the operator typing
+
+A message relayed from another agent session arrives in the **user** role,
+wrapped in `<cross-session-message from=… from-name=… from-mode=…>` under a
+plain-prose preamble. It is one agent's output handed to another, and
+`owner == subject` is this tool's scope rule.
+
+Observed 2026-09-11 in this project's own log: one such turn ran **505 words**
+against a human whose median was **6**, pulling the operator's mean word count
+from **8.9 to 70.9**. The fourth distinct door through which machine-authored
+text has reached the user role in this corpus, after `subagents/`,
+`<task-notification>`, and the local-slash-command replay below.
+
+Fixed by enumerating the wrapper and anchoring the preamble in `MACHINE_TURN`.
+Same regression test class.
+
 ### A local slash command was counted as three operator prompts
 
 Found 2026-09-11, the third time running corpuslens on its own session log has
