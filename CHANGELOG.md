@@ -12,9 +12,8 @@ hand-written history below them predates the release pipeline.
 
 ### Added
 
-* consent for a corpus that is not your own, and a forge adapter ([4163f4c](https://github.com/willow-memory/corpus-lens/commit/4163f4c009c06b4579a5252b3d32cec4b6d71c0e))
-* **consent:** a corpus that is not your own, behind the fleet's consent core ([88251b5](https://github.com/willow-memory/corpus-lens/commit/88251b5bbc7861917fb67152f1ef6f9e2fd96a4f))
 * **ingest:** a forge adapter over the Forge's checkpoint ledger ([e56f502](https://github.com/willow-memory/corpus-lens/commit/e56f502353aeb7b4da7b096d3cccec583f90240b))
+* **consent:** a corpus that is not your own, behind the fleet's consent core ([88251b5](https://github.com/willow-memory/corpus-lens/commit/88251b5bbc7861917fb67152f1ef6f9e2fd96a4f))
 
 ## [0.4.0](https://github.com/willow-memory/corpus-lens/compare/v0.3.0...v0.4.0) (2026-09-11)
 
