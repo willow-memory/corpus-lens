@@ -61,7 +61,25 @@ path, and one that documents that weekly cadence *is* reconstructable.
 
 ## Install
 
-Python 3.10+, no dependencies. Not on PyPI yet — install from source:
+Python 3.10+, no dependencies.
+
+Not on PyPI yet, but the pipeline is wired: a merge to `main` opens a
+release-please pull request, merging that cuts the tag, and the tag publishes to
+PyPI through Trusted Publishing (no token in the repo).
+
+The distribution is **`willow-corpus-lens`**; the command it installs is
+**`corpuslens`**. (`corpus-lens` on PyPI is an unrelated project — a TF-IDF
+corpus dashboard — so the fleet prefix disambiguates rather than competes.) Once
+the first release lands:
+
+```bash
+pip install willow-corpus-lens          # then: corpuslens run ...
+pipx install willow-corpus-lens         # or, isolated
+uvx --from willow-corpus-lens corpuslens run ~/.claude/projects --adapter claude-code
+```
+
+Zero dependencies is what makes those reliable. Until the first release, from
+source:
 
 ```bash
 git clone https://github.com/willow-memory/corpus-lens
@@ -86,6 +104,26 @@ python3 -m corpuslens run ~/.claude/projects --adapter claude-code
 
 Point `--adapter claude-code` at a directory of Claude Code session `.jsonl`
 files, or `--adapter cursor` at a directory of Cursor session `.jsonl` files.
+
+**Two things the claude-code adapter deliberately does not count as you**, both
+found by running this tool on its own session log:
+
+- **`subagents/` transcripts are skipped.** An agent the assistant dispatched
+  writes a transcript of the same shape, with the same `"type": "user"` records
+  — but that "user" is the model prompting its own subagent. Including three of
+  them moved `opener_median_words` from **11 to 516** and turned one thread into
+  four. Skipped records are counted as drops, never hidden.
+- **`<task-notification>` blocks are stripped.** A finished background task
+  delivers its whole result in the user role: three such turns ran 1728, 902 and
+  1246 words against a human whose median was 28. Left in, they also inflated
+  the measured `burst_pct` — an automated notification arrives seconds after the
+  work finishes, which is not a person typing fast.
+
+Both are the Cursor front-loading finding again, in a different runtime. If your
+corpus has machine-authored turns this filter does not know, the symptom is the
+same: an opener median in the hundreds or thousands of words. `corpuslens doctor`
+will show you the drop share; a look at `opener_median_words` will show you the
+rest.
 `--adapter cursor-store` reads the chat store Cursor keeps for itself — a tree
 of `store.db` SQLite files under `~/.cursor/chats`, one per thread. See
 [Cursor's store.db](#cursor-storedb) for what that corpus can and cannot tell
@@ -271,6 +309,6 @@ the `learner-model-ground-rules` made mechanical.
   disclosed limit, by design), and how to report privately.
 - [CHANGELOG.md](CHANGELOG.md) — dated, in-the-open amendments.
 
-CI runs the suite on Python 3.10–3.13 plus a packaging smoke test on every push.
+CI runs the suite on Python 3.10–3.14 plus a packaging smoke test on every push.
 
 Apache-2.0 · ΔΣ = 42

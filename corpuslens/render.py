@@ -18,16 +18,77 @@ CAVEAT = ("Numbers are heuristics plus your own eyes: spot-check before you cite
           "Reference points are one measured N=1 plus public population aggregates.")
 
 
+# A sample this small makes a percentage a story about three or four turns.
+# 30 is a CONVENTION, not a power analysis — the report says "read the
+# direction, not the decimal" rather than pretending to a confidence interval
+# the tool does not compute (bootstrap CIs are named-and-unbuilt in the README).
+SMALL_N = 30
+
+# Rendered above the numbers block verbatim, so they are omitted from it rather
+# than printed twice. Only ever strings already shown — no number is dropped.
+_SHOWN = ("headline", "reading", "vs_coding_population", "error")
+
+
+def _section(name: str, res: dict) -> list:
+    out = [f"## {name}", ""]
+    if "error" in res:
+        # An analyzer that could not compute says why, in words. An empty
+        # section would read as a zero, and a zero is a claim.
+        out += [f"**Not computable on this corpus.** {res['error']}", ""]
+        if res.get("denominator"):
+            out += [f"Denominator would be: {res['denominator']}.", ""]
+        return out
+    headline = res.get("headline")
+    if headline:
+        out += [f"**{headline}**", ""]
+    bits = []
+    if res.get("denominator"):
+        bits.append(f"Out of {res['denominator']}")
+    n = res.get("n")
+    if isinstance(n, int):
+        bits.append(f"n = {n}")
+    if bits:
+        out += ["; ".join(bits) + ".", ""]
+    if isinstance(n, int) and 0 < n < SMALL_N:
+        out += [f"*Small sample (n = {n}): read the direction, not the decimal.*", ""]
+    if res.get("vs_coding_population"):
+        out += [f"Against the reference: {res['vs_coding_population']}.", ""]
+    if res.get("reading"):
+        out += [f"> {res['reading']}", ""]
+    numbers = {k: v for k, v in res.items() if k not in _SHOWN}
+    if numbers:
+        out += ["```json", json.dumps(numbers, indent=2, default=str), "```", ""]
+    return out
+
+
 def markdown(results: dict, audit) -> str:
+    """The report as something to read: the audit sentence, then every
+    analyzer's finding in one list, then each with its denominator, its
+    direction guidance and its numbers.
+
+    The findings list is the point. A reader who stops after it has the run;
+    a reader who continues gets the denominator behind every sentence and the
+    full numbers under that. Nothing is summarized away — the prose above a
+    section and the JSON in it come from the same result dict."""
     out = ["# corpuslens report", ""]
     out.append(f"> {audit.sentence()}")
     out.append("")
-    for name, res in results.items():
-        out.append(f"## {name}")
-        out.append("```json")
-        out.append(json.dumps(res, indent=2, default=str))
-        out.append("```")
+    findings = [(name, res.get("headline")) for name, res in results.items()]
+    if findings:
+        # Rendered whenever anything ran — including a run where EVERY analyzer
+        # came back not-computable. That run is a finding about the corpus, and
+        # dropping the list would have made it look like nothing happened.
+        out += ["## What this run found", ""]
+        for name, headline in findings:
+            if headline:
+                out.append(f"- **{name}** — {headline}")
+            else:
+                err = results[name].get("error")
+                out.append(f"- **{name}** — not computable on this corpus."
+                           + (f" {err}" if err else ""))
         out.append("")
+    for name, res in results.items():
+        out += _section(name, res)
     out.append(f"*{CAVEAT}*")
     return "\n".join(out)
 

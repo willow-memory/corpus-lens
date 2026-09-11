@@ -1,0 +1,292 @@
+name: Release Please
+
+# Keeps an open "chore: release X.Y.Z" pull request that accumulates every
+# merge to main — bumping the proposed version from conventional-commit
+# prefixes and appending the CHANGELOG entry. Nothing publishes while it sits
+# there. Merging that PR creates the tag, and the tag push fires `release.yml`.
+#
+# PORTED from forge-play/Forge — the fleet standard. The reasoning below was
+# paid for in that repo's releases, not this one's; it is written down here so a
+# future edit does not re-learn it. Keep the shape identical unless corpus-lens
+# has a reason of its own.
+#
+# That last sentence only works because of `token:` below, and the reason is
+# worth keeping written down — it cost the fleet three releases to learn.
+#
+#   1. GitHub suppresses workflow runs for any event generated with
+#      GITHUB_TOKEN. Not just `push: tags` — `release: published` too. A
+#      workflow waiting on either simply never runs, with no error anywhere.
+#      v0.2.0: tagged, released, absent from PyPI.
+#   2. So this workflow *called* release.yml instead, which does start it. But
+#      on a `workflow_call`, PyPI authenticates against `job_workflow_ref` (the
+#      callee, release.yml) while the PEP 740 attestation certificate records
+#      `workflow_ref` (the caller, this file). PyPI then verifies the
+#      attestation against the publisher that authenticated, so the two claims
+#      disagree by construction and no extra publisher row can reconcile them.
+#      v0.2.1 and v0.3.0: built fine, rejected at upload.
+#   3. A PAT is not a bot token, so the tag it pushes triggers workflows
+#      normally. release.yml runs as an ordinary top-level workflow, caller and
+#      callee are the same file, and both the trusted publisher and the
+#      attestation agree. One publishing implementation, provenance intact, no
+#      duplicated release procedure.
+#
+# SETUP, and none of it is optional — each item fails silently-ish if missed:
+#   1. The willow-ci GitHub App installed on willow-memory, with
+#      `vars.WILLOW_CI_APP_ID` and `secrets.WILLOW_CI_PRIVATE_KEY` reachable
+#      from this repo. Without it the mint step below fails loudly (by design —
+#      it must not degrade to GITHUB_TOKEN, which publishes nothing).
+#   2. Settings -> General -> "Allow auto-merge" enabled.
+#   3. Branch protection on main requiring the aggregate `test` check. With no
+#      required check there is nothing for auto-merge to wait on, and GitHub
+#      declines to arm it at all.
+#   4. A `pypi` environment on the repo, and a PyPI *pending publisher* for
+#      project `willow-corpus-lens` bound to willow-memory/corpus-lens, workflow
+#      `release.yml`, environment `pypi`. See release.yml.
+#
+# The version itself is not stored anywhere — hatch-vcs derives it from the tag
+# (see [tool.hatch.version]). That is why `release-type: simple` is correct
+# here: it maintains the changelog and the tag and edits no version file, so
+# there is no second copy to drift.
+
+on:
+  push:
+    # Both names: the fleet is split between `main` and `master`, and a
+    # single-name filter turns a default-branch rename into a silently dead
+    # push trigger. Same hedge dependabot-automerge.yml already carries.
+    branches: [main, master]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false   # never cancel a run that may be cutting a release
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Mints a short-lived installation token for the willow-ci GitHub App
+      # (org variable WILLOW_CI_APP_ID + org secret WILLOW_CI_PRIVATE_KEY).
+      #
+      # GitHub suppresses workflow runs for events generated with GITHUB_TOKEN,
+      # so a tag cut with it starts no release workflow and nothing reaches
+      # PyPI — everything reads as fine. An App installation token is not
+      # GITHUB_TOKEN, so its tag triggers workflows normally, exactly as the
+      # PAT did. Unlike the PAT it is minted per run and expires in an hour;
+      # the fleet's ENGINE_PROPAGATION_TOKEN once expired and stopped
+      # eleven repos receiving engine changes for three and a half weeks with
+      # no signal.
+      #
+      # This step is also the guard: if the App is not installed or the key is
+      # wrong it fails here and loudly, rather than degrading to GITHUB_TOKEN.
+      - name: Mint a willow-ci installation token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.WILLOW_CI_APP_ID }}
+          private-key: ${{ secrets.WILLOW_CI_PRIVATE_KEY }}
+
+      # Needed by the changelog step below, which derives entries from
+      # `git log <previous tag>..<this release>` rather than trusting the
+      # generated text. `fetch-depth: 0` plus tags is load-bearing — a shallow
+      # clone cannot see either end of that range, and the tool would then
+      # silently compute a different set.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          # The PAT, not the default GITHUB_TOKEN — and this is about the *push*
+          # in the changelog step below, not about reading.
+          #
+          # checkout persists whatever credential it used, and `git push` then
+          # uses it. `env: GH_TOKEN` only reaches the `gh` CLI. With the default,
+          # the commit was pushed as github-actions[bot], so the release PR's CI
+          # run came back `action_required` — created but held awaiting manual
+          # approval — and auto-merge sat waiting on a check that would never
+          # report. Observed on the 2.2.0 release PR, which needed CI started by
+          # hand. release-please's own commit on the same branch was not gated,
+          # because it pushes with this token.
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # Correct the section release-please just wrote, on the release PR, before
+      # auto-merge is armed below — so the changelog is right when the release
+      # ships rather than fixed afterwards.
+      #
+      # This repo merges with merge commits rather than squashing (see `git log`
+      # on main), and GitHub
+      # writes the PR *title* into the merge commit body. release-please parses
+      # that body, so one change reaches it twice. In the fleet this has shipped
+      # both halves of the failure: a release listing one change twice, and
+      # worse, a release where the merge commit DISPLACED the real commit and a
+      # shipped fix went undocumented. corpus-lens gets the guard before being
+      # bitten rather than after — nothing has been duplicated here yet, because
+      # release-please has never cut a section here at all.
+      - name: Rebuild the changelog section from the commits
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          branch=$(gh pr list --repo "$REPO" --state open --json number,headRefName \
+                     --jq '[.[] | select(.headRefName | startswith("release-please--"))]
+                           | first | .headRefName // empty')
+          if [ -z "$branch" ]; then
+            echo "No open release PR — nothing releasable, nothing to correct."
+            exit 0
+          fi
+
+          git fetch --tags origin "$branch"
+          git checkout "$branch"
+
+          # Exit 2 means the tool found something it does not model — a breaking
+          # change, an unreadable range. Warn and carry on rather than fail:
+          # failing here fails the job, so the auto-merge arming below never runs
+          # and the release simply does not ship. willow-mcp shipped that bug and
+          # its first real run broke the release job; the correction is carried
+          # here from the start.
+          set +e
+          python tools/changelog_dedup.py
+          status=$?
+          set -e
+          if [ "$status" = "2" ]; then
+            echo "::warning::changelog_dedup could not rebuild this section — "\
+                 "release-please's version is shipping as-is. Check it by hand."
+            exit 0
+          fi
+          [ "$status" = "0" ] || exit "$status"
+
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "release-please's section already matches the commits."
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore: rebuild the changelog section from the commits
+
+          release-please parsed the merge commits alongside the commits they
+          merge, because this repo does not squash-merge. See
+          tools/changelog_dedup.py."
+          git push origin "$branch"
+
+      # The GitHub Release body is generated by release-please from its OWN
+      # parse, not from CHANGELOG.md — so correcting the file leaves the release
+      # page still wrong. This repo's own v0.5.0 page carried the duplicate entry
+      # after the changelog had been fixed by hand in #29.
+      #
+      # There is no repository setting that avoids the underlying problem. The
+      # merge-commit title/message combinations GitHub accepts are exactly
+      # PR_TITLE+PR_BODY, PR_TITLE+BLANK and MERGE_MESSAGE+PR_TITLE; all three
+      # put the PR title somewhere release-please parses, and release-please has
+      # no option to skip merge commits (its only filter, `exclude-paths`, works
+      # on file paths — useless for a merge commit, whose file set is the union
+      # of what it merges). This step and the one above are the fix.
+      - name: Make the GitHub Release body match the changelog
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # The step above may have left the tree on the release PR branch.
+          # Read the pushed commit, always.
+          git checkout --quiet "$GITHUB_SHA"
+
+          version=$(python -c "import json;print(json.load(open('.release-please-manifest.json'))['.'])")
+          tag="v${version}"
+
+          if ! gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
+            echo "No release $tag yet — nothing to sync (this run did not cut one)."
+            exit 0
+          fi
+
+          want=$(mktemp)
+          if ! python tools/changelog_dedup.py --print-section "$version" > "$want"; then
+            echo "::warning::no changelog section for ${version} — leaving the "\
+                 "release body as release-please wrote it."
+            exit 0
+          fi
+          if [ ! -s "$want" ]; then
+            echo "::warning::empty changelog section for ${version} — leaving the "\
+                 "release body alone rather than blanking it."
+            exit 0
+          fi
+
+          have=$(mktemp)
+          gh release view "$tag" --repo "$REPO" --json body --jq .body > "$have"
+
+          # Compare on content, not trailing whitespace. GitHub returns the body
+          # without a final newline while the extracted section has one, and a
+          # plain `diff` calls that a difference — which would rewrite the
+          # release on every push to main forever.
+          if python - "$want" "$have" <<'PY'
+          import sys
+          a, b = (open(p).read().rstrip() for p in sys.argv[1:3])
+          sys.exit(0 if a == b else 1)
+          PY
+          then
+            echo "Release $tag already matches CHANGELOG.md."
+            exit 0
+          fi
+
+          echo "Release $tag disagrees with CHANGELOG.md — updating it."
+          diff "$have" "$want" || true
+          gh release edit "$tag" --repo "$REPO" --notes-file "$want"
+
+      # Arm auto-merge on the release PR, so a release ships when CI goes green
+      # instead of when someone remembers it is sitting there. Re-armed on every
+      # push to main, which is also the self-heal: release-please rewrites the
+      # PR as commits land, and this puts the arming back either way.
+      #
+      # `RELEASE_PLEASE_TOKEN`, and NOT `GITHUB_TOKEN`. This is point 1 of the
+      # comment block above, one step further along the chain: GitHub attributes
+      # an auto-merge to whoever armed it, so a merge armed with GITHUB_TOKEN
+      # generates no workflow runs. The release PR would merge, this workflow
+      # would not run again, and the tag that publishes to PyPI would never be
+      # created — silently, which is how the first three attempts failed.
+      - name: Arm auto-merge on the release PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          pr=$(gh pr list --repo "$REPO" --state open --json number,headRefName \
+                 --jq '[.[] | select(.headRefName | startswith("release-please--"))]
+                       | first | .number // empty')
+          if [ -z "$pr" ]; then
+            echo "No open release PR — nothing releasable since the last tag."
+            exit 0
+          fi
+
+          echo "Arming auto-merge on release PR #${pr}"
+          if gh pr merge --auto --merge "$pr" --repo "$REPO"; then
+            exit 0
+          fi
+
+          # Do not fall back to merging directly. `--auto` is what makes the
+          # merge wait for CI; merging here instead would publish to PyPI off an
+          # unverified commit, and a PyPI version can never be reused or
+          # replaced. Fail loudly and say what to fix.
+          cat <<'MSG'
+          ::error::Could not arm auto-merge on the release PR.
+
+          Both of these must hold, and GitHub refuses silently-ish otherwise:
+            1. Settings -> General -> "Allow auto-merge" is enabled.
+            2. main's branch protection requires at least one status check
+               (this repo's is the aggregate `test` job). With no required
+               check there is nothing for auto-merge to wait on, so GitHub
+               declines to arm it at all.
+
+          Releases will keep working — the PR is still there to merge by hand.
+          MSG
+          exit 1
