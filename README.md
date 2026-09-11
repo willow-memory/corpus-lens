@@ -263,14 +263,22 @@ spot-check, never raw percentages. The reference N=1 was verified by
 re-derivation from raw and corrected five times in one session — the
 reference table inherits those corrections, not the first drafts.
 
-## Status: spine (v0.1)
+## Status: spine (0.1.0, on PyPI)
 
 Built: event model, the wall, five adapters (claude-code, cursor, cursor-store,
 sqlite, postgres), injection filter, six analyzers, markdown + JSON renderers,
 CLI (`run`, `doctor`, `adapters`, `analyzers`), test suite (wall + pipeline +
-db-adapter + CLI-surface + regression tests for every review finding).
+db-adapter + CLI-surface + render + regression tests for every review finding).
 
-Named and deliberately unbuilt:
+**0.1.0 is a spine, and the version number says so.** The wall, the adapters and
+the analyzers are tested and the report is honest about its own denominators —
+but the classifiers are heuristics, the reference numbers are one verified N=1,
+and the list below is real. This is not a 1.x compatibility promise, and the one
+time the release pipeline accidentally published it as one, it was withdrawn
+([BUGS.md](BUGS.md)).
+
+Named and deliberately unbuilt — the long version, with reasoning, is
+[IDEAS.md](IDEAS.md):
 - `distinctive_tokens` and any content-derived token feature — **absent until
   the feature layer has its own PII scrub** (that feature is where names and
   identities live).
@@ -302,11 +310,20 @@ the `learner-model-ground-rules` made mechanical.
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) — the load-bearing rules (never overclaim;
   the wall discipline for new adapters/analyzers; classifiers undercount, never
-  over) and how to run the tests.
+  over), how to run the tests, and how a release is cut.
 - [SECURITY.md](SECURITY.md) — what counts as a wall breach (and what is a
   disclosed limit, by design), and how to report privately.
+- [BUGS.md](BUGS.md) — what is actually wrong right now, what was wrong and is
+  fixed, and what looks like a bug but is a disclosed limit. That third list is
+  load-bearing: a limit written down on purpose must not get quietly "fixed"
+  into a claim the code cannot support.
+- [IDEAS.md](IDEAS.md) — what is worth building next and why, including the
+  things deliberately refused.
 - [CHANGELOG.md](CHANGELOG.md) — dated, in-the-open amendments.
 
 CI runs the suite on Python 3.10–3.14 plus a packaging smoke test on every push.
+Releases are cut by release-please and published to PyPI on the tag through
+Trusted Publishing; the release workflow installs the built wheel into a clean
+environment and re-checks the audit line before anything is uploaded.
 
 Apache-2.0 · ΔΣ = 42
