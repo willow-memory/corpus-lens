@@ -22,7 +22,7 @@ from unittest import mock
 
 from corpuslens import ingest, label as labelmod
 from corpuslens.cli import main as cli_main
-from corpuslens.ingest.claude_code import CLASSIFIER_SET_VERSION
+from corpuslens.classifiers import CLASSIFIER_SET_VERSION
 from corpuslens.model import AuthorClass, CoarseTime, DataType, Event, Surface
 
 from test_pipeline import _cc_line, _write

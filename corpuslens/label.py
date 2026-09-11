@@ -27,7 +27,7 @@ import json
 import random
 from pathlib import Path
 
-from .ingest.claude_code import CLASSIFIER_SET_VERSION
+from .classifiers import CLASSIFIER_SET_VERSION
 from .model import AuthorClass, DataType
 
 #: Fixed so the SAME corpus with the SAME --sample-size yields the SAME sample

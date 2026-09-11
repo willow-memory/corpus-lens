@@ -54,7 +54,7 @@ from pathlib import Path
 
 from ..model import AuthorClass, CoarseTime, DataType, Event, Quarantine, Surface
 from . import register
-from .claude_code import _features, _hash
+from ..classifiers import _features, _hash
 from .injection import authored_text
 
 #: Plausible ms-epoch window. A varint outside it is not a clock — it is a

@@ -2,7 +2,7 @@
 (GRADING.md questions 2–3.) Feature-based; content never reaches here.
 
 The code classifiers this module leans on (`CODE_REF`, `AUTHORED` — see
-`ingest/claude_code.py`) are English-and-Python shaped: `CODE_REF` knows nine
+`corpuslens/classifiers.py`) are English-and-Python shaped: `CODE_REF` knows nine
 file extensions and Python's own traceback line, `AUTHORED` knows a handful of
 languages' block syntax (Python/JS/TS/Java/C#/shell/SQL). A corpus in a
 language they don't recognize — a different programming language's block
@@ -16,13 +16,13 @@ from __future__ import annotations
 
 import statistics
 
-from ..ingest.claude_code import AUTHORED, CLARIFY, CODE_REF, DELIB
+from ..classifiers import AUTHORED, CLARIFY, CODE_REF, DELIB
 from ..model import AuthorClass, DataType
 from . import SMALL_N, register, semantic_hash
 
 # What these two analyzers' numbers MEAN depends on the classifier regexes
-# that set `code_authored`/`code_ref`/`delib`/`clarify` at ingest (only the
-# claude-code adapter populates them; see corpuslens/ingest/claude_code.py) and
+# that set `code_authored`/`code_ref`/`delib`/`clarify` at ingest (they live in
+# top-level corpuslens/classifiers.py, shared by every adapter) and
 # on the >=12-char turn filter both apply. Pin the regex TEXT (not the compiled
 # object) plus the thresholds: `tests/test_analyzer_versions.py` recomputes
 # `semantic_hash(*inputs)` from these same live values and fails the moment one

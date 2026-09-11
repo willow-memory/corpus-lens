@@ -20,7 +20,8 @@ from pathlib import Path
 
 from ..model import AuthorClass, CoarseTime, DataType, Event, Quarantine, Surface
 from . import register
-from .claude_code import _features, _hash, _iter_lines
+from ..classifiers import _features, _hash
+from .claude_code import _iter_lines
 from .injection import authored_text
 
 MON = {m: i + 1 for i, m in enumerate((

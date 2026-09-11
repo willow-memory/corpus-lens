@@ -11,7 +11,7 @@ from corpuslens import ingest
 from corpuslens.analyze import all_analyzers, register
 from corpuslens.cli import main as cli_main
 from corpuslens.guard import Guard
-from corpuslens.ingest.claude_code import AUTHORED, CODE_REF
+from corpuslens.classifiers import AUTHORED, CODE_REF
 from corpuslens.render import markdown
 
 
@@ -219,7 +219,7 @@ class PipelineTests(unittest.TestCase):
         sub.cleanup()
 
     def test_classifier_prose_false_positives_fixed(self):
-        from corpuslens.ingest.claude_code import AUTHORED, DELIB
+        from corpuslens.classifiers import AUTHORED, DELIB
         for s in ["I take exception to that remark", "we waited in line 40 minutes at the DMV",
                   "a strong sense of self. Then it faded", "I made an exception for him"]:
             self.assertFalse(CODE_REF.search(s), f"CODE_REF FP: {s}")
