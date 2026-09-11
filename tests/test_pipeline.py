@@ -431,5 +431,129 @@ class DogfoodRegressions(unittest.TestCase):
         self.assertEqual(authored_text(prose), (prose, False))
 
 
+class CorpusRefusalTests(unittest.TestCase):
+    """IDEAS.md 'Refuse a corpus the classifiers cannot read': past SMALL_N
+    turns, zero matches from CODE_REF/AUTHORED (or CLARIFY) is not a zero
+    rate — it is "this analyzer cannot tell you whether that's because there
+    is no code here, or because the classifiers can't read this corpus" — and
+    composition_mix / clarification_pull must say exactly that instead of
+    printing a headline 0.0%. Below the threshold, the same zero is business
+    as usual and must NOT refuse — a spurious refusal on a small corpus would
+    be its own overclaim in the other direction."""
+
+    def _ingest_prose(self, n, code_every=None, delib_every=None):
+        """n operator prompts of plain, code-free English prose, one per
+        (simulated) minute on the same day. `code_every` inserts a
+        code-shaped line every k-th turn (for the "unaffected" cases);
+        `delib_every` inserts a DELIB-triggering line (independent of code)."""
+        lines = []
+        for i in range(n):
+            if code_every and (i + 1) % code_every == 0:
+                text = f"turn {i}: result = compute_totals(); print(result)"
+            elif delib_every and (i + 1) % delib_every == 0:
+                text = f"turn {i}: let's discuss the trade-offs here before we decide"
+            else:
+                text = f"turn {i}: thinking about weekend plans and the grocery list for the week"
+            lines.append(_cc_line("user", text, f"2026-02-01T{10 + i // 60:02d}:{i % 60:02d}:00Z"))
+        sub = tempfile.TemporaryDirectory()
+        _write(Path(sub.name, "s.jsonl"), lines)
+        events, _, _ = ingest.get("claude-code")(sub.name)
+        sub.cleanup()
+        return events
+
+    def _ingest_dialog(self, n_pairs, clarify_every=None):
+        """n_pairs (user, assistant) turns. Assistant replies are plain,
+        non-clarifying prose unless `clarify_every` inserts a CLARIFY-shaped
+        reply every k-th assistant turn."""
+        lines = []
+        for i in range(n_pairs):
+            lines.append(_cc_line("user", f"please handle item {i} on the list today",
+                                  f"2026-02-01T10:{i % 60:02d}:00Z"))
+            if clarify_every and (i + 1) % clarify_every == 0:
+                reply = "Just to confirm, do you want the old version removed too?"
+            else:
+                reply = f"Done with item {i}. Moving on to the next one now."
+            lines.append(_cc_line("assistant", reply, f"2026-02-01T10:{i % 60:02d}:30Z"))
+        sub = tempfile.TemporaryDirectory()
+        _write(Path(sub.name, "s.jsonl"), lines)
+        events, _, _ = ingest.get("claude-code")(sub.name)
+        sub.cleanup()
+        return events
+
+    # ── composition_mix ──────────────────────────────────────────────────
+
+    def test_prose_corpus_above_threshold_refuses(self):
+        from corpuslens.analyze import SMALL_N
+        from corpuslens.analyze.composition import composition_mix
+        events = self._ingest_prose(SMALL_N + 1)
+        res = composition_mix(events)
+        self.assertIn("error", res)
+        self.assertIn("not a coding corpus", res["error"])
+        self.assertIn("cannot read", res["error"])
+        self.assertIn("English-and-Python", res["error"])
+        # a refusal is total: no headline, no rate, and no delib_pct smuggled
+        # through the side door (see composition_mix's own docstring for why).
+        for key in ("headline", "authored_code_pct", "code_ref_pct", "delib_pct",
+                    "vs_coding_population", "reading"):
+            self.assertNotIn(key, res)
+
+    def test_prose_corpus_at_or_below_threshold_does_not_refuse(self):
+        from corpuslens.analyze import SMALL_N
+        from corpuslens.analyze.composition import composition_mix
+        events = self._ingest_prose(SMALL_N)   # exactly at the threshold: NOT "more than"
+        res = composition_mix(events)
+        self.assertNotIn("error", res)
+        self.assertEqual(res["authored_code_pct"], 0.0)
+        self.assertEqual(res["code_ref_pct"], 0.0)
+
+    def test_coding_corpus_above_threshold_is_unaffected(self):
+        from corpuslens.analyze import SMALL_N
+        from corpuslens.analyze.composition import composition_mix
+        events = self._ingest_prose(SMALL_N + 5, code_every=5)   # some turns carry real code
+        res = composition_mix(events)
+        self.assertNotIn("error", res)
+        self.assertGreater(res["authored_code_pct"] + res["code_ref_pct"], 0.0)
+
+    def test_delib_alone_does_not_prevent_the_refusal(self):
+        # DELIB is a wholly separate regex from CODE_REF/AUTHORED; firing on
+        # its own must not stop the refusal, since the ambiguity being named
+        # is specifically about the CODE classifiers.
+        from corpuslens.analyze import SMALL_N
+        from corpuslens.analyze.composition import composition_mix
+        events = self._ingest_prose(SMALL_N + 1, delib_every=3)
+        res = composition_mix(events)
+        self.assertIn("error", res)
+        self.assertNotIn("delib_pct", res)
+
+    # ── clarification_pull ───────────────────────────────────────────────
+
+    def test_dialog_above_threshold_with_no_clarify_refuses(self):
+        from corpuslens.analyze import SMALL_N
+        from corpuslens.analyze.composition import clarification_pull
+        events = self._ingest_dialog(SMALL_N + 1)
+        res = clarification_pull(events)
+        self.assertIn("error", res)
+        self.assertIn("CLARIFY", res["error"])
+        self.assertIn("English", res["error"])
+        for key in ("headline", "clarification_forks_pct"):
+            self.assertNotIn(key, res)
+
+    def test_dialog_at_or_below_threshold_does_not_refuse(self):
+        from corpuslens.analyze import SMALL_N
+        from corpuslens.analyze.composition import clarification_pull
+        events = self._ingest_dialog(SMALL_N)
+        res = clarification_pull(events)
+        self.assertNotIn("error", res)
+        self.assertEqual(res["clarification_forks_pct"], 0.0)
+
+    def test_dialog_above_threshold_with_clarify_hits_is_unaffected(self):
+        from corpuslens.analyze import SMALL_N
+        from corpuslens.analyze.composition import clarification_pull
+        events = self._ingest_dialog(SMALL_N + 5, clarify_every=4)
+        res = clarification_pull(events)
+        self.assertNotIn("error", res)
+        self.assertGreater(res["clarification_forks_pct"], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
