@@ -4,6 +4,7 @@
     corpuslens doctor <path> --adapter claude-code      # what would be read, and what dropped
     corpuslens adapters                                 # what can be read, and from what
     corpuslens analyzers                                # what gets computed, and out of what
+    corpuslens diff a.json b.json                       # the delta between two --format json runs
 
 Every subcommand runs under the DEFAULT profile: no calendar, no timezone, no
 person claims. There is deliberately no CLI flag to grant capabilities — a
@@ -17,6 +18,7 @@ import json
 import sys
 from pathlib import Path
 
+from . import diff as diffmod
 from . import ingest, render
 from .analyze import all_analyzers
 from .guard import DEFAULT_PROFILE, Guard, WallError
@@ -267,9 +269,31 @@ def analyzers(fmt: str = "markdown") -> int:
         print("*Every rate names its denominator, and every claim type is on the process-only "
               "allowlist in `model.py` — a person-shaped claim has no representation here. The "
               "version is the analyzer's SEMANTICS (classifiers/thresholds), not the JSON document "
-              "shape — see `corpuslens.analyze.Analyzer` — and `corpuslens diff` refuses to compare "
-              "two runs whose versions disagree.*")
+              "shape — see `corpuslens.analyze.Analyzer` — and `corpuslens diff` withholds the "
+              "delta for any analyzer whose version disagrees between the two runs.*")
     return 0
+
+
+def diff_cmd(path_a: str, path_b: str, fmt: str = "markdown") -> int:
+    """Compare two `corpuslens run --format json` files. Never a traceback:
+    a malformed or non-corpuslens file is a clear `error:` line and a
+    non-zero exit, same as every other subcommand's failure mode.
+
+    Exit codes: 0 a diff was produced (it may still carry loud comparability
+    warnings — read them); 1 the two runs were refused as not comparable at
+    all (different adapter or schema_version — see corpuslens/diff.py); 2 a
+    file could not be read as a corpuslens report.
+    """
+    try:
+        doc_a = diffmod.load_report(path_a)
+        doc_b = diffmod.load_report(path_b)
+    except diffmod.DiffError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    result = diffmod.compare(doc_a, doc_b)
+    renderer = diffmod.RENDERERS.get(fmt, diffmod.render_markdown)
+    print(renderer(result))
+    return 1 if result["refused"] else 0
 
 
 def main(argv=None) -> int:
@@ -310,6 +334,12 @@ def main(argv=None) -> int:
     z = sub.add_parser("analyzers", help="list the analyzers, their claims and denominators")
     add_format(z)
 
+    df = sub.add_parser("diff", help="compare two `run --format json` files and report the "
+                                     "delta for every shared headline number")
+    df.add_argument("report_a", help="first run's JSON file (from `corpuslens run --format json`)")
+    df.add_argument("report_b", help="second run's JSON file")
+    add_format(df)
+
     args = p.parse_args(argv)
     if args.cmd == "run":
         if args.since_day is not None and args.until_day is not None \
@@ -325,6 +355,8 @@ def main(argv=None) -> int:
         return adapters(args.fmt)
     if args.cmd == "analyzers":
         return analyzers(args.fmt)
+    if args.cmd == "diff":
+        return diff_cmd(args.report_a, args.report_b, args.fmt)
     return 2
 
 
