@@ -330,5 +330,106 @@ class PipelineTests(unittest.TestCase):
         self.assertNotIn("2026-02-01", err.getvalue())  # error carries no payload
 
 
+class DogfoodRegressions(unittest.TestCase):
+    """Both findings from running corpuslens on its own session log, 2026-09-11.
+
+    Together they moved `opener_median_words` from 11 to 516 on a real corpus —
+    the Cursor front-loading finding again, arriving through two new doors in
+    the adapter that was supposed to be the solid one.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    # ── finding 1: the model's own subagent traffic is not the operator ──
+    def test_subagent_transcripts_are_not_the_operators_turns(self):
+        sess = self.d / "proj"
+        (sess / "sub-session" / "subagents").mkdir(parents=True)
+        _write(sess / "main.jsonl", [
+            _cc_line("user", "build the parser for the config file please", "2026-02-01T10:00:00Z"),
+            _cc_line("assistant", "done, it handles empty input now", "2026-02-01T10:05:00Z"),
+        ])
+        # the same shape, but the "user" here is the model prompting its agent
+        _write(sess / "sub-session" / "subagents" / "agent-abc.jsonl", [
+            _cc_line("user", "Use WebSearch to verify this list of tools. " * 40,
+                     "2026-02-01T10:06:00Z"),
+            _cc_line("assistant", "here are the verified results", "2026-02-01T10:09:00Z"),
+        ])
+        events, _, dropped = ingest.get("claude-code")(str(self.d))
+        ops = [e for e in events if e.author_class == "operator"]
+        self.assertEqual(len(events), 2)              # only the real session
+        self.assertEqual(len(ops), 1)
+        self.assertEqual(ops[0].features["word_count"], 8)   # not the 200-word prompt
+        self.assertEqual(dropped, 2)                  # counted, never hidden
+        self.assertEqual(len({e.thread_id for e in events}), 1)
+
+    def test_a_file_merely_named_subagents_is_still_read(self):
+        # the skip keys on a DIRECTORY component, so a session file that happens
+        # to be called subagents.jsonl is the operator's and stays.
+        _write(self.d / "subagents.jsonl", [
+            _cc_line("user", "what does the parser return on line 40?", "2026-02-01T10:00:00Z"),
+        ])
+        events, _, _ = ingest.get("claude-code")(str(self.d))
+        self.assertEqual(len(events), 1)
+
+    def test_subagent_skip_does_not_need_the_session_layout(self):
+        (self.d / "subagents").mkdir()
+        _write(self.d / "subagents" / "agent-1.jsonl", [
+            _cc_line("user", "a dispatched task prompt of some length", "2026-02-01T10:00:00Z"),
+        ])
+        events, _, dropped = ingest.get("claude-code")(str(self.d))
+        self.assertEqual(events, [])
+        self.assertEqual(dropped, 1)
+
+    # ── finding 2: a finished background task arrives in the user role ──
+    def test_task_notification_is_stripped_not_counted_as_a_prompt(self):
+        notification = ("<task-notification> <task-id>abc</task-id> "
+                        "<status>completed</status> <result>" + "agent words " * 300 +
+                        "</result> </task-notification>")
+        _write(self.d / "s.jsonl", [
+            _cc_line("user", "I think this tool could do more than what it's doing",
+                     "2026-02-01T10:00:00Z"),
+            _cc_line("assistant", "here is what I found in the repo", "2026-02-01T10:01:00Z"),
+            _cc_line("user", notification, "2026-02-01T10:02:00Z"),
+            _cc_line("user", "fix both and add the regression tests", "2026-02-01T10:03:00Z"),
+        ])
+        events, _, dropped = ingest.get("claude-code")(str(self.d))
+        ops = [e for e in events if e.author_class == "operator"]
+        self.assertEqual(len(ops), 2)                       # the notification is not one
+        self.assertEqual(max(e.features["word_count"] for e in ops), 11)
+        self.assertEqual(dropped, 1)                        # emptied, then counted
+
+    def test_a_notification_never_inflates_the_opener(self):
+        # the finding itself, end to end: the median opener must be the human's
+        notification = "<task-notification><summary>" + "x " * 900 + "</summary></task-notification>"
+        _write(self.d / "s.jsonl", [
+            _cc_line("user", notification, "2026-02-01T10:00:00Z"),
+            _cc_line("user", "take the render, and pypi is one of the things I wanted",
+                     "2026-02-01T10:01:00Z"),
+        ])
+        events, _, _ = ingest.get("claude-code")(str(self.d))
+        ops = [e for e in events if e.author_class == "operator"]
+        self.assertEqual(len(ops), 1)
+        self.assertLess(ops[0].features["word_count"], 20)
+
+    def test_a_notification_mixed_with_real_text_keeps_the_text(self):
+        from corpuslens.ingest.injection import authored_text
+        text, stripped = authored_text(
+            "yes, do that <task-notification><status>done</status></task-notification>")
+        self.assertEqual(text, "yes, do that")
+        self.assertTrue(stripped)
+
+    def test_the_words_alone_are_not_a_wrapper(self):
+        # only the angle-bracketed tag is machine-injected; a human writing the
+        # phrase in prose is untouched, the same rule the other 25 tags follow.
+        from corpuslens.ingest.injection import authored_text
+        prose = "the task notification arrived while I was reading the diff"
+        self.assertEqual(authored_text(prose), (prose, False))
+
+
 if __name__ == "__main__":
     unittest.main()

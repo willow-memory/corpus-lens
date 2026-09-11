@@ -30,6 +30,14 @@ _INJECTED_TAGS = (
     "mcp_meta_tool_servers", "dynamic_tools", "dynamic_tool_catalog",
     "dynamic_tool_namespaces", "available_subagent_types",
     "available_subagent_models", "mermaid_syntax", "todo_update",
+    # Claude Code harness, observed 2026-09-11 in this project's own session
+    # log. A background task finishing delivers its whole result in the USER
+    # role: three such turns ran 1728, 902 and 1246 words against a human whose
+    # median was 28, and `injected_stripped` was False on every one of them.
+    # Same front-loading shape as the Cursor finding, a different runtime's tag.
+    # The inner tags (task-id, status, summary, result, usage …) are children of
+    # this one, so stripping the wrapper takes them with it.
+    "task-notification",
 )
 
 #: An injected block may carry attributes — `<mcp_instructions description="…">`
@@ -58,7 +66,10 @@ INJECTED = re.compile(
              # An unclosed injected block (truncated at a context boundary)
              # still is not the operator's text: consume to the next open tag
              # or the end rather than leaving thousands of words behind.
-             + [_OPEN.format(t=t) + r"(?:(?!<[a-z_]{3,32}[\s>]).)*\Z" for t in _INJECTED_TAGS]),
+             # `-` is in the terminator class because a wrapper name may carry
+             # one (`task-notification`): without it an unclosed block would run
+             # straight through the next wrapper instead of stopping at it.
+             + [_OPEN.format(t=t) + r"(?:(?!<[a-z_-]{3,32}[\s>]).)*\Z" for t in _INJECTED_TAGS]),
     re.DOTALL | re.IGNORECASE,
 )
 USER_QUERY = re.compile(r"<user_query>\s*(.*?)\s*</user_query>", re.DOTALL)
