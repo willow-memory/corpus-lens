@@ -54,6 +54,10 @@ PROCESS_CLAIM_TYPES = frozenset({
     "clarification_pull",     # fork/deferral rates
     "turns_to_completion",
     "leakage_demonstration",  # quarantined class: proves a leak, never ships data
+    "authoring_plurality",    # opaque count + shape of distinct operator-role authoring
+                              # signatures — a corpus property ("how many sources"), never
+                              # a per-turn attribution and never a claim about which of
+                              # them is which person; see analyze/signatures.py
 })
 
 PERSON_CLAIM_TYPES = frozenset({
