@@ -133,6 +133,7 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
             continue
         results[a.name] = {"denominator": a.denominator, **a.run(events)}
         guard.audit.analyzers_run.append(a.name)
+    audit = guard.audit
     if share:
         # Coarsening happens on the already-computed numbers, never on the
         # events: share mode changes what leaves the report, not what the
@@ -140,8 +141,16 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
         # ("a field survives only if it is explicitly recognised") and for
         # what this output does NOT claim to be (not anonymous, not
         # de-identified, not proven safe to publish).
+        #
+        # The audit record is coarsened too, into a SEPARATE record (never
+        # mutating guard.audit itself) — its exact n_events/n_dropped/
+        # n_filtered are the same class of quantity `n` banding exists to
+        # blur for every analyzer, and the sentence would otherwise say
+        # "This run read 21 events" even while every rate above it reads
+        # "n = 30-100". A prior version of this feature missed exactly this.
         results = share_mod.coarsen(results)
-    report = render.render(fmt, results, guard.audit, share=share)
+        audit = share_mod.coarsen_audit(audit)
+    report = render.render(fmt, results, audit, share=share)
     try:
         report = guard.scan_egress(report)   # fail-closed backstop at the output door
     except WallError as e:

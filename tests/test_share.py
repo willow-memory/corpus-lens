@@ -10,6 +10,7 @@ for "a new analyzer must not leak a shape by default."
 """
 import io
 import json
+import re
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -18,10 +19,13 @@ from unittest import mock
 
 from corpuslens.analyze import all_analyzers
 from corpuslens.cli import main as cli_main
+from corpuslens.guard import AuditRecord
 from corpuslens.render import SHARE_CAVEAT, markdown
-from corpuslens.share import RATE_FIELDS, band_n, coarsen, coarsen_result
+from corpuslens.share import RATE_FIELDS, band_n, coarsen, coarsen_audit, coarsen_result
 
 from test_pipeline import _cc_line, _write
+
+_BAND_RE = r'^(<\d+|\d+-\d+|\d+\+|unknown)$'
 
 # Fields the renderer already treats as presentation text, or as the sentinel
 # "denominator"/"n"/"error" fields every result may carry. Never rate data
@@ -192,6 +196,105 @@ class AnalyzerAgnosticTests(CorpusFixture):
                 self.assertNotIn("n", res)   # only n_band, never the exact n
                 if "n_band" in res:
                     self.assertRegex(res["n_band"], r"^(<\d+|\d+-\d+|\d+\+|unknown)$")
+
+
+class AuditBandingTests(CorpusFixture):
+    """Regression: share mode banded every analyzer's `n` but published the
+    corpus's exact `n_events`/`n_dropped` (and, on a filtered run,
+    `n_filtered`) verbatim in the audit record — in BOTH the structured
+    fields and the generated sentence, since the sentence is built from
+    those same fields by `AuditRecord.sentence()`. Exact corpus size and
+    exact drop count are the same class of quantity `band_n` exists to blur
+    for every analyzer's `n`; publishing one while rounding the other only
+    made the report look coarsened."""
+
+    def test_coarsen_audit_bands_all_three_counts_and_the_sentence_together(self):
+        audit = AuditRecord(profile="default", n_events=21, n_dropped=7,
+                            adapter="claude-code", filters=["relative-day window 2..corpus end, inclusive"],
+                            n_filtered=13)
+        coarsened = coarsen_audit(audit)
+        # structured fields: no exact int survives
+        for field in ("n_events", "n_dropped", "n_filtered"):
+            with self.subTest(field=field):
+                val = getattr(coarsened, field)
+                self.assertIsInstance(val, str)
+                self.assertRegex(val, _BAND_RE)
+        self.assertEqual(coarsened.n_events, band_n(21))
+        self.assertEqual(coarsened.n_dropped, band_n(7))
+        self.assertEqual(coarsened.n_filtered, band_n(13))
+        # the rendered sentence is generated FROM those same fields, so it
+        # cannot drift from them by construction — verify it actually reads
+        # that way rather than assuming the wiring holds
+        sentence = coarsened.sentence()
+        self.assertNotIn("21", sentence)
+        self.assertNotIn(" 7,", sentence)     # "dropped 7," would be the leak
+        self.assertNotIn("13 further", sentence)
+        self.assertIn(f"read {band_n(21)} events (dropped {band_n(7)}", sentence)
+        self.assertIn(f"{band_n(13)} further", sentence)
+
+    def test_coarsen_audit_does_not_mutate_the_original_record(self):
+        audit = AuditRecord(profile="default", n_events=21, n_dropped=7)
+        coarsen_audit(audit)
+        self.assertEqual(audit.n_events, 21)
+        self.assertEqual(audit.n_dropped, 7)
+        self.assertIsInstance(audit.n_events, int)
+
+    def test_cli_share_output_bands_n_events_and_n_dropped(self):
+        _, full_out, _ = _run(["run", str(self.d), "--adapter", "claude-code", "--format", "json"])
+        _, share_out, _ = _run(["run", str(self.d), "--adapter", "claude-code",
+                                "--format", "json", "--share"])
+        full_audit = json.loads(full_out)["audit"]
+        share_audit = json.loads(share_out)["audit"]
+        self.assertIsInstance(full_audit["n_events"], int)
+        self.assertGreater(full_audit["n_events"], 0)
+        # the exact figures must not survive, in the fields...
+        self.assertIsInstance(share_audit["n_events"], str)
+        self.assertRegex(share_audit["n_events"], _BAND_RE)
+        self.assertIsInstance(share_audit["n_dropped"], str)
+        self.assertRegex(share_audit["n_dropped"], _BAND_RE)
+        self.assertNotEqual(share_audit["n_events"], full_audit["n_events"])
+        # ...or in the sentence, which is GENERATED TEXT and could drift from
+        # the fields above if it were produced by a different code path.
+        m = re.search(r"This run read (\S+) events \(dropped (\S+), counted not hidden\)",
+                      share_audit["sentence"])
+        self.assertIsNotNone(m, share_audit["sentence"])
+        self.assertEqual(m.group(1), share_audit["n_events"])
+        self.assertEqual(m.group(2), share_audit["n_dropped"])
+        self.assertNotEqual(m.group(1), str(full_audit["n_events"]))
+        self.assertNotEqual(m.group(2), str(full_audit["n_dropped"]))
+
+    def test_cli_share_output_bands_n_filtered_on_a_windowed_run(self):
+        _, full_out, _ = _run(["run", str(self.d), "--adapter", "claude-code", "--format", "json",
+                              "--since-day", "2"])
+        _, share_out, _ = _run(["run", str(self.d), "--adapter", "claude-code", "--format", "json",
+                               "--share", "--since-day", "2"])
+        full_audit = json.loads(full_out)["audit"]
+        share_audit = json.loads(share_out)["audit"]
+        self.assertTrue(full_audit["filters"])
+        self.assertIsInstance(full_audit["n_filtered"], int)
+        self.assertGreater(full_audit["n_filtered"], 0)
+        self.assertIsInstance(share_audit["n_filtered"], str)
+        self.assertRegex(share_audit["n_filtered"], _BAND_RE)
+        self.assertIn("subset numbers, not corpus numbers", share_audit["sentence"])
+        m = re.search(r"filtered \([^)]+\): (\S+) further event\(s\)", share_audit["sentence"])
+        self.assertIsNotNone(m, share_audit["sentence"])
+        self.assertEqual(m.group(1), share_audit["n_filtered"])
+        self.assertNotEqual(m.group(1), str(full_audit["n_filtered"]))
+
+    def test_no_exact_audit_count_anywhere_in_the_share_json_document(self):
+        # Belt-and-suspenders across the WHOLE document, not just the audit
+        # sub-object, in case a future change starts embedding the audit
+        # numbers somewhere else in the report.
+        _, full_out, _ = _run(["run", str(self.d), "--adapter", "claude-code", "--format", "json"])
+        _, share_out, _ = _run(["run", str(self.d), "--adapter", "claude-code",
+                               "--format", "json", "--share"])
+        full_audit = json.loads(full_out)["audit"]
+        for exact in (full_audit["n_events"], full_audit["n_dropped"]):
+            if exact >= 10:   # small values collide trivially (e.g. inside "6 process analyzers")
+                with self.subTest(exact=exact):
+                    self.assertNotIn(f'"{exact}"', share_out)
+                    self.assertNotIn(f" {exact} ", share_out)
+                    self.assertNotIn(f" {exact},", share_out)
 
 
 class AuditAndEgressTests(CorpusFixture):

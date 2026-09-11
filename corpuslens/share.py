@@ -34,8 +34,17 @@ future analyzer invents is, by construction, not on a list written before
 that analyzer existed — so it is coarsened away by default, not leaked by
 default. Extending RATE_FIELDS is a deliberate, reviewable, one-line act; the
 default for everything else is exclusion, never inclusion.
+
+TWO THINGS GET COARSENED, NOT ONE: `coarsen()` (below) handles each
+analyzer's own numbers; `coarsen_audit()` handles the audit record's exact
+`n_events` / `n_dropped` / `n_filtered` the same way. Both matter — an audit
+sentence that still says "This run read 21 events (dropped 0...)" gives away
+the exact corpus size and exact drop count even when every analyzer's `n` is
+a band, and that is the same class of quantity the banding exists to blur.
 """
 from __future__ import annotations
+
+import dataclasses
 
 # Percentage fields that are genuine RATES over their analyzer's declared
 # denominator, reviewed one at a time. Adding a name here is a claim that the
@@ -128,3 +137,30 @@ def coarsen(results: dict) -> dict:
     analyzer by analyzer. Order and analyzer set are preserved; only each
     analyzer's OWN fields are filtered."""
     return {name: coarsen_result(res) for name, res in results.items()}
+
+
+def coarsen_audit(audit):
+    """A copy of a `guard.AuditRecord` with `n_events`, `n_dropped` and
+    `n_filtered` replaced by wide bands (`band_n`) instead of exact counts.
+
+    FOUND BY REVIEW: the audit sentence names exactly what left the wall, and
+    that stays required in share mode — but the FIRST version of this module
+    coarsened analyzer results only, while `guard.AuditRecord.sentence()` and
+    `.as_dict()` kept printing the corpus's exact event count and exact drop
+    count in plain language ("This run read 21 events..."). Exact corpus size
+    and exact drop count are the same class of quantity `band_n` exists to
+    blur for every analyzer's `n` — rounding one and publishing the other
+    made the report merely LOOK coarsened.
+
+    This returns a NEW record via `dataclasses.replace` rather than mutating
+    the one the run is using — `sentence()` and `as_dict()` are both plain
+    functions of `self`'s fields, so calling them on this copy is the ONLY
+    code path that produces either; there is no second, separately-written
+    sentence to drift out of sync with the fields (or with a future edit to
+    `sentence()`'s wording)."""
+    return dataclasses.replace(
+        audit,
+        n_events=band_n(audit.n_events),
+        n_dropped=band_n(audit.n_dropped),
+        n_filtered=band_n(audit.n_filtered),
+    )

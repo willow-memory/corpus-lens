@@ -72,8 +72,13 @@ band (`<30`, `30-100`, `100-1000`, ...) instead of an exact count, and it
 omits tempo quantiles, thread counts, day spans, concurrency figures and
 active-day counts entirely — not rounded, not present. An analyzer that has
 no field meeting that bar says so in words rather than showing an empty
-section. The audit sentence still leads the report, and share output goes
-through the same fail-closed egress scan as everything else.
+section. The audit sentence still leads the report — including its
+**own** counts: the corpus's exact event count, exact drop count, and (on a
+filtered run) exact excluded-event count are the same class of quantity the
+`n` banding exists to blur, so `--share` bands those too (same `band_n`,
+reused rather than reimplemented), in both the structured audit fields and
+the generated sentence. Share output goes through the same fail-closed
+egress scan as everything else.
 
 **This output is coarsened. It is not anonymous, not de-identified, and not
 a determination that it is safe to publish** — whether a coarsened report
@@ -162,15 +167,23 @@ points without pooling anyone's corpus" below, unchanged by this.
 
 ---
 
-## Judgment calls a doc reconciler should know about (not just typos)
+## Judgment calls, reviewed
 
-- **`burst_pct` / `resumed_pct` (tempo) were excluded**, even though IDEAS.md's
-  own sentence ("no tempo quantiles ... at all") only names quantiles by name.
-  They are a two-bucket histogram of the same censored inter-turn gaps that
-  produce the quantiles — bucketing a timing distribution two ways instead of
-  four does not stop it from being a timing distribution, and the task's own
-  instruction ("when in doubt, omit it") points the same direction. Worth a
-  second opinion rather than treating it as settled.
+These were flagged as open judgment calls in an earlier pass of this branch
+and have since been reviewed and confirmed — recorded as settled, not as
+open questions, so a future reader does not reopen them without new reason:
+
+- **`burst_pct` / `resumed_pct` (tempo) are excluded, confirmed correct.**
+  Even though IDEAS.md's own sentence ("no tempo quantiles ... at all") names
+  only quantiles, these two are a two-bucket histogram over the same censored
+  inter-turn gaps that produce the quantiles — admitting them would readmit
+  tempo shape under a different name. "When in doubt, omit it" settles this
+  one; keep them off `RATE_FIELDS`.
+- **The synthesized per-analyzer headline ("Share-safe rate(s): ...", or "No
+  share-safe rate for this analyzer: ...") is the right amount of prose,
+  confirmed correct.** It does real work distinguishing "this analyzer
+  produced nothing shareable" from "this analyzer could not compute" — a
+  reader would otherwise conflate the two. Leave it as built.
 - **`delta_coverage_pct` (tempo) was kept.** It reports what fraction of
   turns have a measurable gap AT ALL, not what the gaps are — no shape of the
   gap distribution leaks through it, so it reads as a plain rate.
@@ -178,3 +191,30 @@ points without pooling anyone's corpus" below, unchanged by this.
   despite ending in `_pct`: both describe the shape of a distribution (how
   many sessions/threads are exactly one unit long), which is exactly the kind
   of thing "when in doubt, omit" is for.
+
+## `doctor` is intentionally NOT a share-safe surface
+
+`--share` exists only on `corpuslens run`. `corpuslens doctor` prints exact
+counts (`events_kept`, `events_dropped`, `relative_day_span`, `threads`, ...)
+by design — it is a dry-run diagnostic for the operator deciding whether to
+trust a corpus/adapter pairing before committing to a report, not "the
+report" IDEAS.md's share-mode entry is about. Recorded here explicitly so
+nobody later assumes `--share` covers `doctor`'s output too, or treats a
+pasted `doctor` transcript as pre-coarsened.
+
+## Audit-record leak found and fixed on this branch
+
+An initial version of this feature coarsened every analyzer's `n` but left
+`guard.AuditRecord`'s exact `n_events`/`n_dropped`/`n_filtered` untouched, so
+a share-mode JSON document still read `{"n_events": 21, "n_dropped": 0}` and
+the rendered sentence still said "This run read 21 events (dropped 0...)" in
+plain language — the exact same class of quantity the `n` banding exists to
+blur, published anyway. Fixed by `share.coarsen_audit()`, which returns a
+`dataclasses.replace`d copy of the `AuditRecord` with those three fields
+banded via the same `band_n` used for analyzer results; `cli.py` builds this
+copy for `--share` runs and renders it instead of the original, so
+`sentence()` and `as_dict()` — both plain functions of the record's own
+fields — cannot print a number the fields don't also show. Regression tests
+in `tests/test_share.py::AuditBandingTests` cover both the structured fields
+and the generated sentence text, since the sentence is generated separately
+from the fields and could in principle drift from them.
