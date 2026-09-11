@@ -550,6 +550,54 @@ and is worth writing with the field.
 
 ### Process when the work is delegated
 
+**A first measurement, 2026-09-11.** This entry says there is no settled
+definition and that the same corpus can defensibly produce different numbers.
+That is now measured rather than argued, on one night's work in this repository:
+the operator's own session, and the nine subagent transcripts dispatched from it,
+run through the battery separately.
+
+|                     | the human | the nine dispatched agents |
+|---------------------|-----------|----------------------------|
+| operator turns (n)  | 13        | 16                         |
+| mid-task share      | 92.3%     | 43.8%                      |
+| opener median words | 21        | 587                        |
+| code-reference      | 0.0%      | 100.0%                     |
+| threads / peak concurrency | 1 / 1 | 9 / 9                   |
+
+**The same work reads as two opposite process shapes depending on which layer
+the instrument is pointed at.** GRADING.md question 1 says that if nearly
+everything you type is one upfront spec you are using a benchmark harness, and
+if most arrives mid-execution you are directing. The human half of this corpus
+is a director: 92.3% mid-task, twenty-one-word openers, not one code reference.
+The dispatched half is a benchmark harness: 43.8% mid-task, 587-word openers,
+and a file path in *every* prompt.
+
+Neither reading is wrong. The intent arrived mid-task, once, from a person — and
+was converted into an upfront spec before it reached the agent that did the work.
+That is the relay this entry predicted, and it is now visible in the numbers
+rather than only in the argument.
+
+What it does NOT settle is the question the entry actually asks: which of those
+two numbers is "the operator's process". It sharpens it. A fleet adapter that
+pooled both layers would average a director and a harness into a number
+describing neither, which is a concrete reason the README calls an agent-fleet
+adapter a *different instrument* rather than a wider net.
+
+Caveats, because this is a measurement and they belong with it: both sides are
+n < 30, so read the direction and not the decimals; both are one night of one
+person's work; the agent corpus needed `isSidechain` stripped to be readable at
+all, which is a fixture step and not something a real corpus would need; and the
+"operator" in the right-hand column is a model, which is the whole point but also
+means the classifiers were built for the wrong subject.
+
+*Incidental validation from the same run:* pointed at those nine transcripts
+with the flag intact, and copied out of any `subagents/` directory, the adapter
+refused all 3,063 records on the record's own marking. And `clarification_pull`
+reported a genuine 0.0% rather than refusing, because `CLARIFY` did fire twice —
+the distinction that feature draws between "the regex found nothing" and "the
+regex works and the rate is zero" behaved correctly on real data.
+
+
 **What it would give.** The battery assumes one operator steering one machine.
 That is already not how the work happens: this project's own session log had one
 human thread and three subagent threads, and the adapter counted the model's
