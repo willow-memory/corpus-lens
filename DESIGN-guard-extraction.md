@@ -161,6 +161,21 @@ specifically, it needs a second, distinct check (e.g. a schema/shape
 assertion on the share payload) that the current single-purpose
 `scan_egress` was never designed to be.
 
+**Audit note, added after this document's first review (not this analysis's
+own finding — recorded here so a later reader can tell the two apart).**
+Share mode has since been built inside corpuslens and audited. Both
+predictions above held, the second one sharply: the coarsening step touches
+the Guard nowhere, confirming that share mode needs essentially nothing new
+from it; and the first implementation banded every analyzer's denominator
+correctly but then published the exact corpus size through the audit record
+anyway, passing `scan_egress` cleanly the entire time — because an exact `n`
+in `AuditRecord.n_events` is not a quarantined literal `scan_egress` was ever
+built to catch. That is a real, built instance of exactly the gap named
+above, not a hypothetical: "goes through `scan_egress`" caught none of it,
+because the leak was a *number the coarsening step forgot to also apply to*,
+which is precisely the class of leak a literal-string scan cannot see by
+construction.
+
 ### 2b. Labelling mode ("A local labelling mode")
 
 The spec, quoted: `corpuslens label <path> --adapter …` "samples fifty
@@ -423,36 +438,41 @@ signature *actively misleads* here, name-mangling being the closest thing
 Python has to a "keep out" sign, deployed for a thing the project explicitly
 does NOT want to keep out the one party (the owner) most likely to look.
 
-**What would have to change:** this is the one place where the current
-implementation choice (name-mangling) fights the honest claim about it
-(not actually a sandbox). A library API should pick one of two honest paths
-instead of the current "looks stricter than it is" one:
-- **Say so at the point of contact.** Rename `__q` to a single-underscore
-  `_quarantine` (conventionally "internal, but reachable, at your own risk"
-  — which is the true state of affairs) rather than double-underscore
-  ("this is protected"), so the naming convention itself does not overclaim.
-- **Or, raise a distinguishing exception.** If the library wants to keep
-  the "loud, not impossible" property `guard.py`'s docstring already claims
-  (making *accidental* access loud), it should be a real, named exception —
-  e.g. accessing quarantine data other than through `release`/`resolve_ref`
-  should be impossible to do *silently*: today it's just an attribute lookup
-  that works fine if you know the mangled name, no different from any other
-  private attribute in Python. A more honest mechanism worth designing before
-  extraction: make the underlying quarantine value require an explicit,
-  loudly-named unwrap even from inside the same process — e.g. `Quarantine`
-  values stored only as a closure the class captures, not as an instance
-  attribute at all, so there genuinely is no dot-path to it without calling
-  `release()` (a determined owner can still monkey-patch `release()` itself,
-  and the docs should say *that* is the actual floor of "not a sandbox," not
-  "casual attribute access is momentarily harder").
-- Either way, the docstring's own sentence — "not, and does not claim to be,
-  unbypassable by the owner" — needs to become something closer to the
-  `WallError` docstring's own promise ("A hard stop... never swallowed"):
-  the exception raised when a *plugin* (not the owner deliberately reaching
-  in) attempts unauthorized access should say, in its message, "this is a
-  policy refusal aimed at accidental plugin leakage, not a security boundary
-  against the process owner" — so a caller who only ever reads exception
-  text at a stack trace, never a docstring, still gets the honest framing.
+**What would have to change, revised after review.** This document's first
+draft offered two options here — rename to a single underscore, or go the
+other way and remove the dot-path entirely (store the quarantine only as a
+closure the class captures, so there is "genuinely no dot-path to it without
+calling `release()`"). On review, the second option was rejected, correctly,
+and the reasoning is worth keeping rather than just the verdict: `guard.py`
+does not merely concede that the owner can reach their own data as an
+unfortunate side effect — it states the position affirmatively, three times
+in the same docstring ("not an adversarial sandbox against the machine's
+OWNER"; "a determined owner can always read their own quarantined data by
+editing their own script"; claiming otherwise "would itself be the overclaim
+this project forbids"). Removing the dot-path makes the owner's access
+*harder* while leaving it *possible* (a determined owner can still
+monkey-patch `release()` itself, as the first draft already noted) — which
+buys no real protection against anyone the wall is actually meant to stop,
+and spends effort moving the mechanism's outward posture a step toward the
+sandbox the project has committed, in writing, to not being. A design choice
+that makes a system *look* more locked down than its own documentation says
+it is is the same overclaim risk as §3.1–§3.3, aimed at the code's own
+shape instead of its docs. **The one path forward is the rename:** `__q`
+becomes a single-underscore `_quarantine` — conventionally "internal, but
+reachable, at your own risk," which is the true state of affairs — so the
+naming convention stops promising an enforcement the project has never
+wanted and does not deliver. This is a small, purely honesty-motivated
+change, independent of extraction, and there is no reason to wait on it.
+
+Separately, and worth keeping regardless of the rename: the *exception*
+raised when a **plugin** (not the owner deliberately reaching in) hits an
+unauthorized-access path should say, in its own message, what kind of limit
+it is — "this is a policy refusal aimed at accidental plugin leakage, not a
+security boundary against the process owner" — so a caller who only ever
+reads exception text at a stack trace, never a docstring, still gets the
+honest framing. That is about making *plugin* misuse loud, which is a
+different goal from making *owner* access harder, and the two must not be
+conflated the way the first draft's rejected option came close to doing.
 
 ### 3.5 The audit sentence itself — must be **structurally impossible to discard**
 
@@ -487,7 +507,7 @@ getting." Two candidate shapes:
 | Default profile grants nothing | convention (empty dataclass defaults) | an exported, test-pinned "nothing granted" singleton as the only easy path |
 | Weekly cadence not hidden | prose in three places | a named constant/property the type system exposes, and a mandatory clause in the generated sentence |
 | Within-day bound is loose | plain `Optional[float]` | either a wrapper type carrying the caveat, or no raw per-event deltas in the public return type at all — only pre-aggregated stats |
-| Not a sandbox against the owner | name-mangled attribute (looks stricter than it is) | rename to single-underscore (honest about reachability) or move to a closure with a loudly-named exception on unauthorized access, and put the "not a sandbox" sentence in the exception text, not just the docstring |
+| Not a sandbox against the owner | name-mangled attribute (looks stricter than it is) | rename to single-underscore (honest about reachability) — closing off the dot-path entirely was considered and rejected, since it moves the mechanism toward the sandbox posture the project explicitly refuses — and put the "not a sandbox" sentence in the plugin-facing exception text, not just the docstring |
 | The sentence must accompany every result | one method call, easy to skip | make emitting output without the sentence a structural impossibility (required argument / bundled return type), not a rendering-layer courtesy |
 
 ---
