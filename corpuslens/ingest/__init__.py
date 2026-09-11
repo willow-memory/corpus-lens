@@ -29,6 +29,19 @@ location (e.g. `cursor`, whose sessions live wherever the user happens to
 keep them) simply never calls `register_default_path` and is not offered for
 discovery; that is a fact about the adapter, not a special case in the CLI.
 
+A FOURTH registry (`register_unmeasurable` / `unmeasurable_of`) lets an
+adapter DECLARE, by name and with a reason, the analyzers its corpus cannot
+feed with a meaningful number — not "cannot compute" (an analyzer already
+returns `{"error": ...}` for that) but "computes a number that measures
+nothing here": a corpus of checkpoints has no opening prompt, so
+`steering_density`'s mid-task share is 100% by construction. `cli.run`
+refuses a declared analyzer before it runs and names it in the audit
+sentence, and `doctor` lists it, because a plausible number over a corpus
+that cannot mean it is the `subagents/` bug (BUGS.md) again — this is that
+lesson taken at the adapter's door. The declaration is per adapter and
+never per run: a CLI flag that turned it off would be a flag that turned a
+refusal into a finding.
+
 A SEPARATE, smaller registry (`register_label_text` / `get_label_text` /
 `text_capable_of`) holds label-text lookups: a differently-shaped function,
 `label_text(path, ...) -> LabelCorpus`, that `corpuslens label` uses to get a
@@ -49,6 +62,7 @@ _SOURCE: dict = {}
 _PATTERN: dict = {}
 _LABEL_TEXT: dict = {}
 _DEFAULT_PATH: dict = {}
+_UNMEASURABLE: dict = {}
 
 
 def register(name: str, source: str = "dir", pattern: str = "*.jsonl"):
@@ -137,6 +151,23 @@ def default_path_of(name: str) -> str | None:
     return _DEFAULT_PATH.get(name)
 
 
+def register_unmeasurable(name: str, analyzers: dict):
+    """Declares `{analyzer_name: why}` for adapter `name`: analyzers whose
+    result over this corpus would be a number that measures nothing (see the
+    module docstring). A decorator, declared beside the `ingest()` it
+    describes. `why` is printed verbatim in the audit sentence, so write it
+    for a reader who does not know the corpus."""
+    def deco(fn):
+        _UNMEASURABLE[name] = {str(k): str(v) for k, v in dict(analyzers).items()}
+        return fn
+    return deco
+
+
+def unmeasurable_of(name: str) -> dict:
+    """`{analyzer_name: why}` for adapter `name`; `{}` when it declared none."""
+    return dict(_UNMEASURABLE.get(name, {}))
+
+
 def discoverable() -> list[str]:
     """Adapters `corpuslens run` (no arguments) can look for on its own,
     sorted so discovery order is deterministic and independent of module
@@ -144,4 +175,4 @@ def discoverable() -> list[str]:
     return sorted(_DEFAULT_PATH)
 
 
-from . import claude_code, cursor, cursor_store, gemini_cli, sqlite, postgres  # noqa: E402,F401  (registration side effects)
+from . import claude_code, cursor, cursor_store, gemini_cli, sqlite, postgres, forge  # noqa: E402,F401  (registration side effects)

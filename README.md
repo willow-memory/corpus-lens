@@ -8,7 +8,10 @@ reference points to grade yourself against.
 **Stdlib only. Local only. Owner == subject.** Nothing to install beyond
 Python, nothing leaves your machine, and this is for studying *yourself*.
 Pointing it at another person (a child, a partner, an employee) is a different
-consent object and is out of scope by design.
+consent object. That object is now *representable* — a verified,
+hash-chained grant from a named grantor, checked before a file is opened — and
+still not the default: see [A corpus that is not your own](#a-corpus-that-is-not-your-own)
+for exactly what a grant lets the tool do, and what it does not.
 
 The rubric this instruments: [GRADING.md](GRADING.md)
 (ten questions to grade your own system).
@@ -98,6 +101,7 @@ corpuslens run ~/.claude/projects --adapter claude-code --out report.md
 corpuslens run ./my-cursor-sessions --adapter cursor
 corpuslens run ~/.cursor/chats --adapter cursor-store  # Cursor's own store.db tree
 corpuslens run ~/.gemini/tmp --adapter gemini-cli       # Gemini CLI's chat JSONL
+corpuslens run ~/.forge --adapter forge                 # the Forge's checkpoint ledger
 corpuslens run ./corpus.db --adapter sqlite            # a SQLite corpus (a file)
 corpuslens run "dbname=mycorpus" --adapter postgres    # a Postgres corpus (a DSN)
 # equivalently, from a clone without installing:
@@ -196,6 +200,50 @@ runs no analyzer and emits no rate, counts rather than content, and its output
 passes the same fail-closed egress scan the report does. `adapters` and
 `analyzers` list what is registered — each adapter with the argument it expects,
 each analyzer with its claim type and its named denominator.
+
+### A corpus that is not your own
+
+```bash
+corpuslens consent grant kid-1 --store ~/.corpuslens-consent --by "their guardian"
+corpuslens run ./their-sessions --adapter claude-code --subject kid-1 --consent-store ~/.corpuslens-consent
+corpuslens consent status kid-1 --store ~/.corpuslens-consent     # what the record says
+corpuslens consent revoke kid-1 --store ~/.corpuslens-consent --by "their guardian"
+```
+
+Every run without `--subject` is your own corpus and nothing here applies. With
+`--subject`, you are saying the corpus is about someone else, and the tool
+refuses to open a single file unless that subject's `process_analysis` grant
+verifies in the consent store: fail-closed on a missing store, a missing
+record, a `pending` or `revoked` state, and on a chain that was edited or
+truncated. After a report is written, one counts-only row (adapter, events
+read, events dropped — never a date, never a filename, never a number from the
+report) is appended to the subject's own disclosure chain, the record a
+guardian can read. The audit sentence says the corpus was analyzed as another
+person's and that a grant was found; it never carries the subject's id. The
+report stops saying "you".
+
+The consent primitive is the fleet's shared one — `corpuslens/consent/core.py`
+is vendored byte-for-byte from
+[willow-mcp](https://github.com/willow-memory/willow-mcp)'s `subject_consent`
+core (itself from safe-app-store's `libs/subject-consent`), and
+`tests/test_consent.py` pins its hash to the value willow-mcp's own tests pin.
+The binding, and the part of the design that is corpuslens's own, is
+`corpuslens/subject_consent.py`. Read its header before extending it.
+
+What a grant does **not** do, stated so nobody reads more into it:
+
+- It does not make a person-shaped claim possible. The core has a
+  `person_inference` scope and the Guard has a `person_inference` capability,
+  the same name on purpose — and a grant for one does not touch the other. A
+  grant says a claim *may be about* someone; it does not make the claim true,
+  measured, or safe to emit. `PERSON_CLAIM_TYPES` analyzers are refused under
+  the default profile exactly as before.
+- It does not judge who may grant. Whether a guardian may consent for a child,
+  a ward, a household member is policy the tool defers to the human holding
+  the store; the grantor's name is on the chain and that is all it asserts.
+- It is not granted by a run. `grant` and `revoke` are reached only through
+  `corpuslens consent`, at an operator's terminal, on a hash-chained record.
+  There is still no flag on `run` that grants anything.
 
 ### Grading the classifiers against your own judgment
 
@@ -326,6 +374,38 @@ corpus therefore describes the machine's step rate, never your typing rhythm.
 Everything a blob cannot become — a tool or system message, an unparseable or
 encrypted payload, a thread with no anchor — is counted in the audit line
 rather than silently dropped.
+
+### The Forge's checkpoint ledger
+
+`--adapter forge` reads the hash-chained ledger the
+[Forge](https://github.com/forge-play/Forge) keeps under `~/.forge/checkpoints/`:
+every decision the engine put to a maker, every answer they sealed, and every
+later time the engine confirmed from that memory instead of asking. It is a
+corpus of *checkpoints*, not of conversation, and the adapter says so before
+a number is computed:
+
+- **Three analyzers are refused by name**, in the audit sentence and in
+  `doctor`, because over this corpus they would compute a plausible number
+  that measures nothing. `steering_density` (a checkpoint has no opening
+  prompt — every answer is "mid-task" by construction), `composition_mix` (an
+  answer names an option; it authors no code), and `clarification_pull` (the
+  engine's ask-versus-confirm split is *on the ledger*, but the analyzer reads
+  a chat-trained phrase list that a Forge question does not match, so it
+  would read 0% however often the engine asked — measured on the real demo
+  ledger: 2 asks in 5 machine turns, reported as 0.0%). This is the
+  `subagents/` lesson taken at the adapter's door: when a corpus cannot feed
+  an analyzer, the output is a refusal, not a number, and there is no flag
+  to turn the refusal off.
+- **What it does measure:** `tempo` — how long the maker took to answer each
+  checkpoint, the engagement signal seen from the other end; thread shape and
+  span over decision types; and whether the operator-role turns read as one
+  human.
+
+Only in scope pointed at your *own* builder's records. The builder's name,
+the project's name, the verifier and the real timestamp are read for the join
+and then quarantined; the tests check the output for each by its literal
+value. `corpuslens/ingest/forge.py`'s docstring is the full account of what
+the Forge writes and which of it is a turn.
 
 ### Database corpora (SQLite and Postgres)
 
@@ -515,8 +595,8 @@ say out loud that looking is not a neutral act.
 
 ## Status: spine (0.2.0, on PyPI)
 
-Built: event model, the wall, six adapters (claude-code, cursor, cursor-store,
-gemini-cli, sqlite, postgres), injection filter, six analyzers with per-analyzer
+Built: event model, the wall, seven adapters (claude-code, cursor, cursor-store,
+gemini-cli, forge, sqlite, postgres), injection filter, six analyzers with per-analyzer
 semantic versions, markdown + JSON + share renderers, the `timing_fingerprint`
 computation, CLI (`run` — with zero-argument discovery — `doctor`, `adapters`,
 `analyzers`, `label`, `score`, `diff`), test suite (wall + pipeline + db-adapter + CLI-surface + render +

@@ -187,10 +187,16 @@ setup items above, and the logs name it.
 
 ## Scope
 
-corpuslens is **owner == subject**: a tool you run on your own logs to study
-yourself. Pointing it at another person is a different consent object and is out
-of scope by design; the guardian-consent model is deliberately unbuilt. PRs that
-add person-targeting analysis will be declined on those grounds, not on quality.
+corpuslens is **owner == subject** by default: a tool you run on your own logs
+to study yourself. Pointing it at another person is a different consent object.
+That object now exists — `corpuslens/consent/` (vendored from willow-mcp,
+hash-pinned; never edit it in place, re-vendor) and the binding in
+`corpuslens/subject_consent.py` — and it gates exactly one thing: whether a
+named non-owner subject's corpus may be *read for process* at all. It does not
+open the door to person-shaped claims; `person_inference` stays unwired from
+the Guard on purpose, and the ethics half (who may consent for whom) is the
+human's, not the tool's. PRs that add person-targeting analysis on the strength
+of a grant will be declined on those grounds, not on quality.
 
 ## How we work here
 
