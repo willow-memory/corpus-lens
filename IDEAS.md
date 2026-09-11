@@ -130,7 +130,7 @@ say so.
 Promoted from Stretch ([Corpora that are not code](#corpora-that-are-not-code)),
 which already said this half was buildable today. The review added a second
 reason: the classifiers are English-and-Python shaped. `DELIB` is a list of
-English phrases, `CODE_REF` knows eight file extensions, `AUTHORED` knows a
+English phrases, `CODE_REF` knows nine file extensions, `AUTHORED` knows a
 handful of languages' block syntax. Undercounting is the stated rule, so none
 of that is a bug — but it means that for an operator who writes in another
 language, or in Rust or Elixir, the composition numbers barely move, and the
