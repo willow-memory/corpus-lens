@@ -141,6 +141,23 @@ person at all.
 Fixed by skipping any file under a `subagents/` directory component, counting
 every skipped record as a drop. `tests/test_pipeline.py::DogfoodRegressions`.
 
+### The corpus-type refusal, validated on a foreign corpus
+
+Not a bug — a fixed thing confirmed working on data nobody wrote it for.
+
+Pointed at SWE-agent's trajectories (22 real files, 489 steps),
+`clarification_pull` refused rather than reporting 0.0%: 296 machine turns, and
+`CLARIFY` matched none of them. That is the correct call and for the correct
+reason. A SWE-agent machine turn is tool output and code, not conversational
+English, so the regex genuinely cannot read it — which is one of the two
+readings the refusal names, and it declined to pick between them.
+
+The complementary case held too, measured the same night on this project's own
+agent transcripts: there `CLARIFY` fired twice, so the analyzer reported a
+genuine 0.0% instead of refusing. The distinction the feature draws between
+"the regex found nothing" and "the regex works and the answer is zero" survives
+contact with corpora it was not designed against.
+
 ### `diff` told the reader a classifier had changed when nothing had
 
 Per-analyzer versions are new, so any report produced before them carries no

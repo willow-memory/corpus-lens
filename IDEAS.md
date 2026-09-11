@@ -280,6 +280,66 @@ example and is named-and-unbuilt on purpose.
 
 ## Adapters
 
+### A corpus with no clock is refused whole, and two analyzers do not need one
+
+Measured 2026-09-11 against **SWE-agent's own trajectory files** (`SWE-agent/SWE-agent`,
+MIT, 22 `.traj` files, 489 history steps, cloned and parsed rather than read about).
+
+The corpus is otherwise ideal: roles are `system`/`user`/`assistant`/`tool` and
+every one maps onto the role sets already; content is present; each file is a
+session. It carries **no per-turn timestamp at all** — verified by walking every
+key in every file, not by trusting a schema description. The only time-shaped
+field is `trajectory.execution_time`, which is how long a shell command ran. It
+is a duration with no origin, and using it as an inter-turn gap would invent
+exactly the quantity the wall governs.
+
+So the `sqlite` adapter refuses the table, because `ts` is a hard requirement.
+The refusal itself is good — it names every alias it looked for and the columns
+it found, and exits 2, which I verified by running it after a survey suspected
+(from reading the source) that it would traceback instead.
+
+**But the refusal costs more than it should.** Building the events by hand, with
+`day_offset` a constant and `delta_prev_s` None so that nothing is invented,
+two analyzers run fine on this corpus and answer with real numbers:
+
+- `steering_density` — n=193, 88.6% mid-task
+- `composition_mix` — n=193, 9.8% authored, 77.2% code-reference, 1.0% deliberation
+
+Those two **fully answer GRADING.md questions 1 and 2** and neither needs a
+clock. Only `tempo`, `thread_shape` and `thread_span` do. The `cursor-store`
+adapter already set the precedent for this exact situation — a corpus whose
+prompts have no clock, handled by reporting tempo as uncovered and never
+imputing — but that precedent lives in one file adapter and the database
+adapter does not follow it.
+
+**What would have to be true first.** `day_offset` would need a representable
+"unknown" that is not zero, since zero is a real day and silently means *the
+corpus's first day*. The audit sentence would have to say the corpus has no
+clock, in the sentence rather than a footnote. And the three clock-dependent
+analyzers would have to return `{"error": ...}` rather than compute over a
+constant — a constant day would make `thread_span` report every thread as
+single-day, which is a fabricated finding, not a missing one.
+
+### The harder finding: "operator" was not a person, and nothing noticed
+
+The same run is a warning about the whole battery. In a SWE-agent trajectory the
+`user` turns are the **environment feeding back command output**, not a human.
+The analyzers did not care. `steering_density` reported 88.6% mid-task, which
+reads — to anyone who did not know what they were pointed at — as an unusually
+good director, better than the reference N=1's 96.8% is far above the benchmarks.
+It is an automated loop.
+
+This is the `subagents/` bug again at a different scale, and the escalation
+matters: that one was caught because opener length went visibly absurd (11 words
+to 516). Here every number is *plausible*. Nothing in the output signals that the
+subject is not a person, because nothing in the tool can tell.
+
+`owner == subject` is stated as a scope rule the operator is trusted to honor.
+This is the first measurement showing the tool cannot detect when it has been
+broken, and that a broken run looks exactly like a good one.
+
+
+
 - **claude.ai web export.** Named unbuilt in the README. The export format is
   stable and documented enough to read.
 - **Forge's own records.** `forge-play/Forge`'s friction log, calibration ledger
