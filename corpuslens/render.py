@@ -16,7 +16,19 @@ import re
 from .analyze import SMALL_N  # noqa: F401 — re-exported; tests import it from here too
 from .subject import SUBJECT_HUMAN
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+# Bumped 1 -> 2 for the drop-reason breakdown (BUGS.md, Open #1, Fixed):
+# `audit.as_dict()` gained `n_dropped_structural`, `n_dropped_malformed` and
+# `dropped_by_reason`, which is a shape change to the envelope this constant
+# governs (see this module's own docstring, "Stable top-level shape"), not an
+# analyzer change — no `analyzer_version` moved. `corpuslens diff` already
+# refuses to compare two documents whose `schema_version` differs (see
+# `diff.py`'s module docstring, which called this exact refusal "presently
+# unreachable in practice ... it exists for the day it isn't") — this is that
+# day. A report produced by the previous version of this tool still reads
+# fine on its own; it simply cannot be diffed against a report produced after
+# this change, and `diff` says so by name rather than comparing mismatched
+# fields as if they meant the same thing.
 
 CAVEAT = ("Numbers are heuristics plus your own eyes: spot-check before citing them. "
           "Reference points are one measured N=1 plus public population aggregates.")

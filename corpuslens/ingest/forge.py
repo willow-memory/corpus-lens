@@ -132,6 +132,8 @@ from pathlib import Path
 from ..model import Surface
 from . import register, register_default_path, register_unmeasurable
 from ._rows import assemble, as_text, parse_db_ts
+from .drops import (DropCounts, EMPTY_TURN, MISSING_TIMESTAMP,
+                    NOT_A_TURN_RECORD, UNPARSEABLE_LINE, UNREADABLE_FILE)
 
 ADAPTER_ID = "forge/1"
 
@@ -169,9 +171,10 @@ def _lines(path: Path):
 
 
 def _read_ledger(path: Path, rel: str):
-    """One ledger file -> (raw rows for `assemble`, dropped)."""
+    """One ledger file -> (raw rows for `assemble`, DropCounts)."""
     records = [(n, r) for n, r in _lines(path)]
-    dropped = sum(1 for _, r in records if r is None)
+    drops = DropCounts()
+    drops.add(UNPARSEABLE_LINE, sum(1 for _, r in records if r is None))
     # First pass: the question text each `surface_sha` was answered with.
     questions: dict = {}
     for _, r in records:
@@ -196,13 +199,19 @@ def _read_ledger(path: Path, rel: str):
             text = as_text(r.get("canonical"))
             role = "operator"
         else:
-            dropped += 1                 # `seal`, `reject_*`, `supersede`, ...: not turns
+            drops.add(NOT_A_TURN_RECORD)  # `seal`, `reject_*`, `supersede`, ...: not turns
             continue
-        if d is None or not domain or not text.strip():
-            dropped += 1                 # no clock, no thread, or an ask never answered
+        if d is None:
+            drops.add(MISSING_TIMESTAMP)
+            continue
+        if not domain:
+            drops.add(UNPARSEABLE_LINE)   # no thread key — not a shape this adapter can use
+            continue
+        if not text.strip():
+            drops.add(EMPTY_TURN)         # an ask never answered, or a blank canonical answer
             continue
         raw.append((d, epoch, domain, role, text, f"{rel}:{n}"))
-    return raw, dropped
+    return raw, drops
 
 
 @register_unmeasurable("forge", UNMEASURABLE)
@@ -213,15 +222,15 @@ def ingest(path: str, corpus_id: str = "corpus"):
     if not root.is_dir():
         raise NotADirectoryError(f"forge adapter expects a directory (e.g. ~/.forge), got {path}")
     raw = []
-    dropped = 0
+    drops = DropCounts()
     for f in sorted(root.rglob("ledger.jsonl")):
         rel = str(f.relative_to(root))
         try:
             rows, d = _read_ledger(f, rel)
         except OSError:
-            dropped += 1                 # never abort the walk
+            drops.add(UNREADABLE_FILE)   # never abort the walk
             continue
         raw.extend(rows)
-        dropped += d
-    events, quarantine, d = assemble(raw, corpus_id, ADAPTER_ID, Surface.CLI)
-    return events, quarantine, dropped + d
+        drops.merge(d)
+    events, quarantine, drops2 = assemble(raw, corpus_id, ADAPTER_ID, Surface.CLI)
+    return events, quarantine, drops.merge(drops2)

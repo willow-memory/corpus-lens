@@ -146,7 +146,7 @@ class Adapter(unittest.TestCase):
 
     def test_every_unusable_blob_is_counted_not_hidden(self):
         # t2: tool, system, empty turn, bad json, opaque bytes, empty blob
-        self.assertEqual(self.dropped, 6)
+        self.assertEqual(self.dropped.total, 6)
 
     def test_operator_turns_carry_no_invented_clock(self):
         """The store does not time prompts. None is the truth; a number would
@@ -182,7 +182,7 @@ class Adapter(unittest.TestCase):
                         meta_json=False)
             events, _, dropped = ingest.get("cursor-store")(str(root))
             self.assertEqual(events, [])
-            self.assertGreaterEqual(dropped, 1)
+            self.assertGreaterEqual(dropped.total, 1)
 
     def test_a_file_argument_is_refused(self):
         with self.assertRaises(NotADirectoryError):

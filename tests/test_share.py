@@ -252,14 +252,25 @@ class AuditBandingTests(CorpusFixture):
         self.assertRegex(share_audit["n_events"], _BAND_RE)
         self.assertIsInstance(share_audit["n_dropped"], str)
         self.assertRegex(share_audit["n_dropped"], _BAND_RE)
+        self.assertIsInstance(share_audit["n_dropped_structural"], str)
+        self.assertRegex(share_audit["n_dropped_structural"], _BAND_RE)
+        self.assertIsInstance(share_audit["n_dropped_malformed"], str)
+        self.assertRegex(share_audit["n_dropped_malformed"], _BAND_RE)
+        for reason, band in share_audit["dropped_by_reason"].items():
+            with self.subTest(reason=reason):
+                self.assertIsInstance(band, str)
+                self.assertRegex(band, _BAND_RE)
         self.assertNotEqual(share_audit["n_events"], full_audit["n_events"])
         # ...or in the sentence, which is GENERATED TEXT and could drift from
         # the fields above if it were produced by a different code path.
-        m = re.search(r"This run read (\S+) events \(dropped (\S+), counted not hidden\)",
-                      share_audit["sentence"])
+        m = re.search(r"This run read (\S+) events \(dropped (\S+): (\S+) not a turn by "
+                      r"design, (\S+) that should have been a turn and failed; counted "
+                      r"not hidden\)", share_audit["sentence"])
         self.assertIsNotNone(m, share_audit["sentence"])
         self.assertEqual(m.group(1), share_audit["n_events"])
         self.assertEqual(m.group(2), share_audit["n_dropped"])
+        self.assertEqual(m.group(3), share_audit["n_dropped_structural"])
+        self.assertEqual(m.group(4), share_audit["n_dropped_malformed"])
         self.assertNotEqual(m.group(1), str(full_audit["n_events"]))
         self.assertNotEqual(m.group(2), str(full_audit["n_dropped"]))
 
@@ -320,7 +331,7 @@ class AuditAndEgressTests(CorpusFixture):
         doc = json.loads(out)   # must still parse
         self.assertIn("share_caveat", doc)
         self.assertIn("COARSENED", doc["share_caveat"])
-        self.assertEqual(doc["schema_version"], 1)
+        self.assertEqual(doc["schema_version"], 2)
 
     def test_unshared_json_has_no_share_caveat(self):
         _, out, _ = _run(["run", str(self.d), "--adapter", "claude-code", "--format", "json"])

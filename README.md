@@ -192,14 +192,25 @@ corpuslens diff a.json b.json                                # the delta between
 ```
 
 `doctor` is a dry run of ingestion only: how many records an adapter could see,
-how many it had to drop and what share that is, how many threads and relative
-days it found, and — the useful part before you commit to a report — which
-analyzers this corpus *cannot* feed (a corpus with no machine turns can't give
-you `clarification_pull`; one with no prompt clock can't give you `tempo`). It
+how many it had to drop, how many threads and relative days it found, and —
+the useful part before you commit to a report — which analyzers this corpus
+*cannot* feed (a corpus with no machine turns can't give you
+`clarification_pull`; one with no prompt clock can't give you `tempo`). It
 runs no analyzer and emits no rate, counts rather than content, and its output
 passes the same fail-closed egress scan the report does. `adapters` and
 `analyzers` list what is registered — each adapter with the argument it expects,
 each analyzer with its claim type and its named denominator.
+
+The drop count is two different things, reported and warned on separately.
+Tool traffic, thinking blocks, attachments, harness bookkeeping and dispatched
+subagent traffic were never a turn **by design** — normal, no reason to
+distrust anything kept. An unparseable line, a missing timestamp, an
+unrecognised role or an empty turn **should have been a turn and failed** —
+this is the number worth judging a corpus by. `doctor` prints both
+(`events_dropped_structural` / `events_dropped_malformed`, and a
+`dropped_by_reason` breakdown) and warns only when the malformed share passes
+50% — a modern agentic corpus can read "90%+ dropped" and stay entirely quiet,
+because that 90% is tool calls and thinking blocks, not failures.
 
 ### A corpus that is not your own
 

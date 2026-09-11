@@ -86,16 +86,17 @@ def _check_path(path: str, adapter: str, src: str):
 
 
 def _ingest(path: str, adapter: str, table: str | None):
-    """(events, quarantine, dropped, n_files) or raises ValueError with a
+    """(events, quarantine, drops, n_files) or raises ValueError with a
     ready-to-print message. Shared by `run` and `doctor` so the two can never
-    disagree about what a corpus contains."""
+    disagree about what a corpus contains. `drops` is an `ingest.drops.DropCounts`
+    — see `corpuslens/ingest/__init__.py` for the contract."""
     src = ingest.source_of(adapter)
     n_files, err = _check_path(path, adapter, src)
     if err:
         raise ValueError(err)
     kw = {"table": table} if (table is not None and src in ("file", "dsn")) else {}
-    events, quarantine, dropped = ingest.get(adapter)(path, **kw)
-    return events, quarantine, dropped, n_files
+    events, quarantine, drops = ingest.get(adapter)(path, **kw)
+    return events, quarantine, drops, n_files
 
 
 def _ingest_for_label(path: str, adapter: str, table: str | None):
@@ -111,10 +112,10 @@ def _ingest_for_label(path: str, adapter: str, table: str | None):
         raise ValueError(err)
     kw = {"table": table} if (table is not None and src in ("file", "dsn")) else {}
     lc = ingest.get_label_text(adapter)(path, **kw)
-    return lc.events, lc.quarantine, lc.dropped, n_files, lc.text_by_ref
+    return lc.events, lc.quarantine, lc.drops, n_files, lc.text_by_ref
 
 
-def _empty_message(path, adapter, src, n_files, dropped, display_path=None) -> str:
+def _empty_message(path, adapter, src, n_files, drops, display_path=None) -> str:
     """`display_path` overrides `path` in the text. `run_discovered` passes the
     adapter's declared `~/...` form, because on a DISCOVERED run the user never
     typed the path: echoing the resolved one back would print their username in
@@ -123,16 +124,20 @@ def _empty_message(path, adapter, src, n_files, dropped, display_path=None) -> s
     `/home/<name>/.claude/projects` for the same corpus is the one place this
     feature was still inconsistent with itself. When the user typed the path,
     `display_path` is None and it is echoed as typed, which is right — it is
-    already theirs, and changing it would make the error harder to act on."""
+    already theirs, and changing it would make the error harder to act on.
+
+    `drops` is an `ingest.drops.DropCounts`; only the aggregate `.total` is
+    worth naming in a one-line failure message (a reason breakdown belongs in
+    `doctor`, not here)."""
     path = display_path or path
     pat = ingest.pattern_of(adapter)
     if src == "dir" and n_files == 0:
         return f"no {pat} files found under {path}. Wrong directory?"
     if src == "dir":
         return (f"{n_files} {pat} file(s) under {path} but none yielded a datable, "
-                f"non-empty turn for adapter '{adapter}' (dropped {dropped}). Wrong adapter?")
+                f"non-empty turn for adapter '{adapter}' (dropped {drops.total}). Wrong adapter?")
     return (f"adapter '{adapter}' yielded no datable, non-empty turn from {path} "
-            f"(dropped {dropped}). Wrong table/columns, or an empty corpus?")
+            f"(dropped {drops.total}). Wrong table/columns, or an empty corpus?")
 
 
 def _window(events, since_day, until_day):
@@ -321,7 +326,7 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
     if rc:
         return rc
     try:
-        events, quarantine, dropped, n_files = _ingest(path, adapter, table)
+        events, quarantine, drops, n_files = _ingest(path, adapter, table)
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
             RuntimeError) as e:
         # the ingest error text can quote the resolved path; on a discovered run
@@ -332,7 +337,7 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
         return 2
 
     if not events:
-        print(f"error: {_empty_message(path, adapter, src, n_files, dropped, discovered_path)}",
+        print(f"error: {_empty_message(path, adapter, src, n_files, drops, discovered_path)}",
               file=sys.stderr)
         return 1
 
@@ -344,7 +349,10 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
 
     guard = Guard(quarantine, DEFAULT_PROFILE)
     guard.audit.n_events = len(events)
-    guard.audit.n_dropped = dropped
+    guard.audit.n_dropped = drops.total
+    guard.audit.n_dropped_structural = drops.structural
+    guard.audit.n_dropped_malformed = drops.malformed
+    guard.audit.dropped_by_reason = drops.as_dict()
     guard.audit.adapter = adapter
     if discovered_path:
         guard.audit.discovered_path = discovered_path
@@ -458,16 +466,28 @@ def _disclose(subject: str, consent_store: str | None, action: str, adapter: str
               f"the subject's record does not show this run.", file=sys.stderr)
 
 
-def _diagnose(events, quarantine, dropped, adapter, src, n_files, path) -> dict:
+def _diagnose(events, quarantine, drops, adapter, src, n_files, path) -> dict:
     """Counts only — never content, never the anchor itself (only whether one
     was quarantined). Split out from `doctor` so the numbers and their
-    rendering can be tested apart."""
-    total = len(events) + dropped
+    rendering can be tested apart.
+
+    `drops` is an `ingest.drops.DropCounts` (BUGS.md, Open #1, Fixed): the old
+    combined `drop_pct` conflated "not a turn by design" (tool traffic,
+    thinking, attachments, harness bookkeeping — normal, no reason to distrust
+    anything) with "should have been a turn and failed" (an unparseable line,
+    a missing timestamp, an unrecognised role, an empty turn — the number a
+    reader should actually judge a corpus by). `drop_pct` below stays as the
+    combined figure for continuity; the warning fires on `malformed_drop_pct`
+    only, computed over CANDIDATE turns (kept + malformed) so a corpus that is
+    mostly tool traffic by design — the case that made this warning misfire on
+    a modern agentic corpus — no longer trips it."""
+    total = len(events) + drops.total
     op = [e for e in events if e.author_class == "operator"]
     machine = [e for e in events if e.author_class == "machine"]
     threads = {e.thread_id for e in events}
     days = {e.time.day_offset for e in events}
     with_delta = sum(1 for e in events if e.time.delta_prev_s is not None)
+    candidate_turns = len(events) + drops.malformed
     diag = {
         "adapter": adapter,
         "source_kind": src,
@@ -475,8 +495,13 @@ def _diagnose(events, quarantine, dropped, adapter, src, n_files, path) -> dict:
         "source_file_pattern": ingest.pattern_of(adapter) if src == "dir" else None,
         "records_read": total,
         "events_kept": len(events),
-        "events_dropped": dropped,
-        "drop_pct": round(100 * dropped / total, 1) if total else 0.0,
+        "events_dropped": drops.total,
+        "events_dropped_structural": drops.structural,
+        "events_dropped_malformed": drops.malformed,
+        "drop_pct": round(100 * drops.total / total, 1) if total else 0.0,
+        "malformed_drop_pct": (round(100 * drops.malformed / candidate_turns, 1)
+                               if candidate_turns else 0.0),
+        "dropped_by_reason": drops.as_dict(),
         "operator_turns": len(op),
         "machine_turns": len(machine),
         "threads": len(threads),
@@ -486,15 +511,20 @@ def _diagnose(events, quarantine, dropped, adapter, src, n_files, path) -> dict:
     }
     notes = []
     if not events:
-        notes.append(_empty_message(path, adapter, src, n_files, dropped))
+        notes.append(_empty_message(path, adapter, src, n_files, drops))
     if events and not machine:
         notes.append("no machine turns: `clarification_pull` cannot be computed on this corpus.")
     if events and not with_delta:
         notes.append("no within-day tempo deltas: `tempo` cannot be computed on this corpus "
                      "(a store that does not clock prompts, or one turn per thread per day).")
-    if diag["drop_pct"] >= 50.0:
-        notes.append(f"{diag['drop_pct']}% of records were dropped — check the adapter "
-                     f"(and --table) before trusting any rate computed from the rest.")
+    if diag["malformed_drop_pct"] >= 50.0:
+        notes.append(f"{diag['malformed_drop_pct']}% of the records that should have been a "
+                     f"turn failed to become one (unparseable lines, missing timestamps, "
+                     f"unrecognised roles, empty turns) — check the adapter (and --table) "
+                     f"before trusting any rate computed from the rest. This does NOT count "
+                     f"the {diag['events_dropped_structural']} record(s) dropped by design "
+                     f"(tool traffic, thinking, attachments, harness bookkeeping) — those are "
+                     f"normal and not part of this warning.")
     if not quarantine.base_date_iso and events:
         notes.append("no calendar anchor was quarantined for this corpus.")
     for name, why in sorted(ingest.unmeasurable_of(adapter).items()):
@@ -511,9 +541,12 @@ def _render_doctor(diag: dict, fmt: str) -> str:
         return json.dumps(diag, indent=2, default=str)
     lines = ["# corpuslens doctor", ""]
     for k, v in diag.items():
-        if k in ("notes", "reminder") or v is None:
+        if k in ("notes", "reminder", "dropped_by_reason") or v is None:
             continue
         lines.append(f"- **{k}**: {v}")
+    if diag.get("dropped_by_reason"):
+        lines += ["", "## dropped_by_reason"] + [
+            f"- **{reason}**: {n}" for reason, n in sorted(diag["dropped_by_reason"].items())]
     if diag["notes"]:
         lines += ["", "## notes"] + [f"- {n}" for n in diag["notes"]]
     lines += ["", f"*{diag['reminder']}*"]
@@ -537,13 +570,13 @@ def doctor(path: str, adapter: str, table: str | None = None, fmt: str = "markdo
     if rc:
         return rc
     try:
-        events, quarantine, dropped, n_files = _ingest(path, adapter, table)
+        events, quarantine, drops, n_files = _ingest(path, adapter, table)
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
             RuntimeError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
-    diag = _diagnose(events, quarantine, dropped, adapter, src, n_files, path)
+    diag = _diagnose(events, quarantine, drops, adapter, src, n_files, path)
     if subject:
         diag["subject_consent"] = consentmod.SCOPE   # the scope verified, never the id
     text = _render_doctor(diag, fmt)
@@ -554,7 +587,7 @@ def doctor(path: str, adapter: str, table: str | None = None, fmt: str = "markdo
         return 3
     print(text)
     if subject:
-        _disclose(subject, consent_store, consentmod.ACTION_DOCTOR, adapter, len(events), dropped)
+        _disclose(subject, consent_store, consentmod.ACTION_DOCTOR, adapter, len(events), drops.total)
     return 0 if events else 1
 
 
@@ -685,13 +718,13 @@ def label(path: str, adapter: str, sample_size: int, store_path: str,
               file=sys.stderr)
         return 2
     try:
-        events, quarantine, dropped, n_files, text_by_ref = _ingest_for_label(path, adapter, table)
+        events, quarantine, drops, n_files, text_by_ref = _ingest_for_label(path, adapter, table)
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
             RuntimeError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
     if not events:
-        print(f"error: {_empty_message(path, adapter, ingest.source_of(adapter), n_files, dropped)}",
+        print(f"error: {_empty_message(path, adapter, ingest.source_of(adapter), n_files, drops)}",
               file=sys.stderr)
         return 1
 
@@ -883,7 +916,7 @@ def score(path: str, adapter: str, table: str | None, store_path: str,
     version, than the one installed — the two are checked independently,
     since they move on independent schedules (see label.py)."""
     try:
-        events, quarantine, dropped, n_files = _ingest(path, adapter, table)
+        events, quarantine, drops, n_files = _ingest(path, adapter, table)
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
             RuntimeError) as e:
         print(f"error: {e}", file=sys.stderr)

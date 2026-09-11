@@ -13,34 +13,7 @@ highest class of bug this project has.
 
 ## Open
 
-### 1. `doctor`'s drop warning misfires on agentic corpora
-
-`corpuslens doctor` warns when more than half of the records read were dropped:
-*"check the adapter (and --table) before trusting any rate computed from the
-rest."* On a modern Claude Code corpus that fires every time and means nothing.
-
-Measured on this project's own session log: 1,112 records read, 70 kept, **93.7%
-dropped** — and every one of those drops is correct. 272 were `tool_use`, 271
-`tool_result`, 108 `thinking`, 226 `attachment`, the rest harness bookkeeping
-(`ai-title`, `atis-latch`, `last-prompt`, `queue-operation`). None of them are
-turns. Nothing was wrong.
-
-The drop count is conflating two different things:
-
-- **not a turn by design** — tool traffic, thinking blocks, attachments. Normal,
-  and no reason to distrust anything.
-- **should have been a turn and failed** — an unparseable line, a record with no
-  usable timestamp, an unrecognised role, an empty turn. *This* is the number a
-  reader should judge a corpus by.
-
-The fix is to count them separately and warn on the second only. That changes
-the audit sentence's `dropped` figure, which is a wall-visible claim, so it is
-a design change rather than a patch — hence open rather than done.
-
-**Workaround:** on an agent corpus, read the `operator_turns` / `machine_turns`
-/ `threads` counts and ignore `drop_pct`.
-
-### 2. `tempo` measures from the previous event, and a prompt-to-prompt number
+### 1. `tempo` measures from the previous event, and a prompt-to-prompt number
 would be a different measurement
 
 **Half of this is fixed.** The headline used to read "your prompts arrive a
@@ -63,7 +36,7 @@ filter correctly refuses to count still contributes its timestamp to the next
 real gap. Under the corrected wording that is consistent rather than wrong, but
 it would have to be revisited alongside any prompt-to-prompt measurement.
 
-### 3. A compaction boundary is invisible to `thread_shape` and `thread_span`
+### 2. A compaction boundary is invisible to `thread_shape` and `thread_span`
 
 When the runtime compacts a conversation it writes a `system` record with
 `subtype: "compact_boundary"` carrying the trigger and the uuid of the last
@@ -89,7 +62,7 @@ grepping his own corpus on another machine, but the field layout was not.
 the anchor quarantined per the Guard. Then the shape is observed rather than
 described, and the semantic change can be made against something real.
 
-### 4. `changelog_dedup.py` cannot fix a *first* release
+### 3. `changelog_dedup.py` cannot fix a *first* release
 
 This repo merges with merge commits, so release-please parses each change twice
 — once from the real commit, once from the merge commit carrying its title.
@@ -105,7 +78,7 @@ Per that file's docstring the tool is fixed in forge-play first and re-synced
 here, so this stays open until that happens. **Workaround:** fix a first
 release's changelog section by hand before merging the release PR.
 
-### 5. An unclosed known wrapper tag consumes the rest of the turn
+### 4. An unclosed known wrapper tag consumes the rest of the turn
 
 `injection.py` strips an enumerated list of machine-injected wrappers. When a
 known tag appears **unclosed**, the pattern consumes to the next open tag or the
@@ -121,6 +94,76 @@ Plain prose is untouched — only the angle-bracketed form matches.
 ---
 
 ## Fixed
+
+### `doctor`'s drop warning misfired on agentic corpora
+
+`corpuslens doctor` used to warn whenever more than half of the records read
+were dropped: *"check the adapter (and --table) before trusting any rate
+computed from the rest."* On a modern Claude Code corpus that fired every
+time and meant nothing.
+
+Measured on this project's own session log: 1,112 records read, 70 kept,
+**93.7% dropped** — and every one of those drops was correct. 272 were
+`tool_use`, 271 `tool_result`, 108 `thinking`, 226 `attachment`, the rest
+harness bookkeeping (`ai-title`, `atis-latch`, `last-prompt`,
+`queue-operation`). None of them were turns. Nothing was wrong.
+
+The drop count was conflating two different things:
+
+- **not a turn by design** — tool traffic, thinking blocks, attachments,
+  harness bookkeeping, dispatched/subagent traffic, a compaction summary.
+  Normal, and no reason to distrust anything.
+- **should have been a turn and failed** — an unparseable line, a record with
+  no usable timestamp, an unrecognised role, an empty turn. *This* is the
+  number a reader should judge a corpus by.
+
+Fixed by widening the adapter contract's third element from a bare `int` to
+`ingest/drops.py::DropCounts` — still always the same 3-tuple
+`(events, quarantine, drops)` every adapter returns, for every call, with no
+keyword that changes its shape (that exact shape-changes-under-a-flag mistake
+is what the separate `label_text` seam already exists to avoid, and this
+change was held to the same rule). `DropCounts` tallies every drop under a
+CLOSED, enumerated reason (tool traffic, thinking, an attachment, harness
+bookkeeping, a subagent, a compaction summary, and, for a genuine failure, an
+unreadable file, an unparseable line, a missing timestamp, an unrecognised
+role, or an empty turn — plus a single honest "unknown reason" bucket for an
+adapter that cannot tell the two classes apart) and exposes `.total` so any
+reader that only ever wanted the old aggregate number still has one line to
+get it back. Every adapter — `claude-code`, `cursor`, `cursor-store`,
+`gemini-cli`, `sqlite`, `postgres`, `forge` — classifies its own drop sites
+into this vocabulary; `_rows.py::assemble`, the one shared assembler the
+database-shaped adapters all go through, tags its one drop site (empty text
+after de-injection) the same way.
+
+`doctor` now reports `events_dropped_structural`, `events_dropped_malformed`
+and a `dropped_by_reason` breakdown alongside the old `events_dropped` and
+`drop_pct` (kept for continuity), and warns on `malformed_drop_pct` — the
+malformed share of KEPT-plus-malformed records — rather than the combined
+total. On the exact corpus this bug report measured, `drop_pct` still reads
+in the 90s; `malformed_drop_pct` reads near zero, and the warning stays
+quiet. `guard.AuditRecord`'s audit sentence — a wall-visible claim — grew the
+same split (`n_dropped_structural`, `n_dropped_malformed`,
+`dropped_by_reason`), so `run`'s output states the distinction too, not just
+`doctor`'s diagnostic.
+
+Two things this touched that are worth naming because they are easy to get
+wrong the same way twice. First, a per-reason breakdown published at EXACT
+counts in `--share` mode would have been a new instance of the very leak
+class this file's `n_events`-vs-`scan_egress` finding (below, under the
+postgres entry's near neighbors — see `share.py`'s own docstring) already
+named: an exact count is not a quarantined literal, so the literal egress
+scan cannot catch it. `share.coarsen_audit` now bands every one of the new
+fields (`share.band_dropped_by_reason`, one `band_n` per reason), and
+`share_shape.py`'s allowlists were extended to cover them structurally, so an
+un-banded breakdown is refused by `Guard.scan_share_shape` rather than
+shipped — proven by a hostile fixture in `tests/test_share_shape.py`. Second,
+the audit record's shape changed (three new fields on `as_dict()`), which is
+exactly what `render.SCHEMA_VERSION` exists to govern; it moved from `1` to
+`2`, and `corpuslens diff` refuses to compare a report from before this
+change against one from after it (naming `schema_version differs`, per its
+own existing hard-refusal rule) rather than reading the older report's
+absence of the new fields as if it were a changed value — the same mistake
+recorded below for `analyzer_version`, avoided here on purpose.
 
 ### The postgres adapter printed the operator's database password
 

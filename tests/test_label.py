@@ -230,7 +230,7 @@ class LabelTextSeamTests(CorpusFixture):
         lc = ingest.get_label_text("claude-code")(str(self.d))
         self.assertTrue(hasattr(lc, "events"))
         self.assertTrue(hasattr(lc, "quarantine"))
-        self.assertTrue(hasattr(lc, "dropped"))
+        self.assertTrue(hasattr(lc, "drops"))
         self.assertTrue(hasattr(lc, "text_by_ref"))
         self.assertTrue(lc.text_by_ref)   # this corpus has kept events
 

@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import re
 
+from .ingest.drops import REASONS as _DROP_REASONS
 from .share import RATE_FIELDS
 
 #: Fields `share.coarsen_result` itself may emit, beyond the reviewed rate
@@ -75,6 +76,7 @@ ALLOWED_RESULT_FIELDS: frozenset = _RESULT_META_FIELDS | RATE_FIELDS
 ALLOWED_AUDIT_FIELDS: frozenset = frozenset({
     "profile", "adapter", "discovered_path", "granted", "denied",
     "analyzers_run", "analyzers_refused", "n_events", "n_dropped",
+    "n_dropped_structural", "n_dropped_malformed", "dropped_by_reason",
     "filters", "n_filtered", "subject", "subject_reason", "subject_consent",
     "sentence",
 })
@@ -85,7 +87,9 @@ ALLOWED_AUDIT_FIELDS: frozenset = frozenset({
 #: has it (see `_RESULT_META_FIELDS` above): if one appears, that is exactly
 #: the "forgot to band" bug this module exists to catch, not an unrecognized
 #: field to report as the softer violation.
-_DENOMINATOR_FIELDS = frozenset({"n", "n_band", "n_events", "n_dropped", "n_filtered"})
+_DENOMINATOR_FIELDS = frozenset({"n", "n_band", "n_events", "n_dropped",
+                                 "n_dropped_structural", "n_dropped_malformed",
+                                 "n_filtered"})
 
 #: The exact shape `share.band_n` produces. A value under a denominator field
 #: that does not match this is a violation regardless of its type — an exact
@@ -128,12 +132,38 @@ def _check_result_fields(name: str, result: dict, violations: list) -> None:
             violations.append(f"'{key}' in {where} is a nested structure, not a scalar")
 
 
+def _check_dropped_by_reason(value, where: str, violations: list) -> None:
+    """`dropped_by_reason` is the trap `share.py`'s docstring names: a
+    per-reason drop breakdown is the SAME class of quantity `n_events`
+    banding exists to blur, just sliced by reason instead of reported as one
+    total. It is a nested `{reason: count}` mapping, not a scalar, so it needs
+    its own check rather than falling through `_check_denominator_field`
+    (which assumes a bare value) — but the RULE is identical: every count
+    must read as a band, never an exact int, and every key must be one of the
+    closed reasons `ingest/drops.py` enumerates, never a guess or a value an
+    adapter invented."""
+    if not isinstance(value, dict):
+        violations.append(f"'dropped_by_reason' in {where} is not a mapping")
+        return
+    for reason, count in value.items():
+        if reason not in _DROP_REASONS:
+            violations.append(f"unrecognized drop reason '{reason}' in {where}")
+            continue
+        if not _is_band_string(count):
+            kind = ("an exact integer" if isinstance(count, int) and not isinstance(count, bool)
+                    else "not a band")
+            violations.append(f"drop reason '{reason}' in {where} is {kind}, not a coarsened band")
+
+
 def _check_audit_fields(audit: dict, violations: list) -> None:
     where = "the coarsened audit record"
     if not isinstance(audit, dict):
         violations.append(f"{where} is not a mapping")
         return
     for key, value in audit.items():
+        if key == "dropped_by_reason":
+            _check_dropped_by_reason(value, where, violations)
+            continue
         if key in _DENOMINATOR_FIELDS:
             _check_denominator_field(key, value, where, violations)
             continue

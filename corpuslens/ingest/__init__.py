@@ -1,8 +1,34 @@
 """Adapter registry. An adapter ingests one corpus format and returns
-(events, quarantine, dropped) — ALWAYS this exact 3-tuple, for every call.
+(events, quarantine, drops) — ALWAYS this exact 3-tuple, for every call.
 Raw absolute timestamps are consumed INSIDE the adapter to compute day
 offsets and deltas, then discarded — they never leave on an Event. Content is
 consumed to derive process features, then discarded.
+
+`drops` is a `drops.DropCounts` (see `ingest/drops.py`), not a bare `int` —
+this is a deliberate widening of the contract (BUGS.md, Open #1, now Fixed).
+The old single number conflated two different things: a record that was
+never a turn BY DESIGN (tool traffic, a thinking block, an attachment,
+harness bookkeeping) and a record that SHOULD have been a turn and failed
+(an unparseable line, a missing timestamp, an unrecognised role, an empty
+turn). On a modern agentic corpus the first bucket dwarfs the second, so a
+single "93.7% dropped" number told a reader nothing was trustworthy when in
+fact every drop was correct. `DropCounts` keeps that distinction (`.structural`
+/ `.malformed`) plus a full reason breakdown (`.as_dict()`), while still
+exposing `.total` so a caller that only ever wanted the old aggregate number
+has one line to get it back (`drops.total`, in place of the old bare
+variable) — the widening is additive to what a 3-tuple carries, never a
+change in how many elements it has, and never a keyword that changes its
+shape. A DATACLASS was chosen over widening the tuple to 4 elements (events,
+quarantine, structural, malformed) because a 4-tuple would still need a
+reason breakdown for `doctor` and for share-mode banding, which means either
+a 5th element or a nested structure inside one of the four anyway — better to
+keep the tuple's arity exactly as documented and put the new richness inside
+the one element whose job this always was. Every adapter below constructs one
+`DropCounts` and returns it as the tuple's third element; an adapter that
+cannot tell a drop's reason apart from another reports the closed-vocabulary
+`NOT_A_TURN_RECORD` (structural) or `UNKNOWN_REASON` (malformed) bucket rather
+than inventing a label — see `ingest/drops.py`'s module docstring for the
+full vocabulary and why it is closed.
 
 Each adapter also declares the KIND of source it reads via `register(..., source=)`:
   * "dir" — a directory tree of session files (claude-code, cursor)  [default]
