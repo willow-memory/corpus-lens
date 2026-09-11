@@ -26,6 +26,7 @@ import csv
 import io
 import subprocess
 
+from ..failure_classes import describe as _describe_failure
 from ..model import Surface
 from . import register
 from ._rows import (assemble, classify_role, parse_db_ts, require_columns,
@@ -65,7 +66,12 @@ def _psql(dsn: str, sql: str, copy: bool = False) -> str:
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"psql timed out after {_TIMEOUT_S}s")
     if proc.returncode != 0:
-        raise ValueError(f"psql error: {proc.stderr.strip()[:400]}")
+        # NEVER interpolate `proc.stderr` here. psql echoes the whole connection
+        # URI back on a URI parse error, so this line used to print the
+        # operator's database password in plaintext. `describe` reads that text
+        # to classify it and returns only a closed-vocabulary phrase — see
+        # corpuslens/failure_classes.py for the rule and what it costs.
+        raise ValueError(_describe_failure("psql", proc.stderr))
     return proc.stdout
 
 

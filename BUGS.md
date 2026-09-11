@@ -122,6 +122,39 @@ Plain prose is untouched — only the angle-bracketed form matches.
 
 ## Fixed
 
+### The postgres adapter printed the operator's database password
+
+`psql` echoes the whole connection URI back on a URI parse error, and the
+adapter raised `ValueError(f"psql error: {proc.stderr...}")`, which the CLI
+printed verbatim:
+
+```
+$ corpuslens run --adapter postgres "postgres://seanuser:hunter2@[bad/corpus"
+error: psql error: psql: error: end of string reached when looking for
+matching "]" in IPv6 host address in URI: "postgres://seanuser:hunter2@[bad/corpus"
+```
+
+A plaintext database password on stderr, into shell scrollback and CI logs.
+Other failure modes leaked less but in the same way: an internal hostname on a
+DNS failure, a username on an authentication failure.
+
+Two things made it invisible. First, `Guard.scan_egress` — both the literal
+scan and the structural one — guards the *rendered report*, and **an error is
+not a report**; nothing watched this channel at all. Second, the leaked text
+was written by `psql`, not by this repo, so no amount of reviewing corpuslens's
+own strings would have found it. It was found by probing the adapter with a
+hostile DSN, not by reading the code.
+
+Fixed by `corpuslens/failure_classes.py`: a closed vocabulary of failure
+phrases. The foreign text is read to *classify* it and never interpolated, so
+no substring of the input can reach the output — asserted directly, including
+against the exact stderr above, in `tests/test_failure_classes.py`. The sqlite
+adapter's `({e})` was the same shape and got the same treatment. The cost is
+real and deliberate: "authentication failed" tells an operator less than
+psql's own sentence, and the fix must not be quietly undone by appending
+`(detail: ...)` to these messages later.
+
+
 Every entry has a regression test; this project's rule is that a fixed bug gets
 one. Named here so the finding survives even if the test is ever renamed.
 
