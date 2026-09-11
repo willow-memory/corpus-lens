@@ -9,11 +9,21 @@ import statistics
 from collections import defaultdict
 
 from ..model import AuthorClass, DataType
-from . import register
+from . import register, semantic_hash
+
+# What `steering_density`'s number MEANS: an operator prompt turn is "mid-task"
+# iff it is not the first prompt in its thread, filtered to prompts with
+# `char_count >= 12` (de-injected). The only semantic knob is that threshold —
+# change it and a 62%->81% move in the headline could be the filter, not you.
+_MIN_CHARS = "12"
+_STEERING_DENSITY_INPUTS = (_MIN_CHARS,)
+_STEERING_DENSITY_HASH = "b5c69e2b7a6f9c31"
 
 
 @register("steering_density", claims=("steering_density",),
-          denominator="operator prompt turns with >=12 characters (de-injected)")
+          denominator="operator prompt turns with >=12 characters (de-injected)",
+          version=1, semantic_hash=_STEERING_DENSITY_HASH,
+          semantic_inputs=_STEERING_DENSITY_INPUTS)
 def steering_density(events):
     sess = defaultdict(list)
     for e in events:
