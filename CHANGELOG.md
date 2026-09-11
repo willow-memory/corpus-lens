@@ -7,6 +7,18 @@ amendments — corrections sit beside the record they correct, never overwrite i
 Versioned sections are written by release-please from the commit messages; the
 hand-written history below them predates the release pipeline.
 
+## [0.7.0](https://github.com/willow-memory/corpus-lens/compare/v0.6.0...v0.7.0) (2026-09-11)
+
+
+### Added
+
+* **guard:** assert coarsened share payload shape, not just egress literals ([1d9ac38](https://github.com/willow-memory/corpus-lens/commit/1d9ac38d3cf99b0eca264624f563c51eae4a46df))
+
+
+### Fixed
+
+* **guard:** summarize share-shape violations instead of listing all of them ([bd81d8e](https://github.com/willow-memory/corpus-lens/commit/bd81d8e403f288432969a742a239728e9f52cdea))
+
 ## [0.6.0](https://github.com/willow-memory/corpus-lens/compare/v0.5.0...v0.6.0) (2026-09-11)
 
 
