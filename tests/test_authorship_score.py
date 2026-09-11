@@ -106,20 +106,91 @@ class _WithStub:
         self._patcher = None
 
     def __enter__(self):
+        import corpuslens
+        self._pkg = corpuslens
         self._patcher = mock.patch.dict(sys.modules, {"corpuslens.authorship": self.mod})
         self._patcher.__enter__()
+        # Patching sys.modules is not enough once the real module exists: an
+        # already-imported `corpuslens.authorship` is also bound as an attribute
+        # of the parent package, and `from . import authorship` reads that
+        # attribute in preference to the cache. Without this the stub is
+        # installed and silently ignored, and the test grades the real
+        # classifier while believing it graded the stub.
+        self._had_attr = hasattr(corpuslens, "authorship")
+        self._saved_attr = getattr(corpuslens, "authorship", None)
+        setattr(corpuslens, "authorship", self.mod)
         return self.mod
 
     def __exit__(self, *a):
+        if self._had_attr:
+            setattr(self._pkg, "authorship", self._saved_attr)
+        else:
+            delattr(self._pkg, "authorship")
         self._patcher.__exit__(*a)
 
 
-# ── the contract loader, unstubbed (genuinely absent in this worktree) ─────
+class _BlockAuthorshipImport:
+    """Make `corpuslens.authorship` genuinely unimportable for a block.
+
+    These tests were written while that module did not exist, and simulated
+    its absence by popping it out of `sys.modules`. That worked only while the
+    file was missing: once it ships, a pop just clears the cache and the next
+    import reads it straight off disk, so the absence was never simulated and
+    the defensive path went untested while appearing to pass.
+
+    A meta-path finder that refuses the name is the honest version. It keeps
+    `AuthorshipUnavailable` exercised — which still matters, because the
+    contract is loaded lazily and a partial install or a vendored subset can
+    still hit it.
+    """
+
+    class _Blocker:
+        def find_module(self, name, path=None):
+            return self.find_spec(name, path)
+
+        def find_spec(self, name, path=None, target=None):
+            if name == "corpuslens.authorship":
+                raise ImportError("corpuslens.authorship blocked for this test")
+            return None
+
+    def __enter__(self):
+        import corpuslens
+        self._pkg = corpuslens
+        self._saved = sys.modules.pop("corpuslens.authorship", None)
+        # `from . import authorship` returns the PARENT PACKAGE'S attribute when
+        # one is already bound, without consulting sys.modules or meta_path at
+        # all — so clearing the cache alone leaves the import succeeding.
+        self._saved_attr = getattr(corpuslens, "authorship", None)
+        if self._saved_attr is not None:
+            delattr(corpuslens, "authorship")
+        self._blocker = self._Blocker()
+        sys.meta_path.insert(0, self._blocker)
+        return self
+
+    def __exit__(self, *a):
+        sys.meta_path.remove(self._blocker)
+        if self._saved is not None:
+            sys.modules["corpuslens.authorship"] = self._saved
+        if self._saved_attr is not None:
+            setattr(self._pkg, "authorship", self._saved_attr)
+
+
+def _block_authorship_for_test(case):
+    """Block the import for the rest of `case`, restoring it on cleanup.
+
+    Written as a helper rather than a `with` block because these call sites
+    span several statements. Works on 3.10, which has no `enterContext`.
+    """
+    blocker = _BlockAuthorshipImport()
+    blocker.__enter__()
+    case.addCleanup(blocker.__exit__, None, None, None)
+
+
+# ── the contract loader, with the module genuinely blocked ─────
 
 class ContractUnavailableTests(unittest.TestCase):
     def test_authorship_contract_raises_a_clear_error_when_the_module_is_absent(self):
-        sys.modules.pop("corpuslens.authorship", None)
-        with self.assertRaises(labelmod.AuthorshipUnavailable) as ctx:
+        with _BlockAuthorshipImport(), self.assertRaises(labelmod.AuthorshipUnavailable) as ctx:
             labelmod.authorship_contract()
         self.assertIn("corpuslens/authorship.py", str(ctx.exception))
         self.assertIn("classify_turn", str(ctx.exception))
@@ -212,7 +283,7 @@ class AuthorshipScoringTests(unittest.TestCase):
         self.assertIsNone(labelmod.score_authorship([], store))
 
     def test_score_authorship_raises_when_the_module_is_unavailable_but_labels_exist(self):
-        sys.modules.pop("corpuslens.authorship", None)
+        _block_authorship_for_test(self)
         store = labelmod.empty_store()
         labelmod.add_authorship_label(store, "r1", "human", "authorship/1")
         with self.assertRaises(labelmod.AuthorshipUnavailable):
@@ -345,7 +416,7 @@ class LabelCorpusFixture(unittest.TestCase):
 
 class LabelCliAuthorshipTests(LabelCorpusFixture):
     def test_authorship_question_is_skipped_gracefully_when_the_module_is_absent(self):
-        sys.modules.pop("corpuslens.authorship", None)
+        _block_authorship_for_test(self)
         store = self.d / "labels.json"
         with mock.patch("sys.stdin.isatty", return_value=True), \
              mock.patch("builtins.input", lambda prompt: "y"):
@@ -411,7 +482,7 @@ class LabelCliAuthorshipTests(LabelCorpusFixture):
         # authorship question per turn, never re-ask an already-answered
         # regex classifier.
         store = self.d / "labels.json"
-        sys.modules.pop("corpuslens.authorship", None)
+        _block_authorship_for_test(self)
         answers = itertools.cycle(["y", "n"])
         with mock.patch("sys.stdin.isatty", return_value=True), \
              mock.patch("builtins.input", lambda prompt: next(answers)):
@@ -485,7 +556,7 @@ class ScoreCliAuthorshipTests(LabelCorpusFixture):
              mock.patch("builtins.input", lambda prompt: "y"):
             _run(["label", str(self.d), "--adapter", "claude-code",
                  "--sample-size", "10", "--store", str(store)])
-        sys.modules.pop("corpuslens.authorship", None)
+        _block_authorship_for_test(self)
         rc, out, err = _run(["score", str(self.d), "--adapter", "claude-code", "--store", str(store)])
         self.assertEqual(rc, 2)
         self.assertIn("authorship", err)
