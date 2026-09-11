@@ -49,8 +49,12 @@ class RubricScopeTests(unittest.TestCase):
 
     def test_rubric_scope_note_appears_after_the_audit_sentence(self):
         md = markdown({"a": {"headline": "h", "n": 1}}, _audit())
-        self.assertIn(RUBRIC_SCOPE_NOTE, md)
-        self.assertLess(md.index("left the wall"), md.index(RUBRIC_SCOPE_NOTE))
+        # the clause naming how many analyzers map to no question is computed from
+        # the registry, so the constant is a template — compare the fixed halves
+        head, tail = RUBRIC_SCOPE_NOTE.split("{unmapped_clause}")
+        self.assertIn(head.strip(), md)
+        self.assertIn(tail.strip(), md)
+        self.assertLess(md.index("left the wall"), md.index(head.strip()))
         self.assertLess(md.index(RUBRIC_SCOPE_NOTE), md.index("What this run found"))
 
     def test_rubric_scope_note_names_the_unmeasurable_questions(self):

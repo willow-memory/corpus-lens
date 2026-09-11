@@ -32,11 +32,8 @@ RUBRIC_SCOPE_NOTE = (
     "your intent arrives) and question 2 (who writes the code) — and partly answers two more: "
     "question 3 (your deliberation share, but not whether those prompts pull longer, more "
     "structured responses) and question 4 (resumption gaps and thread span, but not a 30-day "
-    "bucket, per-day/month counts, or whether a return was productive). Three of the battery's "
-    "seven analyzers (tempo, clarification_pull, signature_plurality) answer none of the ten "
-    "numbered questions directly and are reported here as a supporting signal, not a rubric "
-    "answer — each section below says "
-    "exactly which case it is. Questions 5-8 (can a stored claim be demoted; when a negative "
+    "bucket, per-day/month counts, or whether a return was productive). {unmapped_clause} "
+    "Questions 5-8 (can a stored claim be demoted; when a negative "
     "result was last recorded; whether an agent can grant itself anything; whether checks fail "
     "closed) and questions 9-10 (whether your timestamps are a fingerprint; who carries the "
     "continuity across a session gap) are not corpus-measurable from session logs at all — "
@@ -199,6 +196,31 @@ _SHOWN = ("headline", "reading", "vs_coding_population", "error", "grading_quest
           "reference_withheld")
 
 
+
+def _unmapped_clause() -> str:
+    """The 'N of M analyzers answer none of the ten questions' clause, computed.
+
+    It was hardcoded, and two analyzers added in parallel each updated it for
+    their own addition without knowing about the other — so the shipped string
+    said three of seven when eight were registered and four answered nothing.
+    A false count in user-visible output is the kind of thing this project
+    treats as a bug, and the durable fix is to stop writing the number down.
+    """
+    from .analyze import all_analyzers
+    every = all_analyzers()
+    unmapped = [a.name for a in every
+                if "none of" in (getattr(a, "grading_question", "") or "")]
+    if not unmapped:
+        return (f"Every one of the battery's {len(every)} analyzers maps onto at least part of "
+                "one of the ten numbered questions.")
+    names = ", ".join(sorted(unmapped))
+    verb = "answers" if len(unmapped) == 1 else "answer"
+    noun = "analyzer" if len(unmapped) == 1 else "analyzers"
+    return (f"{len(unmapped)} of the battery's {len(every)} {noun} ({names}) {verb} none of the "
+            "ten numbered questions directly and are reported here as a supporting signal, not a "
+            "rubric answer — each section below says exactly which case it is.")
+
+
 def _section(name: str, res: dict) -> list:
     out = [f"## {name}", ""]
     if "error" in res:
@@ -276,7 +298,8 @@ def markdown(results: dict, audit, share: bool = False) -> str:
     # RUBRIC_SCOPE_NOTE is a fixed, report-wide string (not one of the
     # per-analyzer fields `_apply_subject_lens` already rewrote in `results`
     # above) that ALSO says "your" three times — same seam, same reason.
-    scope_note = _depersonalize(RUBRIC_SCOPE_NOTE) if _lens_active(audit) else RUBRIC_SCOPE_NOTE
+    note = RUBRIC_SCOPE_NOTE.format(unmapped_clause=_unmapped_clause())
+    scope_note = _depersonalize(note) if _lens_active(audit) else note
     out.append(f"> {scope_note}")
     out.append("")
     findings = [(name, res.get("headline")) for name, res in results.items()]
