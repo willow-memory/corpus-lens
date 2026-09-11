@@ -164,3 +164,9 @@ changing what the tool *claims*, in the same pull request.
 - **`SMALL_N = 30`** in the renderer is a convention, not a power analysis. The
   report says "read the direction, not the decimal" rather than implying a
   confidence interval the tool does not compute.
+- **The instrument alters its own subject.** Reading your own process numbers
+  changes your process, so a second run measures someone who has read the first,
+  and a longitudinal trend cannot separate real change from response to the
+  instrument. Disclosed in the README ("Reading this changes what it measures").
+  The size of the effect is unmeasured and probably unmeasurable — you cannot
+  un-see your own numbers, so there is no control.
