@@ -1,13 +1,18 @@
 # Changelog
 
+All notable changes to corpuslens are recorded here. This project keeps to the
+spirit of [Keep a Changelog](https://keepachangelog.com) and dated, in-the-open
+amendments — corrections sit beside the record they correct, never overwrite it.
+
+Versioned sections are written by release-please from the commit messages; the
+hand-written history below them predates the release pipeline.
+
 ## [0.1.0](https://github.com/willow-memory/corpus-lens/compare/v1.0.0...v0.1.0) (2026-09-11)
 
 
 ### Fixed
 
 * cut 0.1.0, not 1.0.0 ([515ca9f](https://github.com/willow-memory/corpus-lens/commit/515ca9f6294e97e75a21c6c062e2abfee3656969))
-
-## Changelog
 
 ## Corrected: there is no 1.0.0
 
