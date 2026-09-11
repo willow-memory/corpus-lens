@@ -63,14 +63,9 @@ path, and one that documents that weekly cadence *is* reconstructable.
 
 Python 3.10+, no dependencies.
 
-Not on PyPI yet, but the pipeline is wired: a merge to `main` opens a
-release-please pull request, merging that cuts the tag, and the tag publishes to
-PyPI through Trusted Publishing (no token in the repo).
-
 The distribution is **`willow-corpus-lens`**; the command it installs is
 **`corpuslens`**. (`corpus-lens` on PyPI is an unrelated project — a TF-IDF
-corpus dashboard — so the fleet prefix disambiguates rather than competes.) Once
-the first release lands:
+corpus dashboard — so the fleet prefix disambiguates rather than competes.)
 
 ```bash
 pip install willow-corpus-lens          # then: corpuslens run ...
@@ -78,8 +73,11 @@ pipx install willow-corpus-lens         # or, isolated
 uvx --from willow-corpus-lens corpuslens run ~/.claude/projects --adapter claude-code
 ```
 
-Zero dependencies is what makes those reliable. Until the first release, from
-source:
+Zero dependencies is what makes those reliable. Releases are cut by
+release-please and published on the tag through Trusted Publishing, with PEP 740
+provenance attestations — no token in the repo.
+
+From source instead:
 
 ```bash
 git clone https://github.com/willow-memory/corpus-lens

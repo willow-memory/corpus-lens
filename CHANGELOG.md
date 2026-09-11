@@ -1,36 +1,28 @@
 # Changelog
 
-## 1.0.0 (2026-09-11)
+## Corrected: there is no 1.0.0
 
+release-please cut `1.0.0` on 2026-09-11 and it was published to PyPI, then
+withdrawn — the PyPI project was deleted and re-created, so **no 1.0.0 exists**
+on PyPI, and the version is not coming back.
 
-### Added
+Two things went wrong, recorded here rather than quietly rewritten:
 
-* **ingest:** read Cursor's own store.db, and strip what Cursor injects ([d8f764a](https://github.com/willow-memory/corpus-lens/commit/d8f764ad23ae1be6909ce509ba0c920cd7dff7e9))
-* **ingest:** read Cursor's own store.db, and strip what Cursor injects ([f514f19](https://github.com/willow-memory/corpus-lens/commit/f514f190d923b290ff7c9d4e62c60300b1e90ef4))
-* **render:** report a finding, not a JSON dump ([416283d](https://github.com/willow-memory/corpus-lens/commit/416283d5a769aa6b66b8b69f51836bf6b3ffe561))
-* **render:** report a finding, not a JSON dump — and cut releases to PyPI ([399f1c2](https://github.com/willow-memory/corpus-lens/commit/399f1c2eca5d93d8644e92332f6560ed079e630b))
-* widen the surface without widening the wall ([71ffc90](https://github.com/willow-memory/corpus-lens/commit/71ffc90d07130189800e85e2f4125cf0eb0efb64))
-* widen the surface without widening the wall ([8cc5426](https://github.com/willow-memory/corpus-lens/commit/8cc5426f07aca1eb9838459001ca873237fb20fd))
+- **The number was wrong.** With no prior release, release-please's first
+  release defaults to `1.0.0` regardless of the manifest starting at `0.0.0`.
+  The comments in `pyproject.toml` and `release-please-config.json` asserted it
+  would propose `0.1.0`; that assertion was never tested and was false. For a
+  project whose one rule is never to overclaim, shipping a `1.0.0` compatibility
+  promise on a spine was the largest overclaim in the repository.
+- **The changelog section carried duplicates**, one entry per change from both
+  the real commit and the merge commit that carried its title. That is exactly
+  what `tools/changelog_dedup.py` exists to prevent, and it no-ops on a *first*
+  release: its section matcher expects the `## [x.y.z](…/compare/…)` heading
+  release-please writes for every release *after* the first, and a first release
+  has no previous tag to compare against. Recorded as a known gap.
 
-
-### Fixed
-
-* **ingest:** a subagent's prompts are not the operator's ([eb02d06](https://github.com/willow-memory/corpus-lens/commit/eb02d06488af611197fdfd776c914bc2624e563b))
-* **ingest:** strip the harness task-notification wrapper ([473cdbe](https://github.com/willow-memory/corpus-lens/commit/473cdbea4c3a6b13a5048050be80f8d7967ef5e7))
-
-
-### Build
-
-* cut releases with release-please, publish to PyPI on the tag ([6b52967](https://github.com/willow-memory/corpus-lens/commit/6b5296703fb3956e0571aa41acabece28ae329e4))
-* **deps:** Bump actions/checkout from 4 to 7 ([6a7ff2b](https://github.com/willow-memory/corpus-lens/commit/6a7ff2b296b460fc1910250c652662467cc3ecdc))
-* **deps:** Bump actions/setup-python from 5 to 7 ([dfae35d](https://github.com/willow-memory/corpus-lens/commit/dfae35d1575f88eaaba54b151e3eff795ef9724f))
-* publish as willow-corpus-lens ([8e04643](https://github.com/willow-memory/corpus-lens/commit/8e04643d4462c14a111d74ae2e8a26cc6d32e91d))
-
-## Changelog
-
-All notable changes to corpuslens are recorded here. This project keeps to the
-spirit of [Keep a Changelog](https://keepachangelog.com) and dated, in-the-open
-amendments — corrections sit beside the record they correct, never overwrite it.
+This release cuts `0.1.0` instead, forced with a `Release-As: 0.1.0` footer —
+release-please's own mechanism, so the pipeline still cuts the release.
 
 ## Unreleased — the spine (hand-written)
 
