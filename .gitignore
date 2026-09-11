@@ -4,3 +4,6 @@ report.md
 dist/
 build/
 *.egg-info/
+
+# Claude Code agent worktrees — ephemeral tooling state, never part of the project.
+.claude/worktrees/
