@@ -7,6 +7,26 @@ amendments — corrections sit beside the record they correct, never overwrite i
 Versioned sections are written by release-please from the commit messages; the
 hand-written history below them predates the release pipeline.
 
+## [0.4.0](https://github.com/willow-memory/corpus-lens/compare/v0.3.0...v0.4.0) (2026-09-11)
+
+
+### Added
+
+* **analyze:** count distinct operator-role authoring signatures ([d5e551a](https://github.com/willow-memory/corpus-lens/commit/d5e551a127db73777e078737eedca1bcbf328be0))
+* classify operator-role turns as human/agent/unknown (authorship_mix) ([74bd7dc](https://github.com/willow-memory/corpus-lens/commit/74bd7dcbf8de30f1c0665244af8fc61452d83dab))
+* derive this run's subject and stop calling a machine "you" ([2ba166f](https://github.com/willow-memory/corpus-lens/commit/2ba166f2c748b99b59206b723b6f532af0ba8fc3))
+* grade the authorship classifier in label/score ([a47bcee](https://github.com/willow-memory/corpus-lens/commit/a47bceeb3d2bf856c3d8b53c97142a05b62f70f9))
+* tell a human from an agent, and stop calling a machine "you" ([3822165](https://github.com/willow-memory/corpus-lens/commit/38221654541ad92e93a47a47f2b70ebba0bbd7a7))
+
+
+### Fixed
+
+* **ingest:** read the column names other people's corpora actually use ([ca5f823](https://github.com/willow-memory/corpus-lens/commit/ca5f823d342b458f50bdeb4b6919536c04a22029))
+* **render:** compute the analyzer counts instead of writing them down ([baae82a](https://github.com/willow-memory/corpus-lens/commit/baae82a33ed88b3e73df6382e969fcb6b23b67c2))
+* **render:** compute the analyzer counts instead of writing them down ([fdfc5ef](https://github.com/willow-memory/corpus-lens/commit/fdfc5ef970e7539fae306362d2abf600d0b751fd))
+* **subject:** gate on evidence for the leading class, not on corpus size ([87b90b4](https://github.com/willow-memory/corpus-lens/commit/87b90b4991d0e01c65133563ba6f0336be8f6bd3))
+* **tests:** simulate the absent sibling module, instead of only appearing to ([2dfa83d](https://github.com/willow-memory/corpus-lens/commit/2dfa83d8ab1bffda08cb88bc757b37bbd3b81c13))
+
 ## [0.3.0](https://github.com/willow-memory/corpus-lens/compare/v0.2.0...v0.3.0) (2026-09-11)
 
 
