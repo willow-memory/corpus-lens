@@ -1,6 +1,6 @@
 """corpuslens CLI.
 
-    corpuslens run <path> --adapter claude-code [--format markdown|json]
+    corpuslens run <path> --adapter claude-code [--format markdown|json] [--share]
     corpuslens doctor <path> --adapter claude-code      # what would be read, and what dropped
     corpuslens adapters                                 # what can be read, and from what
     corpuslens analyzers                                # what gets computed, and out of what
@@ -18,6 +18,10 @@ report with its own `--format`. Splitting them keeps each argparse surface
 honest about what it actually takes and does, matching this file's existing
 one-verb-per-subcommand shape (`run`, `doctor`, `adapters`, `analyzers`)
 instead of adding a mode switch to either of those.
+`--share` is a MODIFIER on `run`, not a third `--format`: it composes with
+either format (`--format json --share` for a machine-readable coarsened
+document) rather than forking the renderers. See `corpuslens/share.py` for
+what it coarsens and, just as load-bearing, what it does not claim.
 """
 from __future__ import annotations
 
@@ -27,6 +31,7 @@ import sys
 from pathlib import Path
 
 from . import ingest, label as labelmod, render
+from . import share as share_mod
 from .analyze import all_analyzers
 from .guard import DEFAULT_PROFILE, Guard, WallError
 
@@ -119,7 +124,7 @@ def _window(events, since_day, until_day):
 
 def run(path: str, adapter: str, out: str | None, table: str | None = None,
         fmt: str = "markdown", since_day: int | None = None,
-        until_day: int | None = None) -> int:
+        until_day: int | None = None, share: bool = False) -> int:
     src = ingest.source_of(adapter)
     try:
         events, quarantine, dropped, n_files = _ingest(path, adapter, table)
@@ -152,7 +157,24 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
             continue
         results[a.name] = {"denominator": a.denominator, **a.run(events)}
         guard.audit.analyzers_run.append(a.name)
-    report = render.render(fmt, results, guard.audit)
+    audit = guard.audit
+    if share:
+        # Coarsening happens on the already-computed numbers, never on the
+        # events: share mode changes what leaves the report, not what the
+        # analyzers see or compute. See corpuslens/share.py for the rule
+        # ("a field survives only if it is explicitly recognised") and for
+        # what this output does NOT claim to be (not anonymous, not
+        # de-identified, not proven safe to publish).
+        #
+        # The audit record is coarsened too, into a SEPARATE record (never
+        # mutating guard.audit itself) — its exact n_events/n_dropped/
+        # n_filtered are the same class of quantity `n` banding exists to
+        # blur for every analyzer, and the sentence would otherwise say
+        # "This run read 21 events" even while every rate above it reads
+        # "n = 30-100". A prior version of this feature missed exactly this.
+        results = share_mod.coarsen(results)
+        audit = share_mod.coarsen_audit(audit)
+    report = render.render(fmt, results, audit, share=share)
     try:
         report = guard.scan_egress(report)   # fail-closed backstop at the output door
     except WallError as e:
@@ -498,6 +520,12 @@ def main(argv=None) -> int:
     r.add_argument("--until-day", type=int, default=None, metavar="N",
                    help="analyze only events on or before relative day N; a filtered "
                         "run says so in its audit sentence — subset numbers, not corpus numbers")
+    r.add_argument("--share", action="store_true",
+                   help="coarsen the report for sharing off this machine: headline rates "
+                        "only, n rounded to a wide band, no tempo quantiles/thread counts/day "
+                        "spans/concurrency figures. Composes with --format (e.g. --format json "
+                        "--share). NOT a claim that the result is anonymous or safe to publish "
+                        "— see corpuslens/share.py.")
     add_format(r)
 
     d = sub.add_parser("doctor", help="dry-run ingestion: what would be read, what would be "
@@ -547,7 +575,7 @@ def main(argv=None) -> int:
                   f"— that window is empty.", file=sys.stderr)
             return 2
         return run(args.path, args.adapter, args.out, args.table, args.fmt,
-                   args.since_day, args.until_day)
+                   args.since_day, args.until_day, args.share)
     if args.cmd == "doctor":
         return doctor(args.path, args.adapter, args.table, args.fmt)
     if args.cmd == "adapters":
