@@ -17,8 +17,8 @@ hand-written history below them predates the release pipeline.
 
 ### Fixed
 
-* **ingest:** never echo a foreign process's stderr in an error ([ba48672](https://github.com/willow-memory/corpus-lens/commit/ba48672010afd2c85cbe78c102abad25f69912de))
 * **ingest:** stop misclassifying missing relations/columns as a missing database ([d164e22](https://github.com/willow-memory/corpus-lens/commit/d164e22be795515b9fada26d768b2536a1bfe70f))
+* **ingest:** never echo a foreign process's stderr in an error ([ba48672](https://github.com/willow-memory/corpus-lens/commit/ba48672010afd2c85cbe78c102abad25f69912de))
 
 ## [0.5.0](https://github.com/willow-memory/corpus-lens/compare/v0.4.0...v0.5.0) (2026-09-11)
 
