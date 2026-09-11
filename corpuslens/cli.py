@@ -6,6 +6,7 @@
     corpuslens analyzers                                # what gets computed, and out of what
     corpuslens label <path> --adapter claude-code       # label a sample of your own turns
     corpuslens score <path> --adapter claude-code       # classifier precision/recall vs. labels
+    corpuslens diff a.json b.json                       # the delta between two --format json runs
 
 Every subcommand runs under the DEFAULT profile: no calendar, no timezone, no
 person claims. There is deliberately no CLI flag to grant capabilities — a
@@ -30,6 +31,7 @@ import json
 import sys
 from pathlib import Path
 
+from . import diff as diffmod
 from . import ingest, label as labelmod, render
 from . import share as share_mod
 from .analyze import all_analyzers
@@ -155,7 +157,8 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
     for a in all_analyzers():
         if not guard.admit(a):
             continue
-        results[a.name] = {"denominator": a.denominator, **a.run(events)}
+        results[a.name] = {"denominator": a.denominator, "analyzer_version": a.version,
+                          **a.run(events)}
         guard.audit.analyzers_run.append(a.name)
     audit = guard.audit
     if share:
@@ -298,7 +301,8 @@ def adapters(fmt: str = "markdown") -> int:
 
 
 def analyzers(fmt: str = "markdown") -> int:
-    rows = [{"analyzer": a.name, "claims": list(a.claims), "denominator": a.denominator}
+    rows = [{"analyzer": a.name, "claims": list(a.claims), "denominator": a.denominator,
+            "version": a.version}
             for a in all_analyzers()]
     if fmt == "json":
         print(json.dumps(rows, indent=2))
@@ -306,11 +310,14 @@ def analyzers(fmt: str = "markdown") -> int:
         print("# corpuslens analyzers")
         print()
         for r in rows:
-            print(f"- **{r['analyzer']}** — claims {', '.join(r['claims'])}; "
+            print(f"- **{r['analyzer']}** (v{r['version']}) — claims {', '.join(r['claims'])}; "
                   f"out of {r['denominator']}")
         print()
         print("*Every rate names its denominator, and every claim type is on the process-only "
-              "allowlist in `model.py` — a person-shaped claim has no representation here.*")
+              "allowlist in `model.py` — a person-shaped claim has no representation here. The "
+              "version is the analyzer's SEMANTICS (classifiers/thresholds), not the JSON document "
+              "shape — see `corpuslens.analyze.Analyzer` — and `corpuslens diff` withholds the "
+              "delta for any analyzer whose version disagrees between the two runs.*")
     return 0
 
 
@@ -495,6 +502,26 @@ def score(path: str, adapter: str, table: str | None, store_path: str,
         return 3
     print(text)
     return 0
+def diff_cmd(path_a: str, path_b: str, fmt: str = "markdown") -> int:
+    """Compare two `corpuslens run --format json` files. Never a traceback:
+    a malformed or non-corpuslens file is a clear `error:` line and a
+    non-zero exit, same as every other subcommand's failure mode.
+
+    Exit codes: 0 a diff was produced (it may still carry loud comparability
+    warnings — read them); 1 the two runs were refused as not comparable at
+    all (different adapter or schema_version — see corpuslens/diff.py); 2 a
+    file could not be read as a corpuslens report.
+    """
+    try:
+        doc_a = diffmod.load_report(path_a)
+        doc_b = diffmod.load_report(path_b)
+    except diffmod.DiffError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    result = diffmod.compare(doc_a, doc_b)
+    renderer = diffmod.RENDERERS.get(fmt, diffmod.render_markdown)
+    print(renderer(result))
+    return 1 if result["refused"] else 0
 
 
 def main(argv=None) -> int:
@@ -566,6 +593,11 @@ def main(argv=None) -> int:
     sc.add_argument("--store", default="corpuslens-labels.json", dest="store_path",
                     help="the label store to grade against (default: ./corpuslens-labels.json)")
     add_format(sc)
+    df = sub.add_parser("diff", help="compare two `run --format json` files and report the "
+                                     "delta for every shared headline number")
+    df.add_argument("report_a", help="first run's JSON file (from `corpuslens run --format json`)")
+    df.add_argument("report_b", help="second run's JSON file")
+    add_format(df)
 
     args = p.parse_args(argv)
     if args.cmd == "run":
@@ -586,6 +618,8 @@ def main(argv=None) -> int:
         return label(args.path, args.adapter, args.sample_size, args.store_path, args.table)
     if args.cmd == "score":
         return score(args.path, args.adapter, args.table, args.store_path, args.fmt)
+    if args.cmd == "diff":
+        return diff_cmd(args.report_a, args.report_b, args.fmt)
     return 2
 
 

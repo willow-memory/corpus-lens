@@ -288,7 +288,7 @@ class PipelineTests(unittest.TestCase):
 
     def test_denominatorless_analyzer_rejected(self):
         with self.assertRaises(ValueError):
-            register("bad", claims=("tempo",), denominator=" ")(lambda ev: {})
+            register("bad", claims=("tempo",), denominator=" ", version=1)(lambda ev: {})
 
     def test_empty_and_missing_paths_exit_nonzero(self):
         empty = tempfile.TemporaryDirectory()
