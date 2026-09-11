@@ -38,7 +38,13 @@ ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T")
 # alternative needs a code shape (a call, a dotted call, a fence, a source
 # file, a traceback frame, a CamelCase Error/Exception, a real def/import).
 # Case-sensitive on the keyword/Error branches so prose "exception"/"error"
-# does not match.
+# does not match. English-and-Python shaped, disclosed: the source-file
+# branch knows NINE extensions and no others (py/js/ts/rs/go/rb/java/sql/sh —
+# count them off this line, and if a doc elsewhere says a different number,
+# this list is the truth and the doc is the bug), and the traceback branch is
+# Python's own "Traceback (most recent call last)" / "line N, in" — a real
+# code corpus in an unlisted language or file type scores identically to one
+# with no code in it at all.
 CODE_REF = re.compile(
     # Call detection matches the reference study's methodology (the READ regex in
     # operator_reading_analysis): an EMPTY-parens call foo() or a dotted method
@@ -64,6 +70,11 @@ CODE_REF = re.compile(
 # in review). No generic `x = ...` branch: "Budget = 500", "Plan = [buy milk]",
 # "Verdict = (guilty)" are prose; isolated assignments are weak evidence and
 # under-counting beats over-claiming "you write code". Case-sensitive.
+# English-and-Python shaped, disclosed: the branches below cover Python, JS/TS,
+# Java/C#, Go/Rust (func/fn), shell and SQL block syntax — a handful of
+# languages, not "code" in general. Real pasted code in a language with none
+# of these shapes (or a Python-family dialect whose block syntax differs)
+# scores identically to no pasted code at all.
 AUTHORED = re.compile(
     r"```"
     r"|^\s*(def|class|async\s+def)\s+\w+\s*\("        # def foo( / class Bar(
@@ -85,6 +96,15 @@ AUTHORED = re.compile(
     r"|console\.log\(|println!\(|System\.out\.",
     re.M,
 )
+# DELIB and CLARIFY are both lists of ENGLISH phrases — same disclosed limit as
+# CODE_REF/AUTHORED's nine file extensions and handful of languages' block
+# syntax, just for prose rather than code. A corpus conducted in another
+# language matches neither, and looks identical to a corpus where the
+# operator never deliberated / the machine never asked a clarifying question.
+# Undercounting, not a bug — but it is why `composition_mix` and
+# `clarification_pull` refuse rather than report 0.0% once the sample is
+# large enough that "detected nothing" would otherwise read as a finding (see
+# `analyze/composition.py`).
 DELIB = re.compile(
     r"\btalk (to me )?about\b|let'?s (talk|discuss|explore)|\bdiscuss\b|pros?\s*(and|/|\-)\s*cons?"
     r"|trade.?offs?|think (through|about)\b|what do you think"

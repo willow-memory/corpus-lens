@@ -28,6 +28,19 @@ from typing import Callable
 
 _REGISTRY: list = []
 
+# A sample this small makes a percentage a story about three or four turns.
+# 30 is a CONVENTION, not a power analysis — the renderer says "read the
+# direction, not the decimal" rather than pretending to a confidence interval
+# the tool does not compute (bootstrap CIs are named-and-unbuilt in the
+# README). Lives here rather than in render.py because an analyzer now also
+# reasons about it directly: composition.py refuses (rather than reports a
+# misleading 0.0%) once a corpus is well past this size and its code
+# classifiers still found nothing — a call the renderer has no business
+# making, since it only ever sees the result an analyzer already decided to
+# return. render.py imports this same constant for its "small sample" label
+# so the two thresholds cannot drift apart.
+SMALL_N = 30
+
 
 @dataclass(frozen=True)
 class Analyzer:

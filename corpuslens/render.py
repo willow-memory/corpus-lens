@@ -12,17 +12,12 @@ from __future__ import annotations
 
 import json
 
+from .analyze import SMALL_N  # noqa: F401 — re-exported; tests import it from here too
+
 SCHEMA_VERSION = 1
 
 CAVEAT = ("Numbers are heuristics plus your own eyes: spot-check before you cite. "
           "Reference points are one measured N=1 plus public population aggregates.")
-
-
-# A sample this small makes a percentage a story about three or four turns.
-# 30 is a CONVENTION, not a power analysis — the report says "read the
-# direction, not the decimal" rather than pretending to a confidence interval
-# the tool does not compute (bootstrap CIs are named-and-unbuilt in the README).
-SMALL_N = 30
 
 # Rendered above the numbers block verbatim, so they are omitted from it rather
 # than printed twice. Only ever strings already shown — no number is dropped.
