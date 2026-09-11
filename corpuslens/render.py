@@ -12,17 +12,30 @@ from __future__ import annotations
 
 import json
 
+from .analyze import SMALL_N  # noqa: F401 — re-exported; tests import it from here too
+
 SCHEMA_VERSION = 1
 
 CAVEAT = ("Numbers are heuristics plus your own eyes: spot-check before you cite. "
           "Reference points are one measured N=1 plus public population aggregates.")
 
+# Shown only when `share=True` — see corpuslens/share.py for what "coarsened"
+# means here and, just as load-bearing, what it does NOT mean. This sentence
+# travels with the coarsened numbers wherever they go, same principle as the
+# audit sentence: a share output without the disclosure of what it is is not
+# a corpuslens result either.
+SHARE_CAVEAT = (
+    "SHARE MODE: this output is COARSENED, not anonymized and not "
+    "de-identified — whether a coarsened report can still re-identify its "
+    "owner is an open question this tool has not measured (see IDEAS.md, "
+    "\"Population reference points without pooling anyone's corpus\"). "
+    "Every denominator's n is rounded to a wide band, never an exact count, "
+    "and shapes — tempo quantiles, thread counts, day spans, concurrency "
+    "figures, active-day counts — are omitted entirely, not just rounded. "
+    "This is not a determination that what remains is safe to publish."
+)
 
-# A sample this small makes a percentage a story about three or four turns.
-# 30 is a CONVENTION, not a power analysis — the report says "read the
-# direction, not the decimal" rather than pretending to a confidence interval
-# the tool does not compute (bootstrap CIs are named-and-unbuilt in the README).
-SMALL_N = 30
+
 
 # Rendered above the numbers block verbatim, so they are omitted from it rather
 # than printed twice. Only ever strings already shown — no number is dropped.
@@ -61,7 +74,7 @@ def _section(name: str, res: dict) -> list:
     return out
 
 
-def markdown(results: dict, audit) -> str:
+def markdown(results: dict, audit, share: bool = False) -> str:
     """The report as something to read: the audit sentence, then every
     analyzer's finding in one list, then each with its denominator, its
     direction guidance and its numbers.
@@ -69,8 +82,15 @@ def markdown(results: dict, audit) -> str:
     The findings list is the point. A reader who stops after it has the run;
     a reader who continues gets the denominator behind every sentence and the
     full numbers under that. Nothing is summarized away — the prose above a
-    section and the JSON in it come from the same result dict."""
+    section and the JSON in it come from the same result dict.
+
+    `share=True` renders `results` as given — the CALLER coarsens (see
+    `corpuslens/share.py`) — and additionally prepends `SHARE_CAVEAT` so the
+    coarsening is disclosed in the same place the audit sentence is."""
     out = ["# corpuslens report", ""]
+    if share:
+        out.append(f"> {SHARE_CAVEAT}")
+        out.append("")
     out.append(f"> {audit.sentence()}")
     out.append("")
     findings = [(name, res.get("headline")) for name, res in results.items()]
@@ -93,15 +113,22 @@ def markdown(results: dict, audit) -> str:
     return "\n".join(out)
 
 
-def json_report(results: dict, audit) -> str:
+def json_report(results: dict, audit, share: bool = False) -> str:
     """The same run as machine-readable JSON. Stable top-level shape:
-    {schema_version, audit: {...,"sentence": ...}, results: {...}, caveat}."""
+    {schema_version, audit: {...,"sentence": ...}, results: {...}, caveat}.
+
+    `share=True` adds a top-level `share_caveat` string (SHARE_CAVEAT) rather
+    than changing `results`'s shape — a machine consuming `--format json
+    --share` still gets a document shaped exactly like an unshared one, plus
+    one more field naming what left the wall differently this time."""
     doc = {
         "schema_version": SCHEMA_VERSION,
         "audit": audit.as_dict(),
         "results": results,
         "caveat": CAVEAT,
     }
+    if share:
+        doc["share_caveat"] = SHARE_CAVEAT
     return json.dumps(doc, indent=2, default=str, sort_keys=False)
 
 
@@ -112,7 +139,7 @@ def available() -> list[str]:
     return sorted(RENDERERS)
 
 
-def render(fmt: str, results: dict, audit) -> str:
+def render(fmt: str, results: dict, audit, share: bool = False) -> str:
     if fmt not in RENDERERS:
         raise KeyError(f"no renderer {fmt!r}; available: {available()}")
-    return RENDERERS[fmt](results, audit)
+    return RENDERERS[fmt](results, audit, share=share)

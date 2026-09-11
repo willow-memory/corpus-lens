@@ -38,6 +38,36 @@ _INJECTED_TAGS = (
     # The inner tags (task-id, status, summary, result, usage …) are children of
     # this one, so stripping the wrapper takes them with it.
     "task-notification",
+    # Gemini CLI (`google-gemini/gemini-cli`, package `@google/gemini-cli-core`),
+    # read from source 2026-09-11, not from an observed corpus — see the
+    # provenance note in `ingest/gemini_cli.py`. `<session_context>` is the
+    # cwd/date/OS/directory-tree/memory block `environmentContext.ts` inserts
+    # as the session's first "user" turn; `<hook_context>` wraps output an
+    # external hook returns, injected into a later "user" turn from
+    # `core/client.ts` and `coreToolHookTriggers.ts`. Gemini CLI's own resume
+    # code (`utils/sessionUtils.ts::isIgnoredUserContent`) already treats both
+    # prefixes as not-a-real-user-turn for its own purposes — the same
+    # front-loading shape as every tag above, this runtime's names for it.
+    "session_context", "hook_context",
+    # Claude Code harness again, observed 2026-09-11 by running corpuslens on
+    # THIS session's own log — the third time dogfooding has caught machine
+    # text counted as a person. A slash command the operator runs locally is
+    # replayed into the user role as three separate turns: the caveat block,
+    # the command echo, and the command's own stdout. Nobody typed any of them
+    # as a prompt. On that corpus they were 3 of 11 "operator" turns, and two
+    # carried backticks, which fired CODE_REF and reported an 18.2%
+    # code-reference rate for a human whose real rate was 0.0%.
+    "local-command-caveat", "local-command-stdout",
+    "command-name", "command-message", "command-args",
+    # A message relayed from ANOTHER agent session, observed 2026-09-11 in this
+    # project's own log. It arrives in the user role wrapped in
+    # `<cross-session-message from=… from-name=… from-mode=…>`, followed by
+    # harness guidance on how to treat it. None of it is the owner typing: it is
+    # one agent's output delivered to another, and `owner == subject` is this
+    # tool's scope rule. On that corpus a single such turn ran 505 words against
+    # a human whose median was 6, pulling the operator's mean word count from
+    # 8.9 to 70.9 — the front-loading shape again, from a fourth door.
+    "cross-session-message",
 )
 
 #: An injected block may carry attributes — `<mcp_instructions description="…">`
@@ -56,6 +86,15 @@ MACHINE_TURN = re.compile(
     r"|Your conversation was summarized due to"
     r"|This session is being continued from a previous conversation"
     r"|The beginning of the above subagent result"
+    # A stop hook's stdout, delivered in the user role with no wrapper at
+    # all (observed 2026-09-11 in this project's own session log). It is the
+    # hook reporting on the repository, not a person asking for anything,
+    # and it lands about a second after the turn it follows — a
+    # burst-shaped delta nobody typed.
+    r"|Stop hook feedback:"
+    # The relay preamble the harness writes above a cross-session message.
+    # Anchored, so a person writing the phrase mid-sentence is untouched.
+    r"|Another Claude session sent a message:"
     r").*",
     re.DOTALL | re.IGNORECASE,
 )

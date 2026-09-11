@@ -40,7 +40,62 @@ a design change rather than a patch — hence open rather than done.
 **Workaround:** on an agent corpus, read the `operator_turns` / `machine_turns`
 / `threads` counts and ignore `drop_pct`.
 
-### 2. `changelog_dedup.py` cannot fix a *first* release
+### 2. `tempo`'s headline says "your prompts", its computation says "any event"
+
+`tempo` reports "Your prompts arrive a median N seconds apart within a thread."
+The number under that sentence is `delta_prev_s`, which `claude_code.py`
+defines as seconds since the previous **event** in the thread — usually the
+machine's own response, not the operator's previous prompt.
+
+Those differ by however long the machine's turn sat in between. On a corpus
+where the assistant answers in ten seconds the gap is small; on one where it
+works for four minutes the headline understates the operator's real
+prompt-to-prompt rhythm by roughly that much, every time.
+
+Dropped records advance the clock too, on purpose — the `keep the clock
+advancing` branch in `claude_code.py`. So a machine turn that the injection
+filter correctly refuses to count as a prompt still contributes its timestamp
+to the next real turn's delta. Found 2026-09-11 while writing the regression
+test for finding 3 below, where a stop hook's output one second after a prompt
+left the next gap reading 539s instead of 540s.
+
+Neither half is a coding error; both are deliberate and the docstrings say what
+they do. The bug is that the **sentence claims something narrower than the
+number measures**, and this project's first rule is that claims match code.
+
+Fixing it means either rewording the headline to say what is measured, or
+measuring prompt-to-prompt and re-basing every tempo reference point. The
+second changes what the number means, so it needs an analyzer `version` bump —
+the mechanism for which now exists. Open rather than patched because picking
+between those two is a design decision, not a typo.
+
+### 3. A compaction boundary is invisible to `thread_shape` and `thread_span`
+
+When the runtime compacts a conversation it writes a `system` record with
+`subtype: "compact_boundary"` carrying the trigger and the uuid of the last
+pre-compaction message, followed by a user-role record flagged
+`isCompactSummary`. The summary is now skipped on that flag (see Fixed below).
+The **boundary** is not used at all.
+
+`system` records are already dropped, so nothing is miscounted. But a
+compaction is a real discontinuity in a thread — the turns before it are no
+longer in context — and `thread_shape` and `thread_span` treat the thread as
+continuous across it. On a long session that compacts several times, whatever
+those analyzers report about span and density is measured over a thread that
+the runtime had already cut up.
+
+Not fixed, for two reasons. Using the boundary would change what
+`thread_shape` and `thread_span` mean, which needs an analyzer `version` bump
+and a re-based reference point. And the record shape above comes from a
+description of the producer's source that nobody on this side can reach: the
+existence of `compact_boundary` in real transcripts was confirmed by the owner
+grepping his own corpus on another machine, but the field layout was not.
+
+**What would close it:** one real compacted transcript in the fixtures, with
+the anchor quarantined per the Guard. Then the shape is observed rather than
+described, and the semantic change can be made against something real.
+
+### 4. `changelog_dedup.py` cannot fix a *first* release
 
 This repo merges with merge commits, so release-please parses each change twice
 — once from the real commit, once from the merge commit carrying its title.
@@ -56,7 +111,7 @@ Per that file's docstring the tool is fixed in forge-play first and re-synced
 here, so this stays open until that happens. **Workaround:** fix a first
 release's changelog section by hand before merging the release PR.
 
-### 3. An unclosed known wrapper tag consumes the rest of the turn
+### 5. An unclosed known wrapper tag consumes the rest of the turn
 
 `injection.py` strips an enumerated list of machine-injected wrappers. When a
 known tag appears **unclosed**, the pattern consumes to the next open tag or the
@@ -91,6 +146,99 @@ person at all.
 
 Fixed by skipping any file under a `subagents/` directory component, counting
 every skipped record as a drop. `tests/test_pipeline.py::DogfoodRegressions`.
+
+### `diff` told the reader a classifier had changed when nothing had
+
+Per-analyzer versions are new, so any report produced before them carries no
+`analyzer_version`. Diffing such a report against a current one compared
+`None` against `1`, called it a version mismatch, and stated that "the
+classifier or threshold behind this number changed between the two runs."
+Nothing had changed. The field simply did not exist when the older report was
+written, and the tool had asserted a fact it did not have.
+
+Worse in the other direction: two reports that **both** predated versioning
+compared as equal, in silence, with no warning at all — a clean diff that had
+checked nothing, which is the most misleading of the three outcomes.
+
+Both are the same error, that absence of a version was being read as a value.
+An absent version is now its own status: the comparison is still withheld,
+because absence of evidence that two runs agree is not evidence that they do,
+but the note says the older run predates versioning and that the tool cannot
+tell whether the semantics match. The two-old-reports case warns instead of
+passing silently.
+
+Found by a reviewer reading the diff in PR 23 rather than by a test, which is
+worth recording — nothing in the suite exercised a report older than the
+feature, because every fixture was generated by the code under test.
+
+### Dispatched traffic was skipped by directory name, not by its own marking
+
+The `claude-code` adapter skipped subagent transcripts by looking for a
+`subagents/` component in the path. That works for the layout it was written
+against and nothing more.
+
+The runtime marks the traffic on the **record**: every `user`/`assistant`
+record carries `isSidechain`. Measured 2026-09-11 across this project's own
+logs — 459 records in the operator's own thread, every one `False`; 1,634
+records across seven subagent transcripts, every one `True`. Perfect
+separation, from a first-class field rather than a naming convention.
+
+The path check stays as the outer guard, because not reading those files at
+all is cheaper. The field check is the inner one and is the more robust half:
+a sidechain written anywhere else, or a runtime that renames the directory,
+slips straight past a path filter.
+
+The `gemini-cli` adapter reached the same conclusion from the opposite
+direction — that runtime nests subagent logs under the *parent session's* id,
+where a path filter finds nothing at all, so it keys on the record's own
+`kind`. Two runtimes, one lesson: read the producer's marking, not the layout.
+
+`tests/test_pipeline.py::DogfoodRegressions`.
+
+The same commit gives compaction summaries the same treatment: they were caught only by the prose a summary happens to open with, and are now skipped on the runtime's own `isCompactSummary` flag, with the prose branch kept as the fallback. That field name is unverified on this side and the check is inert if it is wrong — see the provenance note in `claude_code.py`, and open bug 3 for the half that is not fixed.
+
+### A peer agent's relayed message was counted as the operator typing
+
+A message relayed from another agent session arrives in the **user** role,
+wrapped in `<cross-session-message from=… from-name=… from-mode=…>` under a
+plain-prose preamble. It is one agent's output handed to another, and
+`owner == subject` is this tool's scope rule.
+
+Observed 2026-09-11 in this project's own log: one such turn ran **505 words**
+against a human whose median was **6**, pulling the operator's mean word count
+from **8.9 to 70.9**. The fourth distinct door through which machine-authored
+text has reached the user role in this corpus, after `subagents/`,
+`<task-notification>`, and the local-slash-command replay below.
+
+Fixed by enumerating the wrapper and anchoring the preamble in `MACHINE_TURN`.
+Same regression test class.
+
+### A local slash command was counted as three operator prompts
+
+Found 2026-09-11, the third time running corpuslens on its own session log has
+caught machine text counted as a person — and the first time the harness door
+was not a single tag.
+
+Running `/model` locally replays into the **user** role as three separate
+turns: a `<local-command-caveat>` block, a `<command-name>`/`<command-message>`
+/`<command-args>` echo, and a `<local-command-stdout>` line. Separately, a stop
+hook's output arrives in the user role with **no wrapper at all**, prefixed
+only by the prose "Stop hook feedback:".
+
+On that corpus the four of them were 4 of 11 counted operator turns. The
+damage was not only the count:
+
+- Two carried backticks, which fired `CODE_REF`. The report stated the operator
+  referred to existing code in **18.2%** of prompts. The true rate over the
+  turns a person actually typed was **0.0%** — the entire signal was the
+  machine quoting a model identifier.
+- Three arrived with deltas of zero or a fraction of a second, so measured
+  `burst_pct` read **70.0%** against a real **50.0%**, and the median gap read
+  **25.8s** against a real **51.7s**. The same person-shaped-signal failure the
+  task-notification finding below describes, from a different door.
+
+Fixed by enumerating the five observed tags and adding the stop-hook prefix to
+`MACHINE_TURN`. `tests/test_pipeline.py::DogfoodRegressions` covers both.
 
 ### `<task-notification>` blocks were counted as operator prompts
 

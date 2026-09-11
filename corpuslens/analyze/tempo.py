@@ -17,10 +17,24 @@ from __future__ import annotations
 import statistics
 
 from ..model import AuthorClass, DataType
-from . import register
+from . import register, semantic_hash
 
 BURST_S = 60.0        # a follow-up inside a minute: still mid-thought
 RESUMED_S = 1800.0    # half an hour later: you went away and came back
+
+# `tempo`'s number MEANS: gaps bucketed at BURST_S/RESUMED_S, over prompts
+# with >=12 chars. Move either threshold and "burst share" counts a different
+# set of gaps under the same name.
+_MIN_CHARS = "12"
+_TEMPO_INPUTS = (str(BURST_S), str(RESUMED_S), _MIN_CHARS)
+_TEMPO_HASH = "0195c217fe437f3c"
+
+# `thread_span`'s number carries no classifier/threshold dependency — it is
+# pure day-offset arithmetic (span, active-day density). Nothing to pin beyond
+# saying so; a future change here (e.g. a minimum-span floor) should add real
+# inputs and a version bump like its siblings.
+_THREAD_SPAN_INPUTS = ()
+_THREAD_SPAN_HASH = semantic_hash(*_THREAD_SPAN_INPUTS)
 
 
 def _pct(part: int, whole: int) -> float:
@@ -28,7 +42,8 @@ def _pct(part: int, whole: int) -> float:
 
 
 @register("tempo", claims=("tempo",),
-          denominator="operator prompt turns (>=12 chars) carrying a within-day tempo delta")
+          denominator="operator prompt turns (>=12 chars) carrying a within-day tempo delta",
+          version=1, semantic_hash=_TEMPO_HASH, semantic_inputs=_TEMPO_INPUTS)
 def tempo(events):
     """Inter-turn gaps between your own prompts, within a thread and within a day.
 
@@ -79,7 +94,8 @@ def tempo(events):
 
 
 @register("thread_span", claims=("thread_shape",),
-          denominator="threads with >=1 event (relative days only)")
+          denominator="threads with >=1 event (relative days only)",
+          version=1, semantic_hash=_THREAD_SPAN_HASH, semantic_inputs=_THREAD_SPAN_INPUTS)
 def thread_span(events):
     """How long a thread stays open, and how densely it is worked.
 
