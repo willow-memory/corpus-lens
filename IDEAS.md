@@ -320,8 +320,9 @@ effect is presently unmeasured and unmentioned anywhere in the docs.
 
 **What would have to be true first.** A decision about what corpuslens is for,
 which is a values question rather than an engineering one. If the answer stays
-"a lens", live feedback is a refusal and the reflexivity caveat should be
-written into the README rather than left implicit. If the answer changes, that
+"a lens", live feedback is a refusal. The reflexivity half is now disclosed —
+README, "Reading this changes what it measures" — so what remains here is the
+live-feedback question and the unmeasured size of the effect. If the answer changes, that
 is a different tool with a different name.
 
 ### Corpora that are not code

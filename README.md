@@ -265,6 +265,41 @@ spot-check, never raw percentages. The reference N=1 was verified by
 re-derivation from raw and corrected five times in one session — the
 reference table inherits those corrections, not the first drafts.
 
+## Reading this changes what it measures
+
+Stated plainly, because it is the one limit that is not about the wall and not
+about the classifiers: **this instrument alters its own subject.** A thermometer
+does not change the temperature. corpuslens does, because what it measures is
+you, and you read the output.
+
+Once you have seen that (say) 91.7% of your turns arrive mid-task, you are no
+longer the operator who had never seen it. If a later run reads 84%, two
+explanations fit equally well and the tool cannot separate them: your process
+changed, or you steered toward a number you had read. Both look identical in the
+data. That is not a bug and there is no fix in the code — it is what an
+instrument pointed at its own user does.
+
+Three consequences worth holding:
+
+- **A second run does not measure a pristine baseline.** It measures someone who
+  has read the first. The deeper you go into a longitudinal comparison, the more
+  of the trend may be response to the instrument rather than change in the work.
+- **The reference N=1 is a clean baseline; your later runs may not be.** That
+  corpus was gathered *before* its operator began reading these numbers, so it
+  is not itself subject to this effect. The asymmetry is the useful part: your
+  first run is comparable to it under the same conditions, while a run made
+  after months of watching your own metrics is not — you have changed, the
+  reference has not. Drift from the reference over time is therefore not
+  automatically drift in your work.
+- **The effect is unmeasured.** Quantifying it would need a before/after on your
+  own corpus with a control, and you cannot un-see your own numbers. Named in
+  [IDEAS.md](IDEAS.md) as a stretch goal for that reason, not a to-do.
+
+None of this makes a computed number wrong. The denominators are still named,
+the drops still counted, the wall still holds. It changes what the numbers
+*mean* — and a tool that describes itself as a lens for studying yourself should
+say out loud that looking is not a neutral act.
+
 ## Status: spine (0.1.0, on PyPI)
 
 Built: event model, the wall, five adapters (claude-code, cursor, cursor-store,
