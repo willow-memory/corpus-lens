@@ -16,7 +16,7 @@ corpuslens run examples/sample-corpus --adapter claude-code
 ```
 # corpuslens report
 
-> This run read 21 events (dropped 0, counted not hidden), ran 4 process
+> This run read 21 events (dropped 0, counted not hidden), ran 6 process
 > analyzers under profile 'default', and was granted nothing beyond process
 > analysis. No absolute calendar date, timezone, or filename left the wall;
 > relative day and within-day tempo did — these preserve weekly cadence, and on
@@ -99,6 +99,44 @@ it?") and the operator answered it — that is the one clarification fork. On a
 CLI corpus this is the steering seam; on a Cursor corpus it is near-absent (and
 the analyzer can't compute it there — Cursor logs carry no assistant turns, which
 the reference note says plainly rather than printing a number it didn't measure).
+
+### tempo — how fast do your turns arrive?
+
+```json
+{ "n_deltas": 6, "eligible_turns": 10, "delta_coverage_pct": 60.0,
+  "median_gap_s": 750.0, "p25_gap_s": 510.0, "p75_gap_s": 1005.0,
+  "burst_pct": 0.0, "resumed_pct": 0.0 }
+```
+
+Half the operator's gaps sit around **12–13 minutes**: this synthetic operator
+neither fires volleys (`burst_pct` 0 — nothing inside a minute) nor walks away
+mid-thread (`resumed_pct` 0 — nothing past half an hour). Note the
+**60% coverage**: four of the ten eligible turns have no gap at all, because
+they open a thread or follow a censored midnight crossing. Those turns are
+counted as uncovered and left that way — an interpolated gap would be
+indistinguishable from a measured one downstream, which is exactly the
+fabrication the wall exists to prevent. A `cursor-store` corpus reports **no
+tempo at all** for the same reason: that store clocks the machine's tool steps,
+never your prompts.
+
+No *cumulative* within-day span is published here, deliberately. The README
+discloses that a long span loosely bounds the local clock hour; percentiles over
+individual gaps do not sharpen that bound, and no analyzer may.
+
+### thread_span — how long does a thread stay open?
+
+```json
+{ "threads": 3, "single_day_threads_pct": 66.7, "median_span_days": 1,
+  "max_span_days": 4, "median_active_days": 1, "median_density": 1.0 }
+```
+
+Where `thread_shape` counts resumption *gaps*, this counts the **span they sit
+in** — different facts about the same thread. Two of the three threads open and
+close inside one day; the dashboard thread stretches across a 4-day span it is
+only active on 2 of. A median density of 1.0 says the typical thread here is
+worked and closed; a low density beside a long span would say you keep threads
+open for weeks and return to them. Spans are differences between relative day
+offsets, so they carry weekly cadence and no calendar date.
 
 ## What this example demonstrates
 

@@ -245,7 +245,7 @@ def _read_store(db: Path, rel: str):
         con.close()
 
 
-@register("cursor-store", source="dir")
+@register("cursor-store", source="dir", pattern="store.db")
 def ingest(path: str, corpus_id: str = "corpus"):
     root = Path(path)
     if root.exists() and not root.is_dir():

@@ -6,10 +6,49 @@ amendments — corrections sit beside the record they correct, never overwrite i
 
 ## [0.1.0] — unreleased (spine)
 
-First cut: the wall, two adapters, four analyzers, hardened across four rounds
+First cut: the wall, five adapters, six analyzers, hardened across four rounds
 of adversarial review.
 
 ### Added
+- **JSON output** (`run --format json`): the same run as
+  `{schema_version, audit, results, caveat}`, for diffing two runs or tracking a
+  number over months. The audit record travels as structured fields **and** as
+  the plain-language sentence — a machine-readable result must not be a way to
+  get the numbers without the statement of what left the wall. It goes through
+  the same fail-closed `scan_egress` backstop as markdown; a test holds that a
+  leaking analyzer is refused in JSON exactly as it is in markdown.
+- **`doctor`**: a dry run of ingestion — records read, events kept, drop share,
+  operator/machine split, threads, relative-day span, tempo-delta coverage, and
+  notes naming which analyzers this corpus *cannot* feed. Runs no analyzer,
+  emits no rate, reports counts and never content, and passes the same egress
+  scan: a diagnostic is an output door too, not the quieter way out.
+- **`adapters` / `analyzers`**: what can be read (each with the argument kind it
+  expects) and what gets computed (each with its claim type and its named
+  denominator).
+- **Relative-day window** (`run --since-day N --until-day N`): analyze a slice.
+  Day 0 stays the corpus's first event — the window never re-bases it, so "day
+  0" means the same thing across two runs. A filtered run names the window in
+  its audit sentence and counts the events the window excluded, in the words
+  "subset numbers, not corpus numbers".
+- **`tempo` analyzer** (claim `tempo`): gaps between operator prompts, within a
+  thread and within a day — median, quartiles, and the share of gaps under a
+  minute (volleys) or over half an hour (you left and came back). It states the
+  share of eligible turns it has **no** delta for instead of imputing one: a
+  turn that opens a thread, follows a censored midnight crossing, or comes from
+  a store that doesn't clock prompts (`cursor-store`) is counted as uncovered.
+  On a corpus with no deltas at all it returns an error naming why, never a rate
+  over an invented sample. It publishes no *cumulative* within-day span — the
+  README discloses that a long span loosely bounds the local clock hour, and
+  percentiles over individual gaps do not sharpen that bound while a published
+  span would. A test holds that omission.
+- **`thread_span` analyzer** (claim `thread_shape`): the span a thread stays
+  open in, its active days, and the density of the two — the complement to
+  `thread_shape`, which counts the resumption gaps *inside* that span.
+- **Per-adapter source pattern** in the ingest registry (`register(...,
+  pattern=)`). `cursor-store` walks `store.db`, not `*.jsonl`, so "no *.jsonl
+  files found under X" was the wrong thing to say about it. The CLI now counts
+  and names the pattern the adapter actually walks.
+
 - **Cursor `store.db` adapter** (`ingest/cursor_store.py`, `--adapter
   cursor-store`): reads the chat store Cursor keeps for itself — a tree of
   `store.db` SQLite files under `~/.cursor/chats`, one per thread. The format
