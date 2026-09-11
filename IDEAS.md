@@ -384,6 +384,36 @@ single-day, which is a fabricated finding, not a missing one.
 
 ### The harder finding: "operator" was not a person, and nothing noticed
 
+**Answered, in part, 0.2.1.** The battery now classifies operator-role turns as
+human/agent/unknown, derives a subject from the mix, changes the pronouns and
+withholds human reference points when the subject is not a person. The SWE-agent
+corpus that exposed this now reads *agent* rather than an implied human, with
+72.5% of its turns declined outright.
+
+What is **not** solved, and is now a stated permanent limit rather than an
+unknown one: a machine dispatching short, code-free commands still reads human
+or unknown. The bar for calling something an agent is deliberately high because
+the opposite error lands on real people — a teacher commissioning a lesson plan
+writes a long structured brief and would fail a length rule. The accepted
+direction of error is to under-call machines.
+
+Three things this turned up that were not visible before building it:
+
+- **The marked-machine path is dead code.** It is the highest-precision signal
+  the classifier has, and no shipped path sets it, because every adapter drops a
+  marked record before an `Event` exists. The classifier can only ever see turns
+  that already survived the filters.
+- **The subject floor was borrowed from the wrong question.** Gating on corpus
+  size via `SMALL_N` rejected a unanimous 24-of-24 human corpus while accepting
+  a 30-turn 24/6 split. It now gates on the evidence supporting the leading
+  class, with the invariant pinned by a test.
+- **Nobody knows the error rate.** `label` and `score` cover authorship now, but
+  no real corpus has been graded through them. Everything above rests on one
+  operator's n≈18 per side plus a synthetic falsifier that can break the
+  classifier and can never validate it.
+
+
+
 The same run is a warning about the whole battery. In a SWE-agent trajectory the
 `user` turns are the **environment feeding back command output**, not a human.
 The analyzers did not care. `steering_density` reported 88.6% mid-task, which
