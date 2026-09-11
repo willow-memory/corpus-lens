@@ -153,6 +153,27 @@ def _iter_lines(f: Path):
         yield -1, None
 
 
+#: A session directory holds the operator's thread; `subagents/` beside it holds
+#: transcripts of agents the ASSISTANT dispatched. Those files have the same
+#: shape and the same `"type": "user"` records — but the "user" in them is the
+#: model writing a task prompt to its own subagent, not the person.
+#:
+#: Counting them corrupts exactly the measurement this tool exists for. Observed
+#: 2026-09-11 on this project's own session log: including three subagent
+#: transcripts moved `opener_median_words` from 11 to 516 and turned one thread
+#: into four. `owner == subject` is the scope rule, and a subagent prompt has no
+#: owner in it.
+#:
+#: Skipped records are COUNTED as drops, never silently discarded. Studying a
+#: fleet's own traffic is a different instrument — the README names an
+#: agent-fleet adapter as deliberately unbuilt, and this is not it.
+SUBAGENT_DIRS = frozenset({"subagents"})
+
+
+def _is_subagent(rel_posix: str) -> bool:
+    return any(part in SUBAGENT_DIRS for part in rel_posix.split("/")[:-1])
+
+
 @register("claude-code")
 def ingest(path: str, corpus_id: str = "corpus"):
     root = Path(path)
@@ -162,6 +183,11 @@ def ingest(path: str, corpus_id: str = "corpus"):
     dropped = 0
     for f in sorted(root.rglob("*.jsonl")):
         rel = f.relative_to(root).as_posix()
+        if _is_subagent(rel):
+            # the model's own dispatch traffic, not the operator's — counted,
+            # not hidden (one drop per record in the file)
+            dropped += sum(1 for _ in _iter_lines(f))
+            continue
         for i, o in _iter_lines(f):
             if not isinstance(o, dict):
                 dropped += 1
