@@ -1,21 +1,27 @@
 """Tests for corpuslens.analyze.fingerprint — the leakage-demonstration
 computation (IDEAS.md, "The leakage demonstration"; GRADING.md question 9).
 
-Three concerns, matching the module's own contract:
+Four concerns, matching the module's own contract:
   1. The numbers are computed correctly on known synthetic inputs.
-  2. It NEVER reveals the schedule itself — no weekday, no clock hour, no
+  2. Uniformly random (schedule-free) timestamps must NOT be reported as a
+     schedule at any n — the sample-size-bias regression this module was
+     revised to fix (2026-09-11 audit: 12 uniform timestamps over 8 weeks
+     plug-in-reported 3.974 "bits below uniform" out of a 7.392 maximum).
+  3. It NEVER reveals the schedule itself — no weekday, no clock hour, no
      date, no peak-hour identification — including the property test that the
      output is invariant to WHERE on the calendar the same relative pattern
      sits (it cannot leak an absolute phase it never depends on).
-  3. It is not wired into the analyzer registry that `corpuslens run` uses
+  4. It is not wired into the analyzer registry that `corpuslens run` uses
      under the default profile.
 """
 import datetime as dt
 import math
+import random
 import unittest
 
 from corpuslens.analyze.fingerprint import (
     HOURS_PER_WEEK,
+    NULL_UNRELIABLE_FRACTION,
     timing_fingerprint,
 )
 
@@ -23,11 +29,18 @@ DAY_S = 86400.0
 HOUR_S = 3600.0
 WEEK_S = 7 * DAY_S
 
-EXPECTED_KEYS = {
+# Keys always present. "error" additionally appears only when n/span are too
+# small for the hour-of-week estimator to have any signal (see
+# RELIABLE_KEYS / UNRELIABLE_KEYS below and BiasCorrectionTests).
+BASE_KEYS = {
     "n", "n_days_spanned", "hour_of_week_bins", "hour_of_week_entropy_bits",
     "hour_of_week_max_entropy_bits", "hour_of_week_bits_below_uniform",
+    "hour_of_week_null_mean_bits_below_uniform", "hour_of_week_null_trials",
+    "hour_of_week_bits_below_uniform_excess",
     "weekly_autocorr_lag7", "weekly_autocorr_rank_pct", "reading",
 }
+RELIABLE_KEYS = BASE_KEYS
+UNRELIABLE_KEYS = BASE_KEYS | {"error"}
 
 # substrings that would indicate the schedule itself leaked out, not just its
 # concentration/periodicity — real weekday names, clock-hour phrasing, calendar
@@ -79,6 +92,119 @@ class ConcentrationTests(unittest.TestCase):
         self.assertEqual(timing_fingerprint(ts)["n"], 37)
 
 
+class BiasCorrectionTests(unittest.TestCase):
+    """The regression suite for the 2026-09-11 audit finding: the plug-in
+    hour-of-week entropy estimator is badly biased upward when n is small
+    relative to the 168-bin histogram, so RAW `hour_of_week_bits_below_uniform`
+    must never be read as a finding on its own — only
+    `hour_of_week_bits_below_uniform_excess` (raw minus a seeded Monte Carlo
+    null baseline) may be, and only when it isn't gated off entirely.
+
+    `test_uniformly_random_timestamps_never_report_a_meaningful_schedule` is
+    the test that would have caught the audit finding directly: it pins the
+    property "no schedule in, no schedule reported" across the n values this
+    module claims to support, using ONLY the module's own local
+    `random.Random` (never the global `random` module) so this file's own
+    randomness never leaks into, or is perturbed by, the function under test.
+    """
+
+    # generous on purpose: the property under test is "not a big number", not
+    # "exactly this many bits" — the audit's bad reading was 3.974 out of a
+    # 7.392 maximum, so anything comfortably under 1 bit is an unambiguous fix.
+    NOISE_TOLERANCE_BITS = 1.0
+
+    def test_audit_reproduction_no_longer_reports_a_false_schedule(self):
+        """The exact reproduction from the audit: seed=7, 8-week span, n=12.
+        Before the fix this reported hour_of_week_bits_below_uniform == 3.974
+        as if it were a finding. After the fix the corrected quantity must
+        either be near zero or refused outright — never a large number."""
+        rng = random.Random(7)
+        span = 8 * 7 * 24 * 3600
+        ts = [rng.uniform(0, span) for _ in range(12)]
+        r = timing_fingerprint(ts)
+        excess = r["hour_of_week_bits_below_uniform_excess"]
+        if excess is None:
+            self.assertIn("error", r)
+        else:
+            self.assertLess(abs(excess), self.NOISE_TOLERANCE_BITS)
+        # the raw, uncorrected number is still exposed for transparency, but
+        # it is NOT what a reader is told to read — it must never appear
+        # unqualified as "the" schedule reading:
+        self.assertIn("hour_of_week_bits_below_uniform", r)
+        self.assertIn("excess", r["reading"])
+
+    def test_uniformly_random_timestamps_never_report_a_meaningful_schedule(self):
+        """The property test the audit asked for directly: uniformly random
+        (schedule-free) timestamps must not report a meaningful schedule at
+        ANY supported n. Either the gate refuses (small n) or the excess is
+        within noise of zero (n large enough to trust) — never a large
+        number presented as if it were a finding."""
+        rng = random.Random(20260911)
+        span_s = 8 * 7 * DAY_S
+        for n in (2, 5, 12, 30, 50, 100, 168, 500, 2000, 6000):
+            with self.subTest(n=n):
+                ts = [rng.uniform(0, span_s) for _ in range(n)]
+                r = timing_fingerprint(ts)
+                excess = r["hour_of_week_bits_below_uniform_excess"]
+                if excess is None:
+                    self.assertIn("error", r,
+                                  f"n={n}: excess is None but no error explains why")
+                else:
+                    self.assertLess(abs(excess), self.NOISE_TOLERANCE_BITS,
+                                     f"n={n}: excess {excess} reads as a schedule that isn't there")
+
+    def test_large_n_uniform_random_excess_is_near_zero_not_gated(self):
+        """At n=4000 (the audit's second case) there is plenty of signal for
+        the estimator: the gate must NOT trigger, and excess must be small."""
+        rng = random.Random(7)
+        span = 8 * 7 * 24 * 3600
+        r = timing_fingerprint([rng.uniform(0, span) for _ in range(4000)])
+        self.assertNotIn("error", r)
+        self.assertIsNotNone(r["hour_of_week_bits_below_uniform_excess"])
+        self.assertLess(abs(r["hour_of_week_bits_below_uniform_excess"]), 0.3)
+
+    def test_small_n_is_refused_rather_than_reported(self):
+        """n=12 over an 8-week span (the audit's first case): the corrected
+        quantity must be refused outright, not silently reported as ~0 or as
+        the raw biased value."""
+        rng = random.Random(7)
+        span = 8 * 7 * 24 * 3600
+        r = timing_fingerprint([rng.uniform(0, span) for _ in range(12)])
+        self.assertIn("error", r)
+        self.assertIsNone(r["hour_of_week_bits_below_uniform_excess"])
+        self.assertIn("n=12", r["error"])
+
+    def test_a_real_weekly_pattern_still_shows_up_once_n_is_large_enough(self):
+        """The fix must not blind the tool to a genuine signal: a strongly
+        concentrated weekly pattern with enough events to clear the gate
+        should report a large positive excess, not get washed out by the
+        correction."""
+        r = timing_fingerprint(_weekly_pattern(30))
+        self.assertNotIn("error", r)
+        self.assertIsNotNone(r["hour_of_week_bits_below_uniform_excess"])
+        self.assertGreater(r["hour_of_week_bits_below_uniform_excess"], 2.0)
+
+    def test_null_baseline_is_reproducible(self):
+        """The Monte Carlo null must be deterministic (fixed internal seed):
+        calling twice with the same n/span/data returns the identical
+        baseline and the identical overall result."""
+        ts = _spread_pattern(40)
+        r1 = timing_fingerprint(ts)
+        r2 = timing_fingerprint(ts)
+        self.assertEqual(r1["hour_of_week_null_mean_bits_below_uniform"],
+                          r2["hour_of_week_null_mean_bits_below_uniform"])
+        self.assertEqual(r1, r2)
+
+    def test_null_baseline_does_not_perturb_global_random_state(self):
+        """The null simulation must use its own private random.Random, never
+        the module-global `random` state — otherwise calling this function
+        would be an impurity visible to unrelated code that uses `random`."""
+        random.seed(12345)
+        state_before = random.getstate()
+        timing_fingerprint(_weekly_pattern(20))
+        self.assertEqual(random.getstate(), state_before)
+
+
 class PeriodicityTests(unittest.TestCase):
     def test_strong_weekly_repetition_gives_high_positive_autocorr(self):
         ts = _weekly_pattern(12)
@@ -114,16 +240,23 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(set(r.keys()), {"n", "error"})
 
     def test_accepts_datetime_objects_as_well_as_epoch_numbers(self):
+        # n=10 is small enough that the bias-correction gate may legitimately
+        # refuse the concentration reading (see BiasCorrectionTests) — that is
+        # not what this test is checking. This test only checks that datetime
+        # input is accepted and produces a well-formed result either way.
         base = dt.datetime(2026, 1, 5, 9, 0, 0)
         ts = [base + dt.timedelta(weeks=i) for i in range(10)]
         r = timing_fingerprint(ts)
-        self.assertNotIn("error", r)
         self.assertEqual(r["n"], 10)
+        self.assertIn(set(r.keys()), (RELIABLE_KEYS, UNRELIABLE_KEYS))
 
     def test_mixed_number_and_datetime_input(self):
+        # n=3 is far too small for a reliable concentration reading — this
+        # test only checks mixed input types don't crash and n is right.
         ts = [1_700_000_000.0, dt.datetime(2026, 1, 5, 9, 0, 0), 1_700_000_000 + 10]
         r = timing_fingerprint(ts)
-        self.assertNotIn("error", r)
+        self.assertEqual(r["n"], 3)
+        self.assertIn(set(r.keys()), (RELIABLE_KEYS, UNRELIABLE_KEYS))
 
     def test_deterministic(self):
         ts = _weekly_pattern(9)
@@ -147,9 +280,20 @@ class NeverRevealsTheScheduleTests(unittest.TestCase):
     field that identifies a real weekday, clock hour, or the peak bin, these
     fail."""
 
-    def test_output_keys_are_exactly_the_declared_set(self):
+    def test_output_keys_are_exactly_the_declared_set_when_reliable(self):
+        # n=30 weekly repeats over a ~29-week span: enough to clear the
+        # bias-correction gate (see BiasCorrectionTests), so no "error" key.
+        r = timing_fingerprint(_weekly_pattern(30))
+        self.assertNotIn("error", r)
+        self.assertEqual(set(r.keys()), RELIABLE_KEYS)
+
+    def test_output_keys_are_exactly_the_declared_set_when_refused(self):
+        # n=10 over a ~9-week span cannot clear the gate: "error" appears,
+        # excess is None, and nothing else is dropped.
         r = timing_fingerprint(_weekly_pattern(10))
-        self.assertEqual(set(r.keys()), EXPECTED_KEYS)
+        self.assertIn("error", r)
+        self.assertIsNone(r["hour_of_week_bits_below_uniform_excess"])
+        self.assertEqual(set(r.keys()), UNRELIABLE_KEYS)
 
     def test_no_forbidden_schedule_language_anywhere_in_the_output(self):
         r = timing_fingerprint(_weekly_pattern(10))

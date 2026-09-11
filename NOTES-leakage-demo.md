@@ -12,17 +12,74 @@ are theirs to reconcile; this is the diff they'd need to fold in.
 module-level function taking a sequence of absolute timestamps supplied
 directly by the caller (never read out of the Guard, never derived from an
 `Event`, which cannot carry one). It reports hour-of-week histogram
-concentration (Shannon entropy in bits, and bits below uniform — "roughly
-how many bits of schedule this file carries", IDEAS.md's own phrase) and
-whether a ~7-day period is present and how strongly (a day-bucketed Pearson
-autocorrelation at lag 7, stdlib-only, no FFT, with its rank among the
-file's own other lags for context). It never returns a weekday label, a
-clock hour, a date, or which hour-of-week bin is the peak, and it never
-computes a safe/unsafe verdict. `tests/test_fingerprint.py` holds all of
-that, including a property test that the output is provably invariant to
-where on the real calendar the same relative pattern sits (shifting every
-input timestamp by an arbitrary non-round offset changes nothing in the
-output — the function cannot leak an absolute phase it never depends on).
+concentration and whether a ~7-day period is present and how strongly (a
+day-bucketed Pearson autocorrelation at lag 7, stdlib-only, no FFT, with its
+rank among the file's own other lags for context). It never returns a
+weekday label, a clock hour, a date, or which hour-of-week bin is the peak,
+and it never computes a safe/unsafe verdict. `tests/test_fingerprint.py`
+holds all of that, including a property test that the output is provably
+invariant to where on the real calendar the same relative pattern sits
+(shifting every input timestamp by an arbitrary non-round offset changes
+nothing in the output — the function cannot leak an absolute phase it never
+depends on).
+
+## Post-review fix: the plug-in entropy estimator was reporting noise as a schedule
+
+A review after the first commit on this branch (2026-09-11) found that
+`hour_of_week_bits_below_uniform` — the "roughly how many bits of schedule
+this file carries" number, IDEAS.md's own phrase — is a plug-in Shannon
+entropy estimate, and the plug-in estimator is badly biased upward whenever
+`n` is not large relative to the 168-bin histogram (or the observed span is
+short relative to a week, which limits how many of the 168 bins are even
+reachable). Reproduction: 12 uniformly random timestamps spread over 8 weeks
+— no schedule whatsoever — reported **3.974** bits "below uniform" out of a
+7.392 maximum; the same generator at n=4000 correctly reported **0.033**.
+Miller-Madow does not fix this at small n (the correction is ~0.66 bits
+against a ~4-bit error at n=12). Left as it was, this function would have
+told the owner of a small export that their timing carried more than half
+the maximum possible schedule information when it carried none — the exact
+overclaim this repository exists to prevent, and undisclosed in the first
+commit's docstring.
+
+The fix, per review guidance (design is this branch's, direction was given):
+
+- `_null_bits_below_uniform_stats(n, span_s)` runs a seeded (`NULL_SEED`,
+  private `random.Random`, never the global `random` module — verified not
+  to perturb it), fixed-trial-count (`NULL_TRIALS = 200`) Monte Carlo:
+  simulate `n` uniformly random timestamps over the same observed span,
+  score each trial the same way the real data is scored, and report the
+  mean `bits_below_uniform` that pure chance produces at this exact `n` and
+  span. Reproducible: the same `(n, span)` always returns the same baseline.
+- The headline is now `hour_of_week_bits_below_uniform_excess` (raw minus
+  that null mean). The raw, biased number is still returned
+  (`hour_of_week_bits_below_uniform`) for transparency, alongside the null
+  mean itself (`hour_of_week_null_mean_bits_below_uniform`) and the trial
+  count (`hour_of_week_null_trials`), but the docstring and `reading` field
+  are explicit that only the excess should be read.
+- Where the null mean already accounts for at least `NULL_UNRELIABLE_FRACTION`
+  (0.5) of the theoretical maximum entropy, the estimator cannot distinguish
+  a real pattern from chance at this `n`/span at all: `excess` comes back
+  `None` and an `"error"` field explains why, rather than publishing a
+  number that would not mean what it looks like it means. This mirrors the
+  project's existing "refuse rather than guess" contract (`tempo.py`'s
+  `{"error": ...}` shape) and is explicitly a statistical-power / estimator
+  reliability gate, not a privacy safety threshold — the module docstring's
+  NO VERDICT section now says so directly, so nobody reads
+  `NULL_UNRELIABLE_FRACTION` as the "safe/unsafe" cutoff this feature was
+  told not to invent.
+- `weekly_autocorr_lag7` / `weekly_autocorr_rank_pct` are unaffected — they
+  use a different method (day-bucket autocorrelation) with their own
+  existing span requirement, and were not part of the finding.
+
+`tests/test_fingerprint.py::BiasCorrectionTests` is the regression suite:
+the exact audit reproduction, a parametrized property test across n = 2..6000
+asserting uniformly random timestamps never report a meaningful schedule at
+any of them (refused or near-zero excess, never a large number), a check
+that a genuine concentrated pattern still shows up once `n` clears the gate
+(the fix must not blind the tool to real signal), determinism of the null
+baseline, and a check that the null simulation does not perturb the caller's
+global `random` state. 30 tests in `test_fingerprint.py`, 169 in the full
+suite, all passing.
 
 It is **not** wired into the analyzer registry `corpuslens run` uses, and
 there is **no** new CLI subcommand. Both omissions are deliberate; see below.
