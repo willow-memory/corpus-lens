@@ -14,6 +14,20 @@ happened after `git fetch origin main && git merge origin/main` pulled it in,
 and the merged bullet matches what I'd been told directly. Nothing here was
 built blind.
 
+**Correction note.** A first pass of this file and of `gemini_cli.py`'s
+docstring cited the Gemini CLI adapter's provenance to commit
+`fc948f8c473e5d11e780ffcf1fd7f812a2020932` — that SHA is real, but it is
+`openai/codex`'s HEAD at clone time, copy-pasted into the Gemini CLI citation
+by mistake; it does not exist in `google-gemini/gemini-cli` and an auditor
+correctly caught it as a 404. The technical findings it was attached to were
+not affected (they were re-derived from the actual file paths and symbols,
+not from the SHA), but the citation itself was wrong, and a wrong citation on
+a "read from source, not a corpus" disclosure is exactly the kind of thing
+that discredits every other claim in this file whether or not they're also
+wrong. Every commit SHA below (and the Codex citation in its own section)
+has since been re-fetched at its GitHub `/commit/<sha>` URL and confirmed to
+resolve to a real, matching commit.
+
 Branch: `claude/expand-adapter`. Built: `corpuslens/ingest/gemini_cli.py`,
 two new tags in `injection.py`, `tests/test_gemini_cli.py`.
 
@@ -33,12 +47,25 @@ including this project's own dogfood log). The adapter this produces should be
 read as **verified against source, unverified against a corpus** — stated in
 its own docstring, not just here.
 
-All four repos were cloned shallow, read-only, at HEAD as of **2026-09-11**:
+All four repos were cloned shallow, read-only, from their default branch,
+between 2026-09-08 and 2026-09-11 (`git log -1` on each local clone gave the
+commit; each SHA below was independently re-fetched at its GitHub
+`/commit/<sha>` URL and confirmed to resolve to a real, matching commit — see
+the correction note above):
 
-- `openai/codex` @ `fc948f8c473e5d11e780ffcf1fd7f812a2020932`
-- `google-gemini/gemini-cli` @ HEAD (2026-09-11 clone)
-- `Aider-AI/aider` @ HEAD (2026-09-11 clone)
-- `sst/opencode` @ HEAD (2026-09-11 clone)
+- `openai/codex` @ `fc948f8c473e5d11e780ffcf1fd7f812a2020932`, `main`,
+  committed 2026-09-11 ("Add a provider for thread-scoped instructions
+  (#44701)") — verified resolves.
+- `google-gemini/gemini-cli` @ `ed2ac40df67a319bf348bd7e3d10494696b31b38`,
+  `main`, committed 2026-09-08 ("fix(core): preserve explicit versioned Flash
+  model IDs (#29252)") — verified resolves.
+- `Aider-AI/aider` @ `5dc9490bb35f9729ef2c95d00a19ccd30c26339c`, `main`,
+  committed 2026-05-22 — verified resolves. Note this repo's HEAD was already
+  several months stale relative to the other three at clone time; nothing
+  in the aider findings below depends on anything more recent.
+- `sst/opencode` @ `193de13a88d62a6409c6d385831180f1def527dc`, `dev` (opencode's
+  default branch), committed 2026-09-10 ("fix(stats): normalize deepseek
+  v4.1 flash") — verified resolves.
 
 ---
 

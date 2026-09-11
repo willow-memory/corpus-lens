@@ -7,7 +7,9 @@ PROVENANCE — READ FROM THE WRITER'S SOURCE, NOT AN OBSERVED CORPUS. Unlike
 log), nobody on this project has a real Gemini CLI corpus to read bytes from.
 This adapter is instead built by reading the code that WRITES these files —
 `google-gemini/gemini-cli`, package `@google/gemini-cli-core`, commit
-fc948f8c473e5d11e780ffcf1fd7f812a2020932 (2026-09-11):
+ed2ac40df67a319bf348bd7e3d10494696b31b38 on branch `main` (committed
+2026-09-08, cloned and read 2026-09-11; resolved and fetched again to confirm
+it exists before this citation was written):
 
   * `packages/core/src/services/chatRecordingTypes.ts` — the record shapes
     (`BaseMessageRecord`, `ConversationRecordExtra`, `ConversationRecord`,
