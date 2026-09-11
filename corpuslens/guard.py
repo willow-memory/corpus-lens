@@ -47,6 +47,7 @@ from typing import Optional
 
 from .egress_shapes import find_structural_leaks
 from .model import PERSON_CLAIM_TYPES, PROCESS_CLAIM_TYPES, Quarantine
+from .share_shape import find_shape_violations
 
 
 class WallError(Exception):
@@ -248,6 +249,12 @@ class AuditRecord:
         return base + tail + subj + consent
 
 
+#: Violation labels shown in a WallError before the rest are summarized as a
+#: count. A total coarsening failure produces one violation per field per
+#: analyzer, which is unreadable in a single line.
+_MAX_VIOLATIONS_SHOWN = 8
+
+
 class Guard:
     """Holds the Quarantine privately (name-mangled) so the supported way to
     reach an anchored value is `release()`. This makes accidental access loud;
@@ -337,6 +344,53 @@ class Guard:
                 "was never quarantined, so the literal scan could not see it; "
                 "that is a highest-class bug, report it like one.")
         return text
+
+    def scan_share_shape(self, results: dict, audit_dict: dict) -> None:
+        """The second, distinct check `DESIGN-guard-extraction.md` (2a) names
+        as missing: a schema/shape assertion on the COARSENED share payload,
+        run on the structured dict BEFORE it is rendered to text — distinct
+        from `scan_egress`, which only ever sees rendered text and can only
+        ask whether a quarantined literal or shape appears in it. Neither
+        phase of `scan_egress` has any concept of "this field is not
+        allowlisted" or "this denominator is an exact count, not a band" —
+        that gap is real and was hit in production (see the audit note in
+        `DESIGN-guard-extraction.md` §2a: a first share-mode implementation
+        banded every analyzer's `n` but still published the corpus's exact
+        `n_events`, and `scan_egress` passed it cleanly, because an exact `n`
+        is neither a quarantined literal nor a recognizable structural
+        shape).
+
+        Delegates the actual check to `share_shape.find_shape_violations`,
+        which is pure and returns violation LABELS only — this method's only
+        job is the same one `scan_egress` already does for its own findings:
+        raise, so a caller cannot compute a verdict and then forget to act on
+        it. The raised error names the violated fields, never a payload
+        value, matching every other error this module raises.
+
+        THIS DOES NOT VERIFY THE COARSENED VALUES ARE SAFE TO PUBLISH — only
+        that the coarsening step ran and produced the expected shape (every
+        field allowlisted, every denominator a band). See `share_shape.py`'s
+        module docstring and `share.py`'s for what neither this check nor
+        share mode itself claims."""
+        violations = find_shape_violations(results, audit_dict)
+        if violations:
+            # Cap the list. When the coarsening step does not run at all, every
+            # field of every analyzer violates at once — the uncapped message
+            # ran past 4,000 characters in testing, which buries the count and
+            # the instruction under a wall of field names. The labels carry no
+            # payload value either way (that discipline is share_shape.py's),
+            # so this is legibility, not leak containment: the total is what
+            # tells a reader "the step did not run" rather than "one field
+            # slipped".
+            shown = violations[:_MAX_VIOLATIONS_SHOWN]
+            more = len(violations) - len(shown)
+            detail = ", ".join(shown) + (f", and {more} more" if more else "")
+            raise WallError(
+                f"share shape scan: {len(violations)} shape violation(s) in the "
+                f"coarsened share payload — {detail} — refusing to emit. This means the "
+                "coarsening step in share.py did not run, or a field/denominator "
+                "was added without being reviewed onto its allowlist; that is a "
+                "highest-class bug, report it like one.")
 
     def n_events(self) -> int:
         return self.audit.n_events

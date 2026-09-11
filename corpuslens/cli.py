@@ -392,8 +392,17 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
         # "n = 30-100". A prior version of this feature missed exactly this.
         results = share_mod.coarsen(results)
         audit = share_mod.coarsen_audit(audit)
-    report = render.render(fmt, results, audit, share=share)
     try:
+        if share:
+            # Second, distinct check `DESIGN-guard-extraction.md` (2a) calls
+            # for: a schema/shape assertion on the COARSENED payload itself,
+            # before it is rendered to text — `scan_egress` below only ever
+            # sees rendered text and cannot tell a banded n from an exact
+            # one. Runs BEFORE render()/scan_egress() because it needs the
+            # structured dict, not text; see guard.Guard.scan_share_shape's
+            # docstring for why this is not a duplicate of scan_egress.
+            guard.scan_share_shape(results, audit.as_dict())
+        report = render.render(fmt, results, audit, share=share)
         report = guard.scan_egress(report)   # fail-closed backstop at the output door
     except WallError as e:
         # A quarantined value reached the rendered report. Do NOT emit it —

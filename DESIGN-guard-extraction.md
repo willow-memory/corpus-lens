@@ -197,6 +197,51 @@ this document called for is still unbuilt. What changed is narrower: the class
 of leak that is a recognizable *anchor shape* in a never-quarantined field is
 now caught, and the class that is a bare number still is not.
 
+**Third amendment (2026-09-11), correcting the paragraph directly above rather
+than replacing it — per this document's own convention, a correction sits
+beside the record it corrects, not over it.** The sentence "the second,
+distinct shape/schema assertion this document called for is still unbuilt" is
+now **false**: it has been built, as `corpuslens/share_shape.py` (a pure
+`find_shape_violations(results, audit_dict) -> list[str]` function, mirroring
+`egress_shapes.find_structural_leaks` and `failure_classes.classify`'s own
+"labels only, never a value" discipline) plus its enforcing caller
+`Guard.scan_share_shape`, which raises `WallError` exactly like `scan_egress`
+does for its own findings. It is wired into `cli.py`'s `run()` to fire on the
+already-coarsened `results`/`audit` dicts, *before* `render()` and therefore
+before `scan_egress` — it needs the structured payload, which only exists
+before rendering, not the rendered text `scan_egress` sees.
+
+State plainly what it does and does not cover, so this amendment does not
+become the next overclaim this document has to correct:
+
+- It asserts **structure**, never **values**: every key present in a share
+  result is checked against `share.RATE_FIELDS` plus a small reviewed set of
+  meta fields (`denominator`, `n_band`, `headline`, `error`); every key in the
+  coarsened audit record is checked against its own reviewed allowlist; and
+  every denominator-shaped field (`n`, `n_band`, `n_events`, `n_dropped`,
+  `n_filtered`) must hold a band string in `share.band_n`'s exact shape, never
+  an exact int. An unrecognized key is a violation by construction — fail
+  closed, the same posture `share.coarsen_result` already holds for the
+  fields it strips.
+- This closes exactly the gap the audit note above recorded: a re-run of that
+  scenario (every analyzer's `n` banded, the audit record's `n_events` left
+  exact) is now caught by `Guard.scan_share_shape` before the report is even
+  rendered, not merely undetected until an auditor reads the code a fourth
+  time.
+- It does **not** answer "is this number too identifying" — that question is
+  still unanswerable, and still explicitly unmeasured by this project (see
+  `share.py`'s docstring). It verifies that the coarsening step **ran and
+  produced the expected shape**, nothing about whether what remains still
+  fingerprints its owner. It does not make share output safe, anonymous, or
+  de-identified, and it must never be described that way.
+- It is a second, independent fail-closed filter on the same property
+  `share.coarsen_result`'s own allowlist already enforces, not a replacement
+  for it — if a future edit weakens `coarsen_result`'s filter, or adds a new
+  key to `AuditRecord.as_dict()` without reviewing it here, this check still
+  has to be told about the new field explicitly (onto `share_shape`'s own
+  allowlists) or it fails closed and refuses to emit, exactly like every
+  other unreviewed field in this codebase.
+
 ### 2b. Labelling mode ("A local labelling mode")
 
 The spec, quoted: `corpuslens label <path> --adapter …` "samples fifty
