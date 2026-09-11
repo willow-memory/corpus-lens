@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.0](https://github.com/willow-memory/corpus-lens/compare/v1.0.0...v0.1.0) (2026-09-11)
+
+
+### Fixed
+
+* cut 0.1.0, not 1.0.0 ([515ca9f](https://github.com/willow-memory/corpus-lens/commit/515ca9f6294e97e75a21c6c062e2abfee3656969))
+
+## Changelog
+
 ## Corrected: there is no 1.0.0
 
 release-please cut `1.0.0` on 2026-09-11 and it was published to PyPI, then
