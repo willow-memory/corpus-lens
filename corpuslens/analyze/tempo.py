@@ -71,8 +71,18 @@ def tempo(events):
     median = round(statistics.median(deltas), 1)
     cov = _pct(n, eligible)
     return {
-        "headline": (f"Your prompts arrive a median {median}s apart within a thread "
-                     f"(measurable on {cov}% of eligible turns; the rest have no gap to measure)."),
+        # SAY WHAT IS MEASURED. This sentence used to read "your prompts arrive
+        # a median Ns apart", which claimed something narrower than the number:
+        # `delta_prev_s` is the gap since the PREVIOUS EVENT in the thread —
+        # usually the machine's own reply — not since the operator's previous
+        # prompt. The two differ by however long the machine took. Filed as a
+        # claim/code mismatch in BUGS.md and fixed here in the honest direction:
+        # the wording now matches the computation, and no number moved, so no
+        # analyzer version bump. Measuring prompt-to-prompt instead remains a
+        # real option, and it WOULD move every number and need the bump.
+        "headline": (f"A median {median}s passes before each of your prompts — measured from "
+                     f"whatever the thread recorded last, usually the machine's reply, not from "
+                     f"your previous prompt (measurable on {cov}% of eligible turns)."),
         "n": n,
         "n_deltas": n,
         "eligible_turns": eligible,
