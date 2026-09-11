@@ -189,7 +189,7 @@ setup items above, and the logs name it.
 
 corpuslens is **owner == subject** by default: a tool you run on your own logs
 to study yourself. Pointing it at another person is a different consent object.
-Since 0.4 that object exists — `corpuslens/consent/` (vendored from willow-mcp,
+That object now exists — `corpuslens/consent/` (vendored from willow-mcp,
 hash-pinned; never edit it in place, re-vendor) and the binding in
 `corpuslens/subject_consent.py` — and it gates exactly one thing: whether a
 named non-owner subject's corpus may be *read for process* at all. It does not

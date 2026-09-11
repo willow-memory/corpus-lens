@@ -8,7 +8,7 @@ reference points to grade yourself against.
 **Stdlib only. Local only. Owner == subject.** Nothing to install beyond
 Python, nothing leaves your machine, and this is for studying *yourself*.
 Pointing it at another person (a child, a partner, an employee) is a different
-consent object. As of 0.4 that object is *representable* — a verified,
+consent object. That object is now *representable* — a verified,
 hash-chained grant from a named grantor, checked before a file is opened — and
 still not the default: see [A corpus that is not your own](#a-corpus-that-is-not-your-own)
 for exactly what a grant lets the tool do, and what it does not.
