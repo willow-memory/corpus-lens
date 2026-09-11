@@ -25,11 +25,30 @@ def composition_mix(events):
     if not n:
         return {"error": "no operator prompts found"}
     pct = lambda k: round(100 * sum(1 for f in turns if f.get(k)) / n, 1)
+    authored, ref, delib = pct("code_authored"), pct("code_ref"), pct("delib")
+    pop = REFERENCE["wildchat_coding_population"]
+
+    def side(mine, theirs):
+        """Direction against a reference, with a band where the classifiers'
+        error swamps the gap — 'near' is an honest answer, and a regex
+        heuristic does not get to call a 2-point difference."""
+        if abs(mine - theirs) < 3.0:
+            return "near"
+        return "above" if mine > theirs else "below"
+
     return {
+        "headline": (f"You authored code in {authored}% of your prompts and referred to existing "
+                     f"code in {ref}%; {delib}% deliberate before building."),
+        "n": n,
+        "vs_coding_population": (
+            f"authored {authored}% vs {pop['authored_pct']}% ({side(authored, pop['authored_pct'])}), "
+            f"code-ref {ref}% vs {pop['read_ref_pct']}% ({side(ref, pop['read_ref_pct'])}), "
+            f"deliberation {delib}% vs {pop['delib_pct']}% ({side(delib, pop['delib_pct'])}) "
+            f"— WildChat coding population"),
         "n_turns": n,
-        "authored_code_pct": pct("code_authored"),
-        "code_ref_pct": pct("code_ref"),
-        "delib_pct": pct("delib"),
+        "authored_code_pct": authored,
+        "code_ref_pct": ref,
+        "delib_pct": delib,
         "median_words": statistics.median(f["word_count"] for f in turns),
         "reference": REFERENCE,
         "reading": ("above the coding population on authored/read-ref = you bring the code to the "
@@ -63,7 +82,11 @@ def clarification_pull(events):
     if not asst:
         return {"error": "no machine responses in corpus — this analyzer needs a claude-code "
                          "corpus; the cursor adapter is prompt-only (no assistant turns)"}
-    return {"assistant_turns": asst, "clarification_forks_pct": round(100 * forks / asst, 2),
+    fork_pct = round(100 * forks / asst, 2)
+    return {"headline": (f"The machine asked a clarifying question you then answered in "
+                         f"{fork_pct}% of its turns."),
+            "n": asst,
+            "assistant_turns": asst, "clarification_forks_pct": fork_pct,
             "reference": {"measured_cli": 3.4,
                           "measured_cursor_note": "2.47 — measured elsewhere; NOT computable here "
                           "(cursor logs carry no assistant turns), shown for context only"}}

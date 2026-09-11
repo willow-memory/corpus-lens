@@ -53,13 +53,18 @@ def tempo(events):
                           "computable here, and is not guessed at."),
                 "eligible_turns": eligible, "delta_coverage_pct": 0.0}
     q = statistics.quantiles(deltas, n=4) if n >= 4 else None
+    median = round(statistics.median(deltas), 1)
+    cov = _pct(n, eligible)
     return {
+        "headline": (f"Your prompts arrive a median {median}s apart within a thread "
+                     f"(measurable on {cov}% of eligible turns; the rest have no gap to measure)."),
+        "n": n,
         "n_deltas": n,
         "eligible_turns": eligible,
-        "delta_coverage_pct": _pct(n, eligible),
+        "delta_coverage_pct": cov,
         "coverage_note": ("uncovered turns open a thread, sit after a censored midnight "
                           "crossing, or come from a corpus with no prompt clock — never imputed"),
-        "median_gap_s": round(statistics.median(deltas), 1),
+        "median_gap_s": median,
         "p25_gap_s": round(q[0], 1) if q else None,
         "p75_gap_s": round(q[2], 1) if q else None,
         "burst_pct": _pct(sum(1 for d in deltas if d < BURST_S), n),
@@ -88,16 +93,20 @@ def thread_span(events):
         days.setdefault(e.thread_id, set()).add(e.time.day_offset)
     if not days:
         return {"error": "no events"}
-    spans = []
-    densities = []
+    spans: list = []
+    densities: list = []
     for ds in days.values():
         span = max(ds) - min(ds) + 1          # inclusive: a one-day thread spans 1 day
         spans.append(span)
         densities.append(len(ds) / span)
+    med_span = statistics.median(spans)
     return {
+        "headline": (f"Half your threads span {med_span} day(s) or less; the longest stays open "
+                     f"across {max(spans)}."),
+        "n": len(days),
         "threads": len(days),
         "single_day_threads_pct": _pct(sum(1 for s in spans if s == 1), len(spans)),
-        "median_span_days": statistics.median(spans),
+        "median_span_days": med_span,
         "max_span_days": max(spans),
         "median_active_days": statistics.median(len(ds) for ds in days.values()),
         "median_density": round(statistics.median(densities), 3),

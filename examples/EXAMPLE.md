@@ -24,6 +24,28 @@ corpuslens run examples/sample-corpus --adapter claude-code
 > time-of-day (never the timezone or the date).
 ```
 
+Then the findings, which is what the report leads with:
+
+```
+## What this run found
+
+- **steering_density** — 70.0% of your prompt turns arrive mid-task rather than in a session's opening prompt.
+- **thread_shape** — 3 thread(s), picked back up 1 time(s) after a gap of 2 days or more; at the busiest, 2 ran on the same day.
+- **composition_mix** — You authored code in 0.0% of your prompts and referred to existing code in 0.0%; 10.0% deliberate before building.
+- **clarification_pull** — The machine asked a clarifying question you then answered in 10.0% of its turns.
+- **tempo** — Your prompts arrive a median 750.0s apart within a thread (measurable on 60.0% of eligible turns; the rest have no gap to measure).
+- **thread_span** — Half your threads span 1 day(s) or less; the longest stays open across 4.
+```
+
+A reader who stops here has the run. Each section below then repeats its
+sentence, names the denominator it is out of, gives the direction guidance, and
+prints the full numbers — nothing is summarized away, and the prose and the JSON
+come from the same result. Every section of this run also carries
+`*Small sample (n = 10): read the direction, not the decimal.*`, because this
+synthetic corpus is 21 lines: at that size a percentage is a story about three
+turns, and the report says so rather than letting the decimal imply precision it
+does not have.
+
 **Read the audit line first.** It is the wall reporting on itself: how many input
 lines became events, how many were dropped (and that the count is not hidden),
 what capability was granted (none), and — precisely — what left the wall and what
@@ -66,6 +88,11 @@ weekly rhythm survives but the calendar does not.
 
 ### composition_mix — who writes the code, and do you deliberate?
 
+```
+Against the reference: authored 0.0% vs 14.5% (below), code-ref 0.0% vs 36.0%
+(below), deliberation 10.0% vs 3.2% (above) — WildChat coding population.
+```
+
 ```json
 {
   "authored_code_pct": 0.0,
@@ -78,8 +105,11 @@ weekly rhythm survives but the calendar does not.
 }
 ```
 
-The operator authored no code and referenced none — **well below** the
-coding-domain population (14.5% / 36%). Per the analyzer's own `reading` guidance,
+The report states that comparison itself, in the line above: the operator
+authored no code and referenced none — **well below** the coding-domain
+population (14.5% / 36%). (`near` is a real verdict there too: a gap under 3
+points is inside the classifiers' own error, and a regex heuristic does not get
+to call it.) Per the analyzer's own `reading` guidance,
 below the population means *the machine holds the code and you direct it*; above
 it would mean *you bring the code to the machine*. Deliberation runs 10% here —
 above the coding population's 3.2% — because one session opened with "lets talk
@@ -143,6 +173,10 @@ offsets, so they carry weekly cadence and no calendar date.
 - **The wall works and is legible.** Every number above is process; no content,
   date, or filename appears. The audit line states that, and you can verify it by
   reading the output.
+- **A finding, not a dump.** Each analyzer writes its own sentence, beside the
+  computation that knows what its denominator means — so the prose can never
+  drift from the number under it, and an analyzer that *cannot* compute says so
+  in words instead of rendering an empty section that would read as a zero.
 - **Reproducibility.** Re-run the command on any machine, in any timezone — the
   numbers are identical, because the analysis is relative-time-only.
 - **Honest denominators and drops.** Every rate names what it is out of; the
