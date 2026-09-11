@@ -40,7 +40,36 @@ a design change rather than a patch — hence open rather than done.
 **Workaround:** on an agent corpus, read the `operator_turns` / `machine_turns`
 / `threads` counts and ignore `drop_pct`.
 
-### 2. `changelog_dedup.py` cannot fix a *first* release
+### 2. `tempo`'s headline says "your prompts", its computation says "any event"
+
+`tempo` reports "Your prompts arrive a median N seconds apart within a thread."
+The number under that sentence is `delta_prev_s`, which `claude_code.py`
+defines as seconds since the previous **event** in the thread — usually the
+machine's own response, not the operator's previous prompt.
+
+Those differ by however long the machine's turn sat in between. On a corpus
+where the assistant answers in ten seconds the gap is small; on one where it
+works for four minutes the headline understates the operator's real
+prompt-to-prompt rhythm by roughly that much, every time.
+
+Dropped records advance the clock too, on purpose — the `keep the clock
+advancing` branch in `claude_code.py`. So a machine turn that the injection
+filter correctly refuses to count as a prompt still contributes its timestamp
+to the next real turn's delta. Found 2026-09-11 while writing the regression
+test for finding 3 below, where a stop hook's output one second after a prompt
+left the next gap reading 539s instead of 540s.
+
+Neither half is a coding error; both are deliberate and the docstrings say what
+they do. The bug is that the **sentence claims something narrower than the
+number measures**, and this project's first rule is that claims match code.
+
+Fixing it means either rewording the headline to say what is measured, or
+measuring prompt-to-prompt and re-basing every tempo reference point. The
+second changes what the number means, so it needs an analyzer `version` bump —
+the mechanism for which now exists. Open rather than patched because picking
+between those two is a design decision, not a typo.
+
+### 3. `changelog_dedup.py` cannot fix a *first* release
 
 This repo merges with merge commits, so release-please parses each change twice
 — once from the real commit, once from the merge commit carrying its title.
@@ -56,7 +85,7 @@ Per that file's docstring the tool is fixed in forge-play first and re-synced
 here, so this stays open until that happens. **Workaround:** fix a first
 release's changelog section by hand before merging the release PR.
 
-### 3. An unclosed known wrapper tag consumes the rest of the turn
+### 4. An unclosed known wrapper tag consumes the rest of the turn
 
 `injection.py` strips an enumerated list of machine-injected wrappers. When a
 known tag appears **unclosed**, the pattern consumes to the next open tag or the
@@ -91,6 +120,33 @@ person at all.
 
 Fixed by skipping any file under a `subagents/` directory component, counting
 every skipped record as a drop. `tests/test_pipeline.py::DogfoodRegressions`.
+
+### A local slash command was counted as three operator prompts
+
+Found 2026-09-11, the third time running corpuslens on its own session log has
+caught machine text counted as a person — and the first time the harness door
+was not a single tag.
+
+Running `/model` locally replays into the **user** role as three separate
+turns: a `<local-command-caveat>` block, a `<command-name>`/`<command-message>`
+/`<command-args>` echo, and a `<local-command-stdout>` line. Separately, a stop
+hook's output arrives in the user role with **no wrapper at all**, prefixed
+only by the prose "Stop hook feedback:".
+
+On that corpus the four of them were 4 of 11 counted operator turns. The
+damage was not only the count:
+
+- Two carried backticks, which fired `CODE_REF`. The report stated the operator
+  referred to existing code in **18.2%** of prompts. The true rate over the
+  turns a person actually typed was **0.0%** — the entire signal was the
+  machine quoting a model identifier.
+- Three arrived with deltas of zero or a fraction of a second, so measured
+  `burst_pct` read **70.0%** against a real **50.0%**, and the median gap read
+  **25.8s** against a real **51.7s**. The same person-shaped-signal failure the
+  task-notification finding below describes, from a different door.
+
+Fixed by enumerating the five observed tags and adding the stop-hook prefix to
+`MACHINE_TURN`. `tests/test_pipeline.py::DogfoodRegressions` covers both.
 
 ### `<task-notification>` blocks were counted as operator prompts
 

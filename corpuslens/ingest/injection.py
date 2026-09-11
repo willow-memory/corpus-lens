@@ -49,6 +49,16 @@ _INJECTED_TAGS = (
     # prefixes as not-a-real-user-turn for its own purposes — the same
     # front-loading shape as every tag above, this runtime's names for it.
     "session_context", "hook_context",
+    # Claude Code harness again, observed 2026-09-11 by running corpuslens on
+    # THIS session's own log — the third time dogfooding has caught machine
+    # text counted as a person. A slash command the operator runs locally is
+    # replayed into the user role as three separate turns: the caveat block,
+    # the command echo, and the command's own stdout. Nobody typed any of them
+    # as a prompt. On that corpus they were 3 of 11 "operator" turns, and two
+    # carried backticks, which fired CODE_REF and reported an 18.2%
+    # code-reference rate for a human whose real rate was 0.0%.
+    "local-command-caveat", "local-command-stdout",
+    "command-name", "command-message", "command-args",
 )
 
 #: An injected block may carry attributes — `<mcp_instructions description="…">`
@@ -67,6 +77,12 @@ MACHINE_TURN = re.compile(
     r"|Your conversation was summarized due to"
     r"|This session is being continued from a previous conversation"
     r"|The beginning of the above subagent result"
+    # A stop hook's stdout, delivered in the user role with no wrapper at
+    # all (observed 2026-09-11 in this project's own session log). It is the
+    # hook reporting on the repository, not a person asking for anything,
+    # and it lands about a second after the turn it follows — a
+    # burst-shaped delta nobody typed.
+    r"|Stop hook feedback:"
     r").*",
     re.DOTALL | re.IGNORECASE,
 )
