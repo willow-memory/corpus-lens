@@ -53,4 +53,4 @@ def available() -> list[str]:
     return sorted(_REGISTRY)
 
 
-from . import claude_code, cursor, cursor_store, sqlite, postgres  # noqa: E402,F401  (registration side effects)
+from . import claude_code, cursor, cursor_store, gemini_cli, sqlite, postgres  # noqa: E402,F401  (registration side effects)
