@@ -79,10 +79,30 @@ has no other way to learn what was actually read. `AuditRecord` grew one new
 field, `discovered_path` (`None` on every explicit-path run, which is why the
 sentence and JSON shape are byte-identical to before for every run that
 existed prior to this feature), and the sentence gets one prepended clause
-naming both the adapter and the resolved path when it is set. `--share`
-strips it in `share.coarsen_audit()` — a home directory path can carry the
-owner's username, which is exactly the class of machine-identifying detail
-share mode exists to omit from an output meant to leave the machine.
+naming both the adapter and the path when it is set.
+
+**Wall finding, highest class, fixed on this branch — read before touching
+this field again.** The path named in that clause is the adapter's DECLARED
+conventional form ONLY (`~/.claude/projects`), never the resolved absolute
+path. A first version of this feature printed the resolved path, which put
+the owner's real username in the same sentence that says nothing identifying
+left the wall — the exact class of leak `model.py` quarantines a filename
+for and `_rows.py::assemble` hashes a db path for, reached through a field
+nobody had thought to quarantine, so `scan_egress` (which checks for
+quarantined literals) let it straight through. `AuditRecord.discovered_path`
+now enforces the invariant itself via `__setattr__` — assigning it anything
+but `None` or a string starting with `~` raises `WallError`, at construction
+or on a later plain attribute assignment (the actual shape of the bug:
+`guard.audit.discovered_path = path`, set after the record already exists) —
+rather than relying on every caller remembering not to resolve it.
+`cli.py::_discover_corpora` keeps the resolved path in a separate,
+never-displayed field (`resolved_path`) purely to open files and to run the
+containment check; only the declared form (`declared_path`) is ever printed
+or handed to `AuditRecord`. `--share` KEEPS `discovered_path` rather than
+stripping it (an earlier draft stripped it, on since-superseded reasoning) —
+once it can only hold the declared, username-free constant, it carries no
+more identifying weight than the `adapter` field beside it in the same
+sentence, and `adapter` has never been stripped by share mode either.
 
 `ccusage`'s approach was read as background per the original entry's
 pointer, not ported: its multi-tool detection logic solves a broader problem
@@ -180,11 +200,13 @@ traceback, and never a guess dressed up as an answer.
 
 Because the tool chose the path here instead of you typing it, the report
 itself — not just this run's terminal output — names both the adapter and
-the exact path it read, right in the audit sentence at the top: "No path or
+the location it read, right in the audit sentence at the top: "No path or
 --adapter was given: corpuslens discovered this corpus itself at
-`/home/you/.claude/projects`, using the 'claude-code' adapter." `--share`
-removes that path (a home directory can carry your username) along with
-everything else share mode omits.
+`~/.claude/projects`, using the 'claude-code' adapter." That is always the
+declared, tilde-prefixed convention, never the resolved absolute path on
+your machine (which would carry your username) — `--share` leaves it as is,
+since the declared form alone tells a reader nothing more than the adapter
+name already does.
 
 Discovery never widens outside your home directory and never follows a
 symlink out of it — a conventional location that turns out to be a symlink
@@ -247,6 +269,15 @@ either branch's wording verbatim.
   Quickstart) — there is no OS-level convention for where that lives, unlike
   `cursor-store`'s actual on-disk store. Declaring a fake convention for it
   would be a guess the tool cannot honestly stand behind.
+- **`discovered_path` structurally cannot hold a resolved path, not just by
+  convention.** After the resolved-path leak above, the fix could have been
+  "remember to only pass the declared form" — a rule a future edit could
+  quietly break, the same way the original bug shipped. Instead
+  `AuditRecord.__setattr__` refuses any value for this field that is not
+  `None` or `~`-prefixed, at construction and on every later assignment. The
+  cost is one more method on a dataclass that otherwise has none; the
+  alternative (a comment) is exactly what failed to prevent this the first
+  time.
 - **Discovery counts files without reading them.** The per-adapter report's
   file counts come from the same "walk and count a pattern" logic
   `_check_path` already uses for the explicit form, not from a preview

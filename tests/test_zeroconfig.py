@@ -109,7 +109,8 @@ class DiscoveryAndRunTests(FakeHomeTests):
         # the discovery report precedes the JSON document on stdout
         preamble, _, body = out.partition("{")
         self.assertIn("claude-code", preamble)
-        self.assertIn(str(d), preamble)
+        self.assertIn("~/.claude/projects", preamble)
+        self.assertNotIn(str(self.home), preamble)   # the declared form only, never resolved
         doc = json.loads("{" + body)
         self.assertEqual(doc["audit"]["adapter"], "claude-code")
 
@@ -123,21 +124,40 @@ class DiscoveryAndRunTests(FakeHomeTests):
         self._write_claude_code(d)
         rc, out, _ = _run(["run", "--format", "json"])
         doc = json.loads(out[out.index("{"):])
-        self.assertEqual(doc["audit"]["discovered_path"], str(d.resolve()))
-        self.assertIn(str(d.resolve()), doc["audit"]["sentence"])
+        self.assertEqual(doc["audit"]["discovered_path"], "~/.claude/projects")
+        self.assertIn("~/.claude/projects", doc["audit"]["sentence"])
         self.assertIn("claude-code", doc["audit"]["sentence"])
         self.assertIn("No path or --adapter was given", doc["audit"]["sentence"])
 
-    def test_share_mode_strips_the_discovered_path(self):
-        # A home directory path can carry the owner's username -- exactly
-        # the class of thing --share exists to omit from an output meant to
-        # leave the machine.
+    def test_the_reported_path_is_never_resolved_anywhere(self):
+        # Wall finding (highest class, fixed on this branch): a resolved
+        # discovered_path put the owner's real username in the same sentence
+        # that claims nothing identifying left the wall. Regression: neither
+        # the sentence, the JSON audit object, nor the full document may ever
+        # contain the resolved $HOME the corpus actually lives under, in
+        # either format and with or without --share.
+        d = self.home / ".claude" / "projects"
+        self._write_claude_code(d)
+        home = str(Path.home().resolve())
+        for extra in ([], ["--share"]):
+            for fmt in ("json", "markdown"):
+                rc, out, err = _run(["run", "--format", fmt] + extra)
+                self.assertEqual(rc, 0)
+                self.assertNotIn(home, out)
+                self.assertNotIn(home, err)
+
+    def test_share_mode_keeps_the_declared_path(self):
+        # Decision made on this branch: once discovered_path can only ever
+        # hold the declared, username-free constant (enforced by
+        # AuditRecord.__setattr__), it carries no more identifying weight
+        # than the `adapter` field beside it in the same sentence -- and
+        # `adapter` has never been stripped by --share. So --share keeps it.
         d = self.home / ".claude" / "projects"
         self._write_claude_code(d)
         rc, out, _ = _run(["run", "--format", "json", "--share"])
         self.assertEqual(rc, 0)
         doc = json.loads(out[out.index("{"):])
-        self.assertIsNone(doc["audit"]["discovered_path"])
+        self.assertEqual(doc["audit"]["discovered_path"], "~/.claude/projects")
         self.assertNotIn(str(self.home), doc["audit"]["sentence"])
         self.assertNotIn(str(self.home), json.dumps(doc))
 
@@ -168,6 +188,8 @@ class DiscoveryAndRunTests(FakeHomeTests):
         self.assertIn("cursor-store", out)
         self.assertIn("claude-code", out)   # the runner-up is still named
         self.assertIn("LARGEST", out)
+        self.assertIn("~/.cursor/chats", out)   # the declared form, not a resolved path
+        self.assertNotIn(str(self.home), out)
         self.assertEqual(rc, 1)
         self.assertIn("cursor-store", err)   # the actual run that followed
 

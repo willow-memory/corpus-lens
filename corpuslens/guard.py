@@ -91,12 +91,44 @@ class AuditRecord:
     # explicit path (which is already in the user's own command line) this one
     # has to appear in the report itself, not just a terminal preamble that
     # vanishes once the report is written to --out and read later on its own —
-    # see NOTES-zeroconf.md for the reasoning. `share.coarsen_audit` strips it:
-    # a home-directory path can carry the owner's username and is exactly the
-    # kind of machine-identifying detail share mode exists to omit.
+    # see NOTES-zeroconf.md for the reasoning.
+    #
+    # MUST BE THE ADAPTER'S DECLARED CONVENTIONAL FORM ONLY (e.g.
+    # '~/.claude/projects', straight from `ingest.default_path_of`) — NEVER a
+    # resolved absolute path. A resolved path under $HOME embeds the owner's
+    # real username, which is exactly the class of thing this project
+    # quarantines a filename for (model.py) and hashes a db path for
+    # (_rows.py::assemble): "This resolved home directory IS that, with the
+    # username right there in it" (review finding, highest class — a prior
+    # version of this feature reported the resolved path and put a real name
+    # in the same sentence that claims nothing identifying left the wall).
+    # `__setattr__` below enforces this at assignment time, not just by
+    # convention, because the leak happened via a plain attribute set
+    # (`guard.audit.discovered_path = path`) that a docstring alone would not
+    # have stopped.
     discovered_path: Optional[str] = None
     filters: list = field(default_factory=list)   # human-readable filter clauses
     n_filtered: int = 0                            # events excluded BY those filters
+
+    def __setattr__(self, name: str, value) -> None:
+        """Fail closed on the one field that must never carry a resolved
+        path: `discovered_path` is `None` or starts with `~` (the adapter's
+        declared, unexpanded convention), full stop. Overriding `__setattr__`
+        rather than trusting `__post_init__` matters here because the actual
+        leak this guards was a plain attribute assignment AFTER construction
+        (`guard.audit.discovered_path = path` in cli.py), not something a
+        constructor-only check would have caught — every assignment, at
+        construction or later, goes through this."""
+        if name == "discovered_path" and value is not None and not str(value).startswith("~"):
+            raise WallError(
+                "AuditRecord.discovered_path must be the adapter's DECLARED "
+                "conventional location (e.g. '~/.claude/projects', from "
+                "ingest.default_path_of) — never a resolved absolute path. A "
+                "resolved path under $HOME carries the owner's real username into "
+                "the audit sentence and JSON output; that is precisely the leak "
+                "this field exists to prevent, not cause."
+            )
+        object.__setattr__(self, name, value)
 
     def as_dict(self) -> dict:
         """The audit record as structured data — for the JSON renderer. Carries

@@ -172,7 +172,18 @@ def _discover_corpora() -> list[dict]:
     not followed — discovery is a guess standing in for a path the user did
     not type, so it earns none of the trust an explicit argument gets. An
     unreadable location (permission denied, a broken parent) is reported in
-    `note`, never left to raise."""
+    `note`, never left to raise.
+
+    Each entry carries BOTH `declared_path` (the adapter's own convention,
+    e.g. '~/.claude/projects' — unexpanded, no username) and `resolved_path`
+    (an absolute path under `$HOME`, needed to actually open files and to run
+    the containment check above). `resolved_path` is for internal use only —
+    reading the corpus, and the `> lo <= x <= hi`-style comparison above — and
+    must NEVER be shown to the user or stored on anything that leaves this
+    process: a resolved path carries the owner's real username. Every caller
+    of this function prints or records `declared_path`, never
+    `resolved_path`; `guard.AuditRecord.discovered_path` enforces the same
+    rule from the other end by refusing to hold a resolved value at all."""
     home = Path.home().resolve()
     found = []
     for name in ingest.discoverable():
@@ -245,32 +256,45 @@ def run_discovered(out: str | None, fmt: str, since_day: int | None,
         return 1
     chosen = max(usable, key=lambda e: e["n_files"])
     lines.append("")
+    # DISPLAY the DECLARED form only (e.g. '~/.claude/projects'), never
+    # `resolved_path` — the resolved absolute path is $HOME plus that same
+    # constant, and $HOME is exactly where the owner's real username lives.
+    # `resolved_path` is used below ONLY to hand `run()` a real filesystem
+    # location to read from, never to print.
     if len(usable) > 1:
         others = ", ".join(f"{e['adapter']} ({e['n_files']} files)"
                            for e in usable if e is not chosen)
         lines.append(f"Found corpora in {len(usable)} locations ({others} too); running the "
                      f"LARGEST by file count: '{chosen['adapter']}' at "
-                     f"{chosen['resolved_path']} ({chosen['n_files']} files). Run corpuslens "
+                     f"{chosen['declared_path']} ({chosen['n_files']} files). Run corpuslens "
                      f"with an explicit path and --adapter to analyze a different one instead.")
     else:
-        lines.append(f"Using '{chosen['adapter']}' at {chosen['resolved_path']} "
+        lines.append(f"Using '{chosen['adapter']}' at {chosen['declared_path']} "
                      f"({chosen['n_files']} files).")
     print("\n".join(lines))
     print()
     return run(chosen["resolved_path"], chosen["adapter"], out, None, fmt,
-               since_day, until_day, share, discovered=True)
+               since_day, until_day, share, discovered_path=chosen["declared_path"])
 
 
 def run(path: str, adapter: str, out: str | None, table: str | None = None,
         fmt: str = "markdown", since_day: int | None = None,
         until_day: int | None = None, share: bool = False,
-        discovered: bool = False) -> int:
-    """`discovered=True` means `path`/`adapter` were not typed by the user —
-    `run_discovered` chose them via zero-config discovery — and it is the
-    only thing that changes here: the audit record carries `path` as its
-    `discovered_path`, which puts it in the SAME sentence that already names
-    the adapter (see `guard.AuditRecord.sentence`), so a reader of the report
-    alone (not just this run's terminal output) can see what was read."""
+        discovered_path: str | None = None) -> int:
+    """`path`/`adapter` are always the REAL location to read from, typed by
+    the user or resolved by `run_discovered` — that never changes here.
+
+    `discovered_path`, when not None, is a SEPARATE, DISPLAY-ONLY string:
+    the adapter's declared conventional form (e.g. '~/.claude/projects', from
+    `ingest.default_path_of`) passed by `run_discovered` so the audit record
+    can say the corpus was found rather than typed. It is never derived from
+    `path` here and never resolved — `guard.AuditRecord.__setattr__` refuses
+    a resolved value outright, because a resolved path under $HOME carries
+    the owner's real username into the same sentence that claims nothing
+    identifying left the wall (see NOTES-zeroconf.md). Putting it in the
+    audit record puts it in the SAME sentence that already names the
+    adapter, so a reader of the report alone (not just this run's terminal
+    output) can see what was read."""
     src = ingest.source_of(adapter)
     try:
         events, quarantine, dropped, n_files = _ingest(path, adapter, table)
@@ -293,8 +317,8 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
     guard.audit.n_events = len(events)
     guard.audit.n_dropped = dropped
     guard.audit.adapter = adapter
-    if discovered:
-        guard.audit.discovered_path = path
+    if discovered_path:
+        guard.audit.discovered_path = discovered_path
     if clause:
         guard.audit.filters.append(clause)
         guard.audit.n_filtered = n_filtered
