@@ -59,10 +59,17 @@ corpuslens = "corpuslens.cli:main"
 # publish from an untagged commit fails loudly instead of shipping something
 # mislabelled. CI must check out with `fetch-depth: 0` or no tags are present.
 #
-# No tag exists yet; `.release-please-manifest.json` starts at 0.0.0 so the
-# first `feat:` proposes v0.1.0. Cutting a release is release-please's job
-# (`release-please-config.json`, `release-type: simple`) — let it pick the
-# number from the commits rather than tagging by hand.
+# Cutting a release is release-please's job (`release-please-config.json`,
+# `release-type: simple`) — let it pick the number from the commits rather than
+# tagging by hand.
+#
+# CORRECTED 2026-09-11: this comment used to claim that a 0.0.0 manifest makes
+# the first `feat:` propose v0.1.0. It does not. With no prior release,
+# release-please's FIRST release is 1.0.0 whatever the manifest says, and that
+# is what it cut and published before the claim was tested. Forcing a specific
+# number takes `Release-As: <version>` in a commit footer, or `initial-version`
+# in the config before the first release. Every release after the first does
+# bump from the manifest as described.
 source = "vcs"
 
 [tool.hatch.build.targets.wheel]
