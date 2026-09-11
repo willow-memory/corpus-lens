@@ -62,6 +62,10 @@ PROCESS_CLAIM_TYPES = frozenset({
                               # CLASS of author filled a role this corpus already has,
                               # and can never say which person. `subject.py` derives a
                               # run's subject from it; `authorship.py` computes it.
+    "authoring_plurality",    # opaque count + shape of distinct operator-role authoring
+                              # signatures — a corpus property ("how many sources"), never
+                              # a per-turn attribution and never a claim about which of
+                              # them is which person; see analyze/signatures.py
 })
 
 PERSON_CLAIM_TYPES = frozenset({

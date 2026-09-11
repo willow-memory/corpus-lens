@@ -150,4 +150,4 @@ def all_analyzers() -> list:
     return list(_REGISTRY)
 
 
-from . import steering, composition, tempo, authorship_mix  # noqa: E402,F401
+from . import steering, composition, tempo, authorship_mix, signatures  # noqa: E402,F401
