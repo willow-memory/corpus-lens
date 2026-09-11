@@ -2,7 +2,7 @@
 (GRADING.md questions 2–3.) Feature-based; content never reaches here.
 
 The code classifiers this module leans on (`CODE_REF`, `AUTHORED` — see
-`ingest/claude_code.py`) are English-and-Python shaped: `CODE_REF` knows eight
+`ingest/claude_code.py`) are English-and-Python shaped: `CODE_REF` knows nine
 file extensions and Python's own traceback line, `AUTHORED` knows a handful of
 languages' block syntax (Python/JS/TS/Java/C#/shell/SQL). A corpus in a
 language they don't recognize — a different programming language's block
@@ -71,7 +71,7 @@ def composition_mix(events):
             f"{n} operator turns, and the code classifiers (CODE_REF, AUTHORED) matched none of "
             "them. Two readings fit this equally well and this analyzer cannot tell them apart: "
             "either this is not a coding corpus, or it is one these regexes cannot read — they are "
-            "English-and-Python shaped (CODE_REF knows eight file extensions; AUTHORED knows a "
+            "English-and-Python shaped (CODE_REF knows nine file extensions; AUTHORED knows a "
             "handful of languages' block syntax), so an unrecognized language or file type looks "
             "identical to no code at all. Reporting 0.0% here would pick one of those readings "
             "without evidence, so this refuses instead."

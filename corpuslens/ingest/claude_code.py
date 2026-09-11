@@ -39,12 +39,12 @@ ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T")
 # file, a traceback frame, a CamelCase Error/Exception, a real def/import).
 # Case-sensitive on the keyword/Error branches so prose "exception"/"error"
 # does not match. English-and-Python shaped, disclosed: the source-file
-# branch knows a short fixed list of extensions (py/js/ts/rs/go/rb/java/sql/sh
-# — nine here, counted from this regex; other docs round it to "eight" and
-# should be checked against this list rather than the reverse) and the
-# traceback branch is Python's own "Traceback (most recent call last)" /
-# "line N, in" — a real code corpus in an unlisted language or file type
-# scores identically to one with no code in it at all.
+# branch knows NINE extensions and no others (py/js/ts/rs/go/rb/java/sql/sh —
+# count them off this line, and if a doc elsewhere says a different number,
+# this list is the truth and the doc is the bug), and the traceback branch is
+# Python's own "Traceback (most recent call last)" / "line N, in" — a real
+# code corpus in an unlisted language or file type scores identically to one
+# with no code in it at all.
 CODE_REF = re.compile(
     # Call detection matches the reference study's methodology (the READ regex in
     # operator_reading_analysis): an EMPTY-parens call foo() or a dotted method
@@ -97,7 +97,7 @@ AUTHORED = re.compile(
     re.M,
 )
 # DELIB and CLARIFY are both lists of ENGLISH phrases — same disclosed limit as
-# CODE_REF/AUTHORED's eight file extensions and handful of languages' block
+# CODE_REF/AUTHORED's nine file extensions and handful of languages' block
 # syntax, just for prose rather than code. A corpus conducted in another
 # language matches neither, and looks identical to a corpus where the
 # operator never deliberated / the machine never asked a clarifying question.
