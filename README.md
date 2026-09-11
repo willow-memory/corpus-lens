@@ -16,9 +16,11 @@ The rubric this instruments: [GRADING.md](GRADING.md)
 ## The wall (what it guarantees, stated honestly)
 
 The load-bearing design decision, inherited from the instrument's origin:
-**relative time is process; the absolute anchor is person.** A custody
-schedule was once reconstructed from keystroke timing alone — content
-redaction does not scrub the shape of a week. So:
+**relative time is process; the absolute anchor is person.** That origin is a
+direct observation rather than a published study: on the author's own corpus of
+thousands of sessions, a custody schedule was legible from keystroke timing
+alone, with no content read at all. Content redaction does not scrub the shape
+of a week. So:
 
 - Events carry **relative day offsets and deltas only**. The calendar anchor
   (which real date is day 0), the timezone, and the raw filenames (which embed

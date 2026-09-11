@@ -162,3 +162,9 @@ gets used by people who did not read `guard.py`.
 (Sci Rep 2013) and *Unique in the shopping mall* (Science 2015); Mayer, Mutchler
 & Mitchell, *Evaluating the privacy properties of telephone metadata* (PNAS
 2016) — the actual paper behind the "Stanford MetaPhone" study.
+
+These support the thesis that timing metadata alone re-identifies. They are
+**not** the source of this project's own origin story: the custody schedule read
+from keystroke timing is the author's own N=1 observation on a corpus of
+thousands of sessions, and README and GRADING now say so rather than leaving it
+in a passive voice that reads like a citation.

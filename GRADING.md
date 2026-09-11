@@ -94,11 +94,13 @@ many gates opened.
 ## The person and the continuity (questions 9–10)
 
 **9 · Are your timestamps a fingerprint?**
-Content redaction does not scrub the shape of a week: a custody schedule was
-once reconstructed from keystroke timing alone. Whatever leaves your machine —
-sync, dashboard, export — should carry coarsened, jittered, or aggregated
-time. Relative time (gaps, tempo) is process; absolute wall-clock position
-projected on a calendar is a *person*.
+Content redaction does not scrub the shape of a week. Not a citation to someone
+else's study — on the author's own corpus of thousands of sessions, a custody
+schedule was legible from keystroke timing alone, with no content read at all.
+An N=1 observation, and the one this whole instrument was built against.
+Whatever leaves your machine — sync, dashboard, export — should carry
+coarsened, jittered, or aggregated time. Relative time (gaps, tempo) is
+process; absolute wall-clock position projected on a calendar is a *person*.
 *Test:* take one week of your own exported metadata and try to reconstruct
 your schedule from timestamps alone. If you can, so can anyone you sync to.
 
