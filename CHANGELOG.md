@@ -5,7 +5,6 @@
 
 ### Fixed
 
-* cut 0.1.0, not 1.0.0 ([1e29fa1](https://github.com/willow-memory/corpus-lens/commit/1e29fa1f4472608dafd84b6f54328b583eebe30a))
 * cut 0.1.0, not 1.0.0 ([515ca9f](https://github.com/willow-memory/corpus-lens/commit/515ca9f6294e97e75a21c6c062e2abfee3656969))
 
 ## Changelog
