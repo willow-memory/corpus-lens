@@ -71,6 +71,7 @@ class JsonRendererTests(CorpusFixture):
         self.assertIn("steering_density", doc["results"])
         for res in doc["results"].values():
             self.assertIn("denominator", res)   # every result names what it is out of
+            self.assertIsInstance(res["analyzer_version"], int)   # semantics version, not schema
 
     def test_json_carries_the_audit_sentence(self):
         # the machine-readable form must not be a way to get numbers WITHOUT the

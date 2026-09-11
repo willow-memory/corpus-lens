@@ -17,7 +17,7 @@ from . import register, semantic_hash
 # change it and a 62%->81% move in the headline could be the filter, not you.
 _MIN_CHARS = "12"
 _STEERING_DENSITY_INPUTS = (_MIN_CHARS,)
-_STEERING_DENSITY_HASH = "b5c69e2b7a6f9c31"
+_STEERING_DENSITY_HASH = "d189e509a912fc3e"
 
 
 @register("steering_density", claims=("steering_density",),
@@ -56,8 +56,18 @@ def steering_density(events):
     }
 
 
+# `thread_shape`'s number MEANS: resumption buckets at 2, 7 and 14 relative-day
+# gaps. Move a bucket edge and "resumptions >=2d" counts a different set of
+# gaps under the same name.
+_RESUM_BUCKETS = ("2", "7", "14")
+_THREAD_SHAPE_INPUTS = _RESUM_BUCKETS
+_THREAD_SHAPE_HASH = "7bc2e182895dfa7c"
+
+
 @register("thread_shape", claims=("thread_shape",),
-          denominator="threads with >=1 active day (relative days only)")
+          denominator="threads with >=1 active day (relative days only)",
+          version=1, semantic_hash=_THREAD_SHAPE_HASH,
+          semantic_inputs=_THREAD_SHAPE_INPUTS)
 def thread_shape(events):
     days = defaultdict(set)
     for e in events:

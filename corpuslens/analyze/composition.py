@@ -4,8 +4,25 @@ from __future__ import annotations
 
 import statistics
 
+from ..ingest.claude_code import AUTHORED, CLARIFY, CODE_REF, DELIB
 from ..model import AuthorClass, DataType
-from . import register
+from . import register, semantic_hash
+
+# What these two analyzers' numbers MEAN depends on the classifier regexes
+# that set `code_authored`/`code_ref`/`delib`/`clarify` at ingest (only the
+# claude-code adapter populates them; see corpuslens/ingest/claude_code.py) and
+# on the >=12-char turn filter both apply. Pin the regex TEXT (not the compiled
+# object) plus the thresholds: `tests/test_analyzer_versions.py` recomputes
+# `semantic_hash(*inputs)` from these same live values and fails the moment one
+# changes, so an editor of AUTHORED/CODE_REF/DELIB/CLARIFY is stopped and asked
+# to bump `version` and paste the new hash below — see analyze/__init__.py.
+_MIN_CHARS = "12"
+_NEAR_BAND = "3.0"     # the "near" tie-band in `side()` below is part of the claim too
+_COMPOSITION_MIX_INPUTS = (AUTHORED.pattern, CODE_REF.pattern, DELIB.pattern,
+                          _MIN_CHARS, _NEAR_BAND)
+_COMPOSITION_MIX_HASH = "5d66942a325be997"
+_CLARIFICATION_PULL_INPUTS = (CLARIFY.pattern, _MIN_CHARS)
+_CLARIFICATION_PULL_HASH = "3ebee7fb1a0e8bfc"
 
 REFERENCE = {
     "wildchat_coding_population": {"authored_pct": 14.5, "read_ref_pct": 36.0, "delib_pct": 3.2},
@@ -16,7 +33,9 @@ REFERENCE = {
 
 
 @register("composition_mix", claims=("composition_mix",),
-          denominator="operator prompt turns with >=12 characters (de-injected)")
+          denominator="operator prompt turns with >=12 characters (de-injected)",
+          version=1, semantic_hash=_COMPOSITION_MIX_HASH,
+          semantic_inputs=_COMPOSITION_MIX_INPUTS)
 def composition_mix(events):
     turns = [e.features for e in events
              if e.author_class is AuthorClass.OPERATOR and e.data_type is DataType.PROMPT
@@ -58,7 +77,9 @@ def composition_mix(events):
 
 
 @register("clarification_pull", claims=("clarification_pull",),
-          denominator="machine response turns (>=12 chars)")
+          denominator="machine response turns (>=12 chars)",
+          version=1, semantic_hash=_CLARIFICATION_PULL_HASH,
+          semantic_inputs=_CLARIFICATION_PULL_INPUTS)
 def clarification_pull(events):
     ordered = {}
     for e in events:
