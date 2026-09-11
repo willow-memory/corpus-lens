@@ -109,6 +109,16 @@ class AuditRecord:
     discovered_path: Optional[str] = None
     filters: list = field(default_factory=list)   # human-readable filter clauses
     n_filtered: int = 0                            # events excluded BY those filters
+    # Set by `cli.run()` from `subject.infer_subject()` — one of
+    # `subject.SUBJECTS` ("human"/"agent"/"mixed"/"unknown"), or `None` when
+    # nothing set it (every direct construction of an AuditRecord outside the
+    # real pipeline — most of this project's own tests included). `guard.py`
+    # deliberately does not import `corpuslens.subject` or know what an
+    # "authorship classifier" is; it only carries the belief and states its
+    # own fallibility in `sentence()` below. See corpuslens/subject.py for
+    # what derives this value and why it is never a CLI flag.
+    subject: Optional[str] = None
+    subject_reason: Optional[str] = None
 
     def __setattr__(self, name: str, value) -> None:
         """Fail closed on the one field that must never carry a resolved
@@ -146,8 +156,22 @@ class AuditRecord:
             "n_dropped": self.n_dropped,
             "filters": list(self.filters),
             "n_filtered": self.n_filtered,
+            "subject": self.subject,
+            "subject_reason": self.subject_reason,
             "sentence": self.sentence(),
         }
+
+    # Human-readable label for each `subject.SUBJECTS` value, spliced into the
+    # clause below. Deliberately says what corpuslens BELIEVES, not what the
+    # corpus IS — every phrase here stays true even when the classifier that
+    # produced it is wrong, because none of them assert the underlying fact,
+    # only the belief and its evidence.
+    _SUBJECT_LABELS = {
+        "human": "human",
+        "agent": "agent, not human",
+        "mixed": "a mix of human and agent, not one human",
+        "unknown": "of undetermined authorship",
+    }
 
     def sentence(self) -> str:
         g = ", ".join(self.granted) or "nothing beyond process analysis"
@@ -182,7 +206,24 @@ class AuditRecord:
                     "and within-day tempo did — these preserve weekly cadence, and on a day a single "
                     "thread spans for many hours they loosely bound the local time-of-day (never the "
                     "timezone or the date).")
-        return base + tail
+        subj = ""
+        if self.subject is not None:
+            # WHAT LEFT THE WALL is not the only thing worth disclosing: every
+            # headline below is written in the second person, and every
+            # reference table compares the reader to a HUMAN's corpus. Both of
+            # those are claims about WHO the operator role is, and this run
+            # never verified that — it inferred it, from a classifier that can
+            # be wrong. State the belief and its own fallibility in the same
+            # breath, so this clause stays true whether or not the classifier
+            # guessed right: it is a claim about what corpuslens BELIEVES,
+            # never a claim about who actually typed a turn.
+            label = self._SUBJECT_LABELS.get(self.subject, self.subject)
+            reason = self.subject_reason or "no reason recorded"
+            subj = (f" This run's authorship classifier reads the operator-role turns as "
+                    f"{label} ({reason}) — an inferred belief, not a verified fact, and it can "
+                    f"be wrong; nothing in this report proves who actually typed a turn, and "
+                    f"every 'you'/'your' below should be read as shorthand for that belief.")
+        return base + tail + subj
 
 
 class Guard:

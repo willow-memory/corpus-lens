@@ -48,6 +48,7 @@ from pathlib import Path
 from . import diff as diffmod
 from . import ingest, label as labelmod, render
 from . import share as share_mod
+from . import subject as subjectmod
 from .analyze import all_analyzers
 from .guard import DEFAULT_PROFILE, Guard, WallError
 
@@ -346,6 +347,12 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
                           "grading_question": a.grading_question,
                           **a.run(events)}
         guard.audit.analyzers_run.append(a.name)
+    # DERIVED, never a flag: this run's own authorship_mix result (when that
+    # analyzer is registered) is the only input — see corpuslens/subject.py.
+    # Always set, even when nothing ran to inform it, so the audit sentence
+    # always says what this run believes about who the operator role is,
+    # rather than only saying so on the runs where it changes the answer.
+    guard.audit.subject, guard.audit.subject_reason = subjectmod.infer_subject(results)
     audit = guard.audit
     if share:
         # Coarsening happens on the already-computed numbers, never on the

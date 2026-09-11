@@ -54,6 +54,12 @@ PROCESS_CLAIM_TYPES = frozenset({
     "clarification_pull",     # fork/deferral rates
     "turns_to_completion",
     "leakage_demonstration",  # quarantined class: proves a leak, never ships data
+    "authorship_mix",         # share of OPERATOR-ROLE turns that read as human vs agent
+                               # vs undetermined (see corpuslens/authorship.py's contract and
+                               # corpuslens/subject.py, which derives this run's SUBJECT from
+                               # it). Process-shaped, not person-shaped: it is a statement about
+                               # which class of AUTHOR filled a role this run already has, never
+                               # an identity claim about a specific person.
 })
 
 PERSON_CLAIM_TYPES = frozenset({
