@@ -14,6 +14,15 @@ worked out yet whether it can be done honestly. Some of those entries will
 probably end as documented refusals, and a refusal reached on purpose is a
 result worth having.
 
+A review pass on 2026-09-11 (a reader with no stake in the code, given the
+whole repository and asked what to build) moved three Stretch entries forward
+into Near — the labelling mode, the corpus-type refusal, and the semantic
+versions that make `diff` honest — and added the share mode, the leakage
+demonstration, and the extra runtime adapters. Each entry says where it came
+from so a future reader can weigh the source. The same pass recommended
+leaving one thing alone, and that is recorded too, under
+[Outcome-linked claims](#outcome-linked-claims).
+
 ---
 
 ## Near — small, and the value is clear
@@ -32,6 +41,16 @@ the feature that makes someone run the tool twice.
 Care needed: two runs are only comparable if the corpus and the filters match.
 A diff across different adapters, or where one side used `--since-day`, has to
 say so loudly rather than subtract the numbers anyway.
+
+**Ship it with per-analyzer semantic versions, not before them.** The Stretch
+entry [Metrics that stay comparable across tool versions](#metrics-that-stay-comparable-across-tool-versions)
+explains why: the injection filter has already changed what counts as an
+operator turn twice, and a `diff` that cannot tell a software change from a
+process change is worse than no `diff` — it would print a trend that is really
+a changelog entry. The mechanism is small: each analyzer declares a `version`,
+the result records it, and `diff` refuses (or loudly annotates) a comparison
+where the two sides disagree. What stays in Stretch is the discipline of
+bumping it correctly forever; what moves here is the field and the check.
 
 ### Zero-config first run
 
@@ -62,6 +81,107 @@ continuity — mostly not derivable from session logs at all.
 The report could name the question each section answers, and state plainly that
 the rest are not corpus-measurable. That stops the rubric reading like a promise
 the tool did not keep, and costs almost nothing.
+
+### Lead with the quickstart
+
+The package is about four thousand lines and roughly half of that is tests; the
+analyzers are a few hundred. The README is longer than the analyzers. That is
+not wrong — the honesty *is* the product, and every caveat in there earned its
+place — but a newcomer sees the wall essay before the three commands, and the
+reflexivity section before the first report. The prose now outweighs the
+mechanism it describes.
+
+The fix costs nothing the project cares about: README opens with install, the
+quickstart, and one sample finding; the wall essay, the reflexivity section,
+and the lineage paragraph move to a `DESIGN.md` that the README links in its
+second sentence. Nothing is cut, nothing is softened, and the claim in each
+essay stays exactly where the code can be checked against it. The rule from
+[CONTRIBUTING.md](CONTRIBUTING.md) — change the claim in the same PR as the
+code — applies to the moved text as it did in place.
+
+### A local labelling mode
+
+Promoted from Stretch ([Measuring the classifiers' own error](#measuring-the-classifiers-own-error))
+on the 2026-09-11 review, with the argument that it is the precondition for
+almost everything else numeric in this file: confidence intervals, the
+corpus-type refusal below, and any honest reading of "you versus the reference"
+all depend on knowing whether a gap is the operator or the regex.
+
+The design is small and it holds the wall. `corpuslens label <path> --adapter …`
+samples fifty operator turns (a fixed seed, so a run is repeatable), shows each
+one in the terminal, and asks one yes/no per classifier — did this turn author
+code, refer to code, deliberate, and, on a machine turn, ask a clarifying
+question. It persists **only** the label and an opaque hash of the turn — the
+same `source_ref` hash the `Event` already carries — never content, never a
+filename, never a timestamp. A second run on the same corpus can then print
+precision and recall per classifier against the labels, with `n`, and the
+report can carry those numbers beside every headline percentage instead of
+the sentence "trust direction plus your own spot-check".
+
+Constraints the reviewer named, kept: the labeller is the owner reading their
+own turns, never a model, so the judgment stays auditable; a label set is tied
+to the classifier version it graded, so a regex change invalidates it loudly
+rather than silently; and the sample-size argument stays in Stretch, because
+fifty is a convention like `SMALL_N`, not a power analysis, and the tool should
+say so.
+
+### Refuse a corpus the classifiers cannot read
+
+Promoted from Stretch ([Corpora that are not code](#corpora-that-are-not-code)),
+which already said this half was buildable today. The review added a second
+reason: the classifiers are English-and-Python shaped. `DELIB` is a list of
+English phrases, `CODE_REF` knows eight file extensions, `AUTHORED` knows a
+handful of languages' block syntax. Undercounting is the stated rule, so none
+of that is a bug — but it means that for an operator who writes in another
+language, or in Rust or Elixir, the composition numbers barely move, and the
+report currently prints those small numbers as if they were a finding.
+
+The refusal is a threshold plus a sentence. If a corpus has more than some
+number of operator turns (reuse `SMALL_N`) and *no* turn matched `CODE_REF` or
+`AUTHORED`, `composition_mix` returns `{"error": …}` saying the classifiers
+detected nothing — either this is not a coding corpus, or it is one the regexes
+cannot read — and the renderer already knows how to print that. Same for
+`clarification_pull` when there are machine turns but `CLARIFY` never fires
+across a large sample. Zero detections is not a zero rate, and the report
+should stop saying it is. The analyzers that would *replace* these for another
+domain stay in Stretch.
+
+### A share mode for the report
+
+New on the 2026-09-11 review. The README says the timing shape of a corpus
+re-identifies its owner, and the report carries thread counts, day spans, tempo
+quantiles and a concurrency peak — enough that pasting a full report into a
+GitHub issue is a small version of the thing the wall exists to prevent. Today
+the only advice is "don't".
+
+`--format share` (or `--share` on the existing renderers) emits a coarsened
+report: the headline rates only, to one decimal, with each denominator's `n`
+rounded to a band ("30–100", "100–1000"), and **no** tempo quantiles, thread
+counts, day spans or concurrency figures at all. The audit sentence stays,
+because a share without the statement of what left the wall is not a corpuslens
+result. It goes through `scan_egress` like everything else.
+
+Two things it does that nothing else here does. It gives people a way to talk
+about their numbers in public without the fingerprint — the first time the tool
+has an output that is *meant* to leave the machine. And it is the concrete
+first step toward [Population reference points](#population-reference-points-without-pooling-anyones-corpus):
+that entry's open question is what a contribution narrower than the report
+would look like, and this is a candidate, built and inspectable before anyone
+proposes pooling it. It does not answer the re-identification question that
+entry asks; it just makes the object the question is about exist.
+
+### Say whose corpus the reference is
+
+Every reading in the report is "you versus the measured director", and the
+measured director is the author. The analyzers label it `measured_director_n1`
+and GRADING.md says "one measured operator", which is honest, but a reader
+skimming the findings list sees a percentage beside a reference and reads a
+population. Cheap fix: the reference rows say "the author's own corpus (N=1)"
+in the rendered report, and the reading sentence for each analyzer says that a
+gap from it is a gap from one person. The population aggregates keep their
+names. This is a wording change, and it belongs with the labelling mode above,
+because until the classifiers' error is measured nobody can say how much of
+that gap is the operator and how much is the regex.
 
 ---
 
@@ -109,6 +229,19 @@ example and is named-and-unbuilt on purpose.
   traffic is not one person's process, and the `subagents/` bug (BUGS.md) is what
   happens when the two get mixed by accident. A fleet adapter is a *different
   instrument* with a different subject, not a wider net for this one.
+- **More runtimes on the same seam.** Added on the 2026-09-11 review. Codex CLI,
+  Gemini CLI, aider and opencode each keep session logs of roughly the shape the
+  `claude-code` adapter already reads — a file per session, a record per turn, a
+  role and a timestamp. Each adapter is about a hundred lines on the existing
+  seam, and each one must read its format from real bytes, not from a guess:
+  the rule from the injection filter (enumerated, never guessed) applies to a
+  new runtime's record types exactly as it does to its wrapper tags. The value
+  is not only more users. Every runtime injects its own machine text into the
+  user role, and the injection catalogue is where this tool's accuracy actually
+  lives; a new adapter grows it. Two things every one of them must do: count
+  every skipped record as a drop, and answer the `subagents/` question for that
+  runtime *before* the first release — does it nest delegated transcripts, and
+  where — so the bug in BUGS.md is not rediscovered once per adapter.
 
 ---
 
@@ -163,6 +296,52 @@ analyzers are the application. Extracting it as its own small library would be
 more useful to more people than another analyzer here. It would also need to be
 much more careful than it is today about what it promises, because a library
 gets used by people who did not read `guard.py`.
+
+**Sequencing, from the 2026-09-11 review.** Not first. The Guard has exactly one
+caller today, and a library split now would freeze an interface that has never
+been exercised by a second one. Build two or three of the Near items that lean
+on it first — the share mode goes through `scan_egress`, the labelling mode
+needs the `source_ref` hash and must persist nothing quarantined, the leakage
+demonstration below is the first analyzer to *request* a capability — and let
+those pull the seam into shape. Then split, with the interface those callers
+actually needed rather than the one `guard.py` happens to expose.
+
+### The leakage demonstration — the one analyzer for the quarantined class
+
+New on the 2026-09-11 review. `model.py` carries a `leakage_demonstration`
+claim type ("proves a leak, never ships data") and a `life_partition` person
+claim behind the `person_inference` capability, and nothing implements either.
+GRADING.md question 9 tells the reader to take a week of their own exported
+metadata and try to reconstruct their schedule from timestamps alone. Nobody
+does, because it is work, and so the origin story stays a story.
+
+The analyzer makes that test runnable. `corpuslens fingerprint <file>` takes
+any timestamped export the owner holds — another tool's JSON dump, a calendar
+export, a sync log, this tool's own quarantine if the owner grants it — and
+reports **only** how re-identifying its timing shape is: whether a weekly
+pattern is present, how concentrated the hour-of-week histogram is, roughly
+how many bits of schedule it carries. It never prints the schedule, never a
+weekday label, never an hour. The output is a verdict about the *export*, not
+a description of the person, and that is the whole reason it can exist under
+this project's rules: its claim is "this file leaks", which is process-shaped,
+even though the computation touches absolute time.
+
+Why it is Further out and not Near. It is the first analyzer that needs a
+capability, so it runs under a non-default profile — which today means an
+owner-side code change, on purpose, with no CLI flag. Whether `fingerprint`
+gets to be the one command that constructs such a profile itself (it reads a
+file the owner names, not the corpus, and it emits no anchored value) is a
+design decision that touches the sentence in `cli.py` saying there is no such
+flag, and that sentence is a claim. Second, the verdict needs a threshold, and
+a threshold is a claim about how identifying a weekly pattern is in general —
+the de Montjoye and Mayer citations above bear on it but were measured on
+other data. Until that number can be defended it should report the histogram
+concentration and the presence of a period, and let the owner read them,
+rather than say "safe".
+
+What it would do for the project: turn the wall from a thing this tool has into
+a thing this tool can check in *other* tools' egress, which is the more useful
+half of the origin story.
 
 **Prior-art citations worth keeping:** de Montjoye et al., *Unique in the Crowd*
 (Sci Rep 2013) and *Unique in the shopping mall* (Science 2015); Mayer, Mutchler
@@ -238,6 +417,11 @@ argument. Then the error rates published *per classifier and per corpus type*,
 because the README already says the classifiers are weakest on mixed
 personal-plus-coding corpora and that claim is itself unmeasured.
 
+*2026-09-11:* the labelling mode moved to Near
+([A local labelling mode](#a-local-labelling-mode)) with a concrete design. What
+stays here is the sample-size argument and the per-corpus-type publication —
+the parts that need more than one operator's labels to mean anything.
+
 ### Outcome-linked claims
 
 **What it would give.** Everything the battery reports is descriptive: where
@@ -263,6 +447,11 @@ weakness visible in the number itself. If that cannot be designed, the right
 answer is to refuse the feature rather than ship a hedged version of it — a
 hedge in the docs does not survive the number being quoted.
 
+*2026-09-11:* reviewed and recommended **left alone**, on the reasoning above:
+a process-to-quality claim changes the shape of what the tool asserts, and
+every other entry in this file gets more valuable without it. Recorded so the
+next person who wants to build it starts from a decision, not a gap.
+
 ### Metrics that stay comparable across tool versions
 
 **What it would give.** `diff` makes trends possible. Multi-year trends are
@@ -281,6 +470,12 @@ in the result, with `diff` refusing — or loudly annotating — a comparison ac
 a definition change. That is easy to state and tedious to maintain, and it only
 works if every future change to a classifier or filter is correctly recognised
 as a semantic change by the person making it.
+
+*2026-09-11:* the field and the check moved to Near, coupled to `diff` so the
+two ship together ([`corpuslens diff two runs`](#corpuslens-diff-two-runs)).
+What stays here is the maintenance discipline — a test that fails when a
+classifier regex changes without its version bumping would carry most of it,
+and is worth writing with the field.
 
 ### Process when the work is delegated
 
@@ -344,3 +539,9 @@ of reporting 0.0% authored code for a novelist. That refusal is buildable today
 and is arguably a near-term item; the analyzers that would *replace* them for
 another domain are the stretch, and would need their own reference points
 measured from scratch.
+
+*2026-09-11:* the refusal moved to Near
+([Refuse a corpus the classifiers cannot read](#refuse-a-corpus-the-classifiers-cannot-read)),
+with the added observation that the classifiers are English-and-Python shaped,
+so a coding corpus in another language or ecosystem hits the same failure. The
+replacement analyzers stay here.

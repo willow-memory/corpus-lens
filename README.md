@@ -326,6 +326,14 @@ Named and deliberately unbuilt — the long version, with reasoning, is
 - `turns_to_completion` is on the claim allowlist and has **no analyzer**: these
   corpora record an abandoned thread and a finished one identically, so a
   "turns to completion" number would be a guess wearing a denominator.
+- `leakage_demonstration` is on the claim allowlist and has **no analyzer**
+  either: the one analyzer that would *request* a capability — a fingerprint
+  check on any timestamped export the owner holds, reporting only whether its
+  timing shape re-identifies, never the schedule — is designed in IDEAS.md and
+  waits on a decision about how a non-default profile may be constructed.
+- A local labelling mode, a share-safe report, and a corpus-type refusal are
+  the next things in IDEAS.md's near list; none exists yet, and the report says
+  "trust direction plus your own spot-check" until the first one does.
 - The cursor adapter keeps only turns carrying the runtime's injected
   timestamp tag — conservative, undercounts, and **every dropped turn is
   counted in the audit line** (not silently discarded). On a real corpus it
