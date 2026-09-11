@@ -7,6 +7,19 @@ amendments — corrections sit beside the record they correct, never overwrite i
 Versioned sections are written by release-please from the commit messages; the
 hand-written history below them predates the release pipeline.
 
+## [0.6.0](https://github.com/willow-memory/corpus-lens/compare/v0.5.0...v0.6.0) (2026-09-11)
+
+
+### Added
+
+* **guard:** structural second phase for the egress scan ([bca3fce](https://github.com/willow-memory/corpus-lens/commit/bca3fce7fa3adf3030edf32958d23565dbd91662))
+
+
+### Fixed
+
+* **ingest:** never echo a foreign process's stderr in an error ([ba48672](https://github.com/willow-memory/corpus-lens/commit/ba48672010afd2c85cbe78c102abad25f69912de))
+* **ingest:** stop misclassifying missing relations/columns as a missing database ([d164e22](https://github.com/willow-memory/corpus-lens/commit/d164e22be795515b9fada26d768b2536a1bfe70f))
+
 ## [0.5.0](https://github.com/willow-memory/corpus-lens/compare/v0.4.0...v0.5.0) (2026-09-11)
 
 
