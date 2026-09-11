@@ -434,7 +434,16 @@ broken, and that a broken run looks exactly like a good one.
 
 - **claude.ai web export.** Named unbuilt in the README. The export format is
   stable and documented enough to read.
-- **Forge's own records.** `forge-play/Forge`'s friction log, calibration ledger
+- **Forge's own records.** *Shipped 2026-09-11 as `--adapter forge`*, reading the
+  checkpoint ledger only — the one Forge record with a clock and a text per
+  turn. It came in under the estimate below and spent the saving on refusals:
+  three analyzers are declared unmeasurable over a corpus of checkpoints
+  (`ingest/forge.py`'s docstring says which and why, with the demo ledger's
+  measured 0.0% where the classifier could not see two real asks), through a
+  new per-adapter registry (`ingest.register_unmeasurable`) that `run` refuses
+  by name and `doctor` lists. The calibration predictions carry no clock and
+  are not read; the attestations duplicate the seals and are not read twice.
+  Original entry: `forge-play/Forge`'s friction log, calibration ledger
   and checkpoint memory are process records of human+agent interaction — exactly
   this tool's subject matter. An adapter reading `~/.forge` is roughly 100 lines
   on the existing seam. Two constraints: route rows through

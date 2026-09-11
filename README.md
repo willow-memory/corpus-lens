@@ -101,6 +101,7 @@ corpuslens run ~/.claude/projects --adapter claude-code --out report.md
 corpuslens run ./my-cursor-sessions --adapter cursor
 corpuslens run ~/.cursor/chats --adapter cursor-store  # Cursor's own store.db tree
 corpuslens run ~/.gemini/tmp --adapter gemini-cli       # Gemini CLI's chat JSONL
+corpuslens run ~/.forge --adapter forge                 # the Forge's checkpoint ledger
 corpuslens run ./corpus.db --adapter sqlite            # a SQLite corpus (a file)
 corpuslens run "dbname=mycorpus" --adapter postgres    # a Postgres corpus (a DSN)
 # equivalently, from a clone without installing:
@@ -374,6 +375,38 @@ Everything a blob cannot become — a tool or system message, an unparseable or
 encrypted payload, a thread with no anchor — is counted in the audit line
 rather than silently dropped.
 
+### The Forge's checkpoint ledger
+
+`--adapter forge` reads the hash-chained ledger the
+[Forge](https://github.com/forge-play/Forge) keeps under `~/.forge/checkpoints/`:
+every decision the engine put to a maker, every answer they sealed, and every
+later time the engine confirmed from that memory instead of asking. It is a
+corpus of *checkpoints*, not of conversation, and the adapter says so before
+a number is computed:
+
+- **Three analyzers are refused by name**, in the audit sentence and in
+  `doctor`, because over this corpus they would compute a plausible number
+  that measures nothing. `steering_density` (a checkpoint has no opening
+  prompt — every answer is "mid-task" by construction), `composition_mix` (an
+  answer names an option; it authors no code), and `clarification_pull` (the
+  engine's ask-versus-confirm split is *on the ledger*, but the analyzer reads
+  a chat-trained phrase list that a Forge question does not match, so it
+  would read 0% however often the engine asked — measured on the real demo
+  ledger: 2 asks in 5 machine turns, reported as 0.0%). This is the
+  `subagents/` lesson taken at the adapter's door: when a corpus cannot feed
+  an analyzer, the output is a refusal, not a number, and there is no flag
+  to turn the refusal off.
+- **What it does measure:** `tempo` — how long the maker took to answer each
+  checkpoint, the engagement signal seen from the other end; thread shape and
+  span over decision types; and whether the operator-role turns read as one
+  human.
+
+Only in scope pointed at your *own* builder's records. The builder's name,
+the project's name, the verifier and the real timestamp are read for the join
+and then quarantined; the tests check the output for each by its literal
+value. `corpuslens/ingest/forge.py`'s docstring is the full account of what
+the Forge writes and which of it is a turn.
+
 ### Database corpora (SQLite and Postgres)
 
 If your turns live in a database rather than session files, point the `sqlite`
@@ -562,8 +595,8 @@ say out loud that looking is not a neutral act.
 
 ## Status: spine (0.2.0, on PyPI)
 
-Built: event model, the wall, six adapters (claude-code, cursor, cursor-store,
-gemini-cli, sqlite, postgres), injection filter, six analyzers with per-analyzer
+Built: event model, the wall, seven adapters (claude-code, cursor, cursor-store,
+gemini-cli, forge, sqlite, postgres), injection filter, six analyzers with per-analyzer
 semantic versions, markdown + JSON + share renderers, the `timing_fingerprint`
 computation, CLI (`run` — with zero-argument discovery — `doctor`, `adapters`,
 `analyzers`, `label`, `score`, `diff`), test suite (wall + pipeline + db-adapter + CLI-surface + render +

@@ -355,7 +355,14 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
         guard.audit.n_filtered = n_filtered
 
     results = {}
+    unmeasurable = ingest.unmeasurable_of(adapter)
     for a in all_analyzers():
+        if a.name in unmeasurable:
+            # The adapter said this corpus cannot mean this number. Refuse
+            # by name, in the same list the Guard's own refusals go in, so
+            # the audit sentence carries it — see ingest.register_unmeasurable.
+            guard.audit.analyzers_refused.append(f"{a.name} (adapter {adapter}: {unmeasurable[a.name]})")
+            continue
         if not guard.admit(a):
             continue
         results[a.name] = {"denominator": a.denominator, "analyzer_version": a.version,
@@ -481,6 +488,9 @@ def _diagnose(events, quarantine, dropped, adapter, src, n_files, path) -> dict:
                      f"(and --table) before trusting any rate computed from the rest.")
     if not quarantine.base_date_iso and events:
         notes.append("no calendar anchor was quarantined for this corpus.")
+    for name, why in sorted(ingest.unmeasurable_of(adapter).items()):
+        notes.append(f"`{name}` is declared unmeasurable by the {adapter!r} adapter and will "
+                     f"be refused by `run`: {why}.")
     diag["notes"] = notes
     diag["reminder"] = ("diagnostics only — no analyzer ran, no rate was computed, and the "
                         "calendar anchor stayed quarantined.")
