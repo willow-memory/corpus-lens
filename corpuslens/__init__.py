@@ -16,7 +16,7 @@ repository for the rubric this instruments.
 from importlib.metadata import PackageNotFoundError, version as _version
 
 try:
-    __version__ = _version("corpuslens")
+    __version__ = _version("willow-corpus-lens")   # the DISTRIBUTION name
 except PackageNotFoundError:       # a source checkout, not an installed package
     __version__ = "0+unknown"
 

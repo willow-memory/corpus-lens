@@ -179,6 +179,19 @@ class PackagingTests(unittest.TestCase):
         src = self._repo_file("corpuslens/__init__.py")
         self.assertNotIn('__version__ = "0.', src)   # no hard-coded release number
 
+    def test_the_distribution_name_matches_everywhere_it_is_written(self):
+        # Four places must agree or the publish fails at upload, where the error
+        # is unhelpful: pyproject, __init__'s metadata lookup, release-please's
+        # package-name, and the artifact regex in the release workflow (which
+        # sees the PEP 625 underscored form).
+        import json
+        self.assertIn('name = "willow-corpus-lens"', self._repo_file("pyproject.toml"))
+        self.assertIn('_version("willow-corpus-lens")',
+                      self._repo_file("corpuslens/__init__.py"))
+        cfg = json.loads(self._repo_file("release-please-config.json"))
+        self.assertEqual(cfg["packages"]["."]["package-name"], "willow-corpus-lens")
+        self.assertIn("willow_corpus_lens-", self._repo_file(".github/workflows/release.yml"))
+
     def test_pyproject_declares_the_version_dynamic(self):
         # hatch-vcs derives it from the tag; a literal here would be a second
         # copy that drifts the moment a tag is cut.
@@ -191,6 +204,8 @@ class PackagingTests(unittest.TestCase):
         cfg = json.loads(self._repo_file("release-please-config.json"))
         manifest = json.loads(self._repo_file(".release-please-manifest.json"))
         pkg = cfg["packages"]["."]
-        self.assertEqual(pkg["package-name"], "corpuslens")
+        # the DISTRIBUTION name, which must equal the PyPI trusted-publishing
+        # project exactly; the import package and console script stay `corpuslens`
+        self.assertEqual(pkg["package-name"], "willow-corpus-lens")
         self.assertEqual(pkg["release-type"], "simple")   # hatch-vcs owns the version
         self.assertIn(".", manifest)

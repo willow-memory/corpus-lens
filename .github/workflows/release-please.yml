@@ -40,7 +40,7 @@ name: Release Please
 #      required check there is nothing for auto-merge to wait on, and GitHub
 #      declines to arm it at all.
 #   4. A `pypi` environment on the repo, and a PyPI *pending publisher* for
-#      project `corpuslens` bound to willow-memory/corpus-lens, workflow
+#      project `willow-corpus-lens` bound to willow-memory/corpus-lens, workflow
 #      `release.yml`, environment `pypi`. See release.yml.
 #
 # The version itself is not stored anywhere — hatch-vcs derives it from the tag

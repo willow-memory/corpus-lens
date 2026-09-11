@@ -13,7 +13,7 @@ name: Release
 # than circular: it re-derives from the built artifact and compares.
 #
 # Uses PyPI Trusted Publishing (OIDC) — no API token stored in the repo. The
-# PyPI publisher for project `corpuslens` must be created as a *pending*
+# PyPI publisher for project `willow-corpus-lens` must be created as a *pending*
 # publisher (the only kind you can create before a project exists), bound to
 # repository `willow-memory/corpus-lens`, workflow `release.yml`, environment
 # `pypi`. All three must match or the upload is rejected with no useful error:
@@ -91,7 +91,7 @@ jobs:
         # instead, where the error says what is actually wrong.
         run: |
           tag="${TAG#v}"
-          built="$(ls dist/*.tar.gz | sed -E 's|.*/corpuslens-(.+)\.tar\.gz|\1|')"
+          built="$(ls dist/*.tar.gz | sed -E 's|.*/willow_corpus_lens-(.+)\.tar\.gz|\1|')"
           echo "tag=${tag}  built=${built}"
           if [ "$tag" != "$built" ]; then
             echo "::error::tag v${tag} builds version ${built} — refusing to publish"

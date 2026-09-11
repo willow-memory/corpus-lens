@@ -3,11 +3,19 @@ requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-# The distribution name is `corpuslens`; `corpus-lens` on PyPI is an unrelated
-# project (a TF-IDF corpus dashboard, MIT, godofecht/corpus-lens). PEP 503
-# normalizes the two differently, so they coexist — but do not "fix" this to
-# the hyphenated form, which is taken.
-name = "corpuslens"
+# THREE NAMES, on purpose — do not "tidy" them into one:
+#   * distribution (PyPI):  willow-corpus-lens  — this line
+#   * import package:       corpuslens          — [tool.hatch.build.targets.wheel]
+#   * console script:       corpuslens          — [project.scripts]
+#
+# `corpus-lens` on PyPI is already an unrelated project (a TF-IDF corpus
+# dashboard, MIT, godofecht/corpus-lens), so the fleet prefix disambiguates
+# rather than competes. This name must match the PyPI Trusted Publishing
+# pending publisher EXACTLY (repository willow-memory/corpus-lens, workflow
+# release.yml, environment pypi) — a mismatch is rejected at upload with no
+# useful error, and the artifact name in release.yml's tag assertion is derived
+# from this too.
+name = "willow-corpus-lens"
 # The git tag is the single source of truth — see [tool.hatch.version]. A
 # literal here is a second copy that drifts: the fleet has shipped a tag whose
 # build produced the previous version because a literal went unbumped, and this
@@ -58,6 +66,7 @@ corpuslens = "corpuslens.cli:main"
 source = "vcs"
 
 [tool.hatch.build.targets.wheel]
-# The import name stays `corpuslens`; it matches the distribution name here,
-# unlike forge-play/forge where they differ.
+# The import name stays `corpuslens` — `import corpuslens`, and the console
+# script is `corpuslens` too. Only the distribution name carries the fleet
+# prefix, the same split forge-play/forge uses.
 packages = ["corpuslens"]
