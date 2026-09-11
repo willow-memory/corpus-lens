@@ -54,10 +54,14 @@ PROCESS_CLAIM_TYPES = frozenset({
     "clarification_pull",     # fork/deferral rates
     "turns_to_completion",
     "leakage_demonstration",  # quarantined class: proves a leak, never ships data
-    "authorship_mix",         # HUMAN/AGENT/UNKNOWN share of operator-role turns —
-                               # checks the "operator role is a person" assumption
-                               # every other analyzer inherits, rather than a claim
-                               # about which person (see corpuslens/authorship.py)
+    "authorship_mix",         # HUMAN/AGENT/UNKNOWN share of operator-role turns.
+                              # Checks the "the operator role is a person" assumption
+                              # every other analyzer silently inherits — and which the
+                              # tool was measured getting wrong on an agent corpus.
+                              # Process-shaped, never person-shaped: it says which
+                              # CLASS of author filled a role this corpus already has,
+                              # and can never say which person. `subject.py` derives a
+                              # run's subject from it; `authorship.py` computes it.
 })
 
 PERSON_CLAIM_TYPES = frozenset({
