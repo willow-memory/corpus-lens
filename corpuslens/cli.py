@@ -4,11 +4,20 @@
     corpuslens doctor <path> --adapter claude-code      # what would be read, and what dropped
     corpuslens adapters                                 # what can be read, and from what
     corpuslens analyzers                                # what gets computed, and out of what
+    corpuslens label <path> --adapter claude-code       # label a sample of your own turns
+    corpuslens score <path> --adapter claude-code       # classifier precision/recall vs. labels
 
 Every subcommand runs under the DEFAULT profile: no calendar, no timezone, no
 person claims. There is deliberately no CLI flag to grant capabilities — a
 grant is an owner-side code change (a Profile constructed in your own script),
 not a switch someone can flip in a command line they found in a README.
+
+`label` and `score` are two verbs, not one command with a `--score` flag, on
+purpose: `label` is interactive and writes a store; `score` is a read-only
+report with its own `--format`. Splitting them keeps each argparse surface
+honest about what it actually takes and does, matching this file's existing
+one-verb-per-subcommand shape (`run`, `doctor`, `adapters`, `analyzers`)
+instead of adding a mode switch to either of those.
 """
 from __future__ import annotations
 
@@ -17,7 +26,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import ingest, render
+from . import ingest, label as labelmod, render
 from .analyze import all_analyzers
 from .guard import DEFAULT_PROFILE, Guard, WallError
 
@@ -64,6 +73,22 @@ def _ingest(path: str, adapter: str, table: str | None):
     kw = {"table": table} if (table is not None and src in ("file", "dsn")) else {}
     events, quarantine, dropped = ingest.get(adapter)(path, **kw)
     return events, quarantine, dropped, n_files
+
+
+def _ingest_for_label(path: str, adapter: str, table: str | None):
+    """Like `_ingest`, but through the adapter's `label_text` seam instead of
+    its ordinary `ingest()` — a differently-shaped function
+    (`ingest.get_label_text`), not the same function under a flag, so `run`/
+    `doctor`'s call to `ingest.get(adapter)(...)` never changes shape. Only
+    adapters registered via `register_label_text` implement it; callers must
+    check `ingest.text_capable_of(adapter)` first."""
+    src = ingest.source_of(adapter)
+    n_files, err = _check_path(path, adapter, src)
+    if err:
+        raise ValueError(err)
+    kw = {"table": table} if (table is not None and src in ("file", "dsn")) else {}
+    lc = ingest.get_label_text(adapter)(path, **kw)
+    return lc.events, lc.quarantine, lc.dropped, n_files, lc.text_by_ref
 
 
 def _empty_message(path, adapter, src, n_files, dropped) -> str:
@@ -267,6 +292,189 @@ def analyzers(fmt: str = "markdown") -> int:
     return 0
 
 
+def _ask_yes_no(question: str):
+    """Prompt once, re-asking on garbage input. Returns True/False, or None to
+    mean 'stop here' — either the operator typed q/quit, or stdin ran out
+    (EOFError) mid-session, which is treated as a graceful early stop rather
+    than a crash so a partially piped or truncated session still saves what it
+    has. The CLI checks `sys.stdin.isatty()` before ever calling this, so EOF
+    here is a defensive backstop, not the primary non-tty guard."""
+    while True:
+        try:
+            raw = input(f"{question} [y/n/q] ").strip().lower()
+        except EOFError:
+            return None
+        if raw in ("y", "yes"):
+            return True
+        if raw in ("n", "no"):
+            return False
+        if raw in ("q", "quit"):
+            return None
+        print("please answer y, n, or q.")
+
+
+def label(path: str, adapter: str, sample_size: int, store_path: str,
+          table: str | None = None) -> int:
+    """Sample eligible turns under a fixed seed, show each one's text in the
+    terminal, and ask one yes/no per classifier that applies to it. Writes
+    only {source_ref, classifier, label} per answer, tagged with the
+    classifier set version — never content (see label.py's module docstring
+    for the exact rule this enforces).
+    """
+    if not ingest.text_capable_of(adapter):
+        print(f"error: 'label' needs to show you your own turn text, and the {adapter!r} "
+              f"adapter does not support that yet (only claude-code does) — refusing rather "
+              f"than guessing at a text format nobody has implemented or tested for it.",
+              file=sys.stderr)
+        return 2
+    try:
+        events, quarantine, dropped, n_files, text_by_ref = _ingest_for_label(path, adapter, table)
+    except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
+            RuntimeError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    if not events:
+        print(f"error: {_empty_message(path, adapter, ingest.source_of(adapter), n_files, dropped)}",
+              file=sys.stderr)
+        return 1
+
+    try:
+        store = labelmod.load_store(store_path)
+    except (OSError, ValueError, json.JSONDecodeError) as e:
+        print(f"error: could not read --store {store_path}: {e}", file=sys.stderr)
+        return 2
+    version_err = labelmod.check_version(store)
+    if version_err:
+        print(f"error: {version_err}", file=sys.stderr)
+        return 2
+
+    sample = labelmod.sample_events(events, sample_size)
+    if not sample:
+        print("error: no eligible turns to sample in this corpus (operator prompts or machine "
+              "responses with >=12 characters).", file=sys.stderr)
+        return 1
+
+    labelled = labelmod.already_labelled(store)
+    pending = [(e, [c for c in labelmod.classifiers_for(e.author_class)
+                    if (e.source_ref, c) not in labelled]) for e in sample]
+    pending = [(e, cs) for e, cs in pending if cs]
+    if not pending:
+        print(f"nothing new to label: all {len(sample)} sampled turn(s) already have a label "
+              f"for every classifier that applies to them, in {store_path}.")
+        return 0
+
+    if not sys.stdin.isatty():
+        print("error: `corpuslens label` is interactive — it reads y/n answers from a terminal, "
+              "and stdin here is not one (a piped input, or a CI run). Run it directly in a "
+              "terminal instead of redirecting stdin.", file=sys.stderr)
+        return 2
+
+    print(f"{len(pending)} of {len(sample)} sampled turn(s) still need a label "
+          f"(sample fixed by seed — the same corpus and --sample-size sample the same turns).")
+    print("Answer y or n for each question, or q to stop and save what you have so far.\n")
+    asked = 0
+    for e, classifiers in pending:
+        text = text_by_ref.get(e.source_ref)
+        if text is None:
+            continue
+        print("-" * 70)
+        print(f"[{e.author_class.value} turn]")
+        print(text)
+        print("-" * 70)
+        stopped = False
+        for c in classifiers:
+            answer = _ask_yes_no(labelmod.QUESTIONS[c])
+            if answer is None:
+                stopped = True
+                break
+            labelmod.add_label(store, e.source_ref, c, answer)
+            asked += 1
+        print()
+        if stopped:
+            break
+    labelmod.save_store(store_path, store)
+    print(f"{asked} label(s) recorded to {store_path}.")
+    return 0
+
+
+def _render_score(result: dict, fmt: str) -> str:
+    if fmt == "json":
+        return json.dumps(result, indent=2)
+    lines = ["# corpuslens score", "",
+             f"*Precision and recall of the regex classifiers against "
+             f"{result['total_labels']} human label(s) — your own judgment on your own turns, "
+             f"never a model's. Named denominators below; this covers only the classifiers and "
+             f"the corpus this label store actually has labels for.*", ""]
+    if result["missing"]:
+        lines.append(f"*{result['missing']} labelled turn(s) were not found in this run of the "
+                     f"corpus (counted, not silently dropped) — the corpus may have changed "
+                     f"since labelling.*")
+        lines.append("")
+    if not result["classifiers"]:
+        lines.append("No labelled turn in the store matched a turn in this corpus.")
+        return "\n".join(lines)
+    for name, r in result["classifiers"].items():
+        lines.append(f"## {name}")
+        lines.append("")
+        n = r["n"]
+        lines.append(f"n = {n} labelled turn(s) for this classifier.")
+        if 0 < n < render.SMALL_N:
+            lines.append(f"*Small sample (n = {n}): read the direction, not the decimal.*")
+        if r["precision_pct"] is not None:
+            lines.append(f"- **precision**: {r['precision_pct']}% — out of "
+                         f"{r['precision_denominator']} (tp={r['tp']}, fp={r['fp']})")
+        else:
+            lines.append(f"- **precision**: {r['precision_note']}")
+        if r["recall_pct"] is not None:
+            lines.append(f"- **recall**: {r['recall_pct']}% — out of "
+                         f"{r['recall_denominator']} (tp={r['tp']}, fn={r['fn']})")
+        else:
+            lines.append(f"- **recall**: {r['recall_note']}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def score(path: str, adapter: str, table: str | None, store_path: str,
+          fmt: str = "markdown") -> int:
+    """Re-run the classifiers over `path` and grade them against the labels in
+    `store_path`: precision, recall and n per classifier, named denominators
+    throughout. Refuses (does not silently compare) if the store was graded
+    against a different classifier-set version than the one installed."""
+    try:
+        events, quarantine, dropped, n_files = _ingest(path, adapter, table)
+    except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
+            RuntimeError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    if not Path(store_path).exists():
+        print(f"error: no label store at {store_path} — run `corpuslens label` first.",
+              file=sys.stderr)
+        return 1
+    try:
+        store = labelmod.load_store(store_path)
+    except (OSError, ValueError, json.JSONDecodeError) as e:
+        print(f"error: could not read --store {store_path}: {e}", file=sys.stderr)
+        return 2
+    if not store["labels"]:
+        print(f"error: {store_path} has no labels yet — run `corpuslens label` first.",
+              file=sys.stderr)
+        return 1
+    version_err = labelmod.check_version(store)
+    if version_err:
+        print(f"error: {version_err}", file=sys.stderr)
+        return 2
+
+    result = labelmod.score(events, store)
+    text = _render_score(result, fmt)
+    try:
+        text = Guard(quarantine, DEFAULT_PROFILE).scan_egress(text)
+    except WallError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 3
+    print(text)
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="corpuslens")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -305,6 +513,32 @@ def main(argv=None) -> int:
     z = sub.add_parser("analyzers", help="list the analyzers, their claims and denominators")
     add_format(z)
 
+    lb = sub.add_parser("label", help="interactively label a sample of your own turns, to "
+                                      "measure the classifiers' own precision/recall")
+    lb.add_argument("path", help="same argument `run` takes for this --adapter")
+    lb.add_argument("--adapter", required=True, choices=ingest.available())
+    lb.add_argument("--table", default=None, help="db adapters only: the turns table")
+    lb.add_argument("--sample-size", type=int, default=labelmod.DEFAULT_SAMPLE_SIZE, metavar="N",
+                    help=f"how many eligible turns to sample (default: "
+                         f"{labelmod.DEFAULT_SAMPLE_SIZE}). This is a CONVENTION, like the "
+                         f"renderer's small-sample threshold — not a power analysis. corpuslens "
+                         f"does not compute how large a sample would need to be for a given "
+                         f"confidence (see IDEAS.md, 'A local labelling mode').")
+    lb.add_argument("--store", default="corpuslens-labels.json", dest="store_path",
+                    help="JSON file to read/write labels (default: ./corpuslens-labels.json). "
+                         "Holds only label values, each turn's opaque hash, and the classifier "
+                         "version graded — never content, a filename, or a timestamp.")
+
+    sc = sub.add_parser("score", help="precision/recall/n per classifier, from a label store "
+                                      "`corpuslens label` made")
+    sc.add_argument("path", help="the same corpus you labelled — re-ingested to re-run the "
+                                 "classifiers over it")
+    sc.add_argument("--adapter", required=True, choices=ingest.available())
+    sc.add_argument("--table", default=None, help="db adapters only: the turns table")
+    sc.add_argument("--store", default="corpuslens-labels.json", dest="store_path",
+                    help="the label store to grade against (default: ./corpuslens-labels.json)")
+    add_format(sc)
+
     args = p.parse_args(argv)
     if args.cmd == "run":
         if args.since_day is not None and args.until_day is not None \
@@ -320,6 +554,10 @@ def main(argv=None) -> int:
         return adapters(args.fmt)
     if args.cmd == "analyzers":
         return analyzers(args.fmt)
+    if args.cmd == "label":
+        return label(args.path, args.adapter, args.sample_size, args.store_path, args.table)
+    if args.cmd == "score":
+        return score(args.path, args.adapter, args.table, args.store_path, args.fmt)
     return 2
 
 

@@ -26,10 +26,11 @@ import datetime
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..model import AuthorClass, CoarseTime, DataType, Event, Quarantine, Surface
-from . import register
+from . import register, register_label_text
 from .injection import authored_text
 
 ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T")
@@ -116,6 +117,16 @@ CLARIFY = re.compile(
     r"do you (mean|want)|would you like|should i\b|which (one|of|do|would|approach)"
     r"|to clarify|can you confirm|just to confirm|one question|quick question", re.I)
 
+#: Version of the four regex classifiers directly above (CODE_REF, AUTHORED,
+#: DELIB, CLARIFY) as a set. `corpuslens label` records this in every label
+#: store it writes; `corpuslens score` refuses to grade a store recorded
+#: against a different version rather than silently comparing across a regex
+#: change (IDEAS.md, "A local labelling mode"). Bump this any time any one of
+#: the four patterns above changes — a label is a judgment about what a
+#: SPECIFIC version of a classifier got right, and it stops being a true
+#: judgment about a different version.
+CLASSIFIER_SET_VERSION = "regex-classifiers/1"
+
 
 def _hash(*parts: str) -> str:
     return hashlib.sha256("\x00".join(parts).encode("utf-8", "replace")).hexdigest()[:16]
@@ -194,8 +205,24 @@ def _is_subagent(rel_posix: str) -> bool:
     return any(part in SUBAGENT_DIRS for part in rel_posix.split("/")[:-1])
 
 
-@register("claude-code")
-def ingest(path: str, corpus_id: str = "corpus"):
+@dataclass(frozen=True)
+class LabelCorpus:
+    """The fixed return shape of `label_text` below — see its docstring for
+    why `text_by_ref` is allowed to exist at all outside the Guard, and the
+    conditions that must stay true for that to remain a justification rather
+    than an oversight."""
+    events: list
+    quarantine: Quarantine
+    dropped: int
+    text_by_ref: dict
+
+
+def _ingest_impl(path: str, corpus_id: str, want_text: bool):
+    """The one parse of a claude-code corpus. `want_text` is an INTERNAL
+    switch between the two fixed-arity public functions below — it never
+    reaches a caller, and it never changes the shape of what either public
+    function returns. `text_by_ref` is `{}` when `want_text` is False, so a
+    caller can always unpack this 4-tuple the same way regardless."""
     root = Path(path)
     if root.exists() and not root.is_dir():
         raise NotADirectoryError(f"corpuslens adapters take a directory of *.jsonl, not a file: {path}")
@@ -231,7 +258,7 @@ def ingest(path: str, corpus_id: str = "corpus"):
             raw.append((d, epoch, rel, o["type"], text, f"{rel}:{i+1}"))
 
     if not raw:
-        return [], Quarantine(), dropped
+        return [], Quarantine(), dropped, {}
 
     base = min(r[0] for r in raw)
     by_session: dict = {}
@@ -242,6 +269,7 @@ def ingest(path: str, corpus_id: str = "corpus"):
 
     events = []
     ref_map: dict = {}
+    text_by_ref: dict = {}
     for session, recs in by_session.items():
         sid = _hash(corpus_id, session)
         prev_epoch = None
@@ -266,10 +294,79 @@ def ingest(path: str, corpus_id: str = "corpus"):
                 prev_epoch, prev_day = epoch, day_offset
             opaque = _hash(sid, real_ref)
             ref_map[opaque] = real_ref
+            if want_text:
+                text_by_ref[opaque] = text
             events.append(Event(
                 event_id=opaque, corpus_id=corpus_id, adapter_id="claude-code/1",
                 source_ref=opaque, thread_id=sid, surface=Surface.CLI,
                 author_class=author, data_type=dtype,
                 time=CoarseTime(day_offset=day_offset, delta_prev_s=delta),
                 features=_features(text, stripped)))
-    return events, Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map), dropped
+    quarantine = Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map)
+    return events, quarantine, dropped, text_by_ref
+
+
+@register("claude-code")
+def ingest(path: str, corpus_id: str = "corpus"):
+    """(events, quarantine, dropped) — always exactly this 3-tuple, for every
+    call, with no keyword that changes its shape. This is the ONLY entry point
+    every other adapter and the whole CLI (`run`, `doctor`, `score`) call
+    through `ingest.get(name)(path, ...)`; see `label_text` below for the
+    separate, differently-shaped function `corpuslens label` uses instead of
+    overloading this one."""
+    events, quarantine, dropped, _ = _ingest_impl(path, corpus_id, want_text=False)
+    return events, quarantine, dropped
+
+
+@register_label_text("claude-code")
+def label_text(path: str, corpus_id: str = "corpus") -> LabelCorpus:
+    """Everything `corpuslens label` needs: the same Events `ingest()` would
+    produce, plus `text_by_ref` — `{opaque source_ref: the turn's own text}`,
+    the SAME de-injected string `_features()` classified. Always this one
+    `LabelCorpus` shape; there is no flag that changes it.
+
+    WHY A HASH-TO-CONTENT MAP IS ALLOWED HERE, WHEN THE STRUCTURALLY IDENTICAL
+    `Quarantine.ref_map` IS NOT (read this before touching this function or
+    copying its shape into another adapter). `ref_map` maps
+    `source_ref -> the real file:line locator`, gated behind the Guard because
+    a locator can leak a filename's embedded date; this maps
+    `source_ref -> the turn's own text`, and it is handed back with NO Guard
+    at all. Both are "opaque hash -> the real thing behind it" — exactly the
+    shape the wall exists to gate — so the omission needs its own reasoning,
+    not just a comment saying it's fine:
+
+      1. **owner == subject.** (README, "Scope"; guard.py's "not an
+         adversarial sandbox against the machine's OWNER".) `label` is the
+         corpus's own owner reading their own turns to grade a classifier —
+         the one case this project has always said the wall does not, and
+         should not, stop.
+      2. **Nothing new is exposed.** `ingest()` already reads this exact text
+         at parse time to compute `_features()`; this function does not open
+         a door `ingest()` keeps shut, it just keeps a string `ingest()`
+         would otherwise compute booleans from and then drop.
+      3. **It is ephemeral, not a second quarantine.** Built fresh in memory
+         for one `label` invocation, from the caller's own local files, and
+         never written to disk by this function or anything it calls.
+
+    THE CONDITIONS THAT MUST STAY TRUE for that reasoning to keep holding.
+    If code changes so that any of these is no longer true, `label_text` needs
+    Guard-style gating like `Quarantine.ref_map` — this docstring stops being
+    a justification and starts being a stale excuse:
+
+      * `text_by_ref` is never attached to an `Event` — an `Event.features`
+        value is always a bool/int/None, never a string (pinned by
+        `tests/test_label.py::LabelTextSeamTests`).
+      * `text_by_ref` never reaches a renderer, `run`, `doctor`, or any
+        report — it is read only inside `cli.label`'s own interactive loop
+        (pinned by the same test class, driving `run`/`doctor` on this
+        corpus and asserting no turn text appears in their output).
+      * `text_by_ref` is never written to a label store — `label.py`'s
+        `save_store` writes only `{source_ref, classifier, label}` (pinned by
+        `tests/test_label.py::LabelCliTests`).
+      * It is produced fresh per call from local files, never cached to disk,
+        never returned from a network call, and never reused across a
+        process boundary.
+    """
+    events, quarantine, dropped, text_by_ref = _ingest_impl(path, corpus_id, want_text=True)
+    return LabelCorpus(events=events, quarantine=quarantine, dropped=dropped,
+                       text_by_ref=text_by_ref)
