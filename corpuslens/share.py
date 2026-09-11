@@ -157,7 +157,23 @@ def coarsen_audit(audit):
     functions of `self`'s fields, so calling them on this copy is the ONLY
     code path that produces either; there is no second, separately-written
     sentence to drift out of sync with the fields (or with a future edit to
-    `sentence()`'s wording)."""
+    `sentence()`'s wording).
+
+    `discovered_path` (set only when `corpuslens run` found the corpus itself
+    via zero-config discovery — see cli.py) is deliberately left ALONE here,
+    not stripped. An earlier version of this function dropped it on the
+    reasoning that a home path can carry the owner's username — correct for
+    the RESOLVED path a first version of that feature put there, which was
+    itself a wall-breaking bug (see NOTES-zeroconf.md and
+    `guard.AuditRecord.discovered_path`'s docstring). Once fixed,
+    `discovered_path` can only ever hold the adapter's DECLARED conventional
+    form (e.g. '~/.claude/projects' — enforced by `AuditRecord.__setattr__`,
+    which refuses anything else), which carries no more identifying weight
+    than the `adapter` field it sits beside in the same sentence — and
+    `adapter` has never been stripped in share mode. Coarsening it now would
+    single out one identity-free field for removal while leaving an
+    equally-informative one untouched, which is inconsistency dressed up as
+    caution, not real coarsening."""
     return dataclasses.replace(
         audit,
         n_events=band_n(audit.n_events),

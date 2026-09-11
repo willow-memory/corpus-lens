@@ -17,6 +17,18 @@ CLI counts matches of that pattern so "no files found under X" names the thing
 it actually looked for, instead of reporting a `*.jsonl` count for an adapter
 that never wanted one.
 
+A THIRD registry (`register_default_path` / `default_path_of` / `discoverable`)
+holds each "dir" adapter's CONVENTIONAL location on a real machine — e.g.
+claude-code's session logs live at `~/.claude/projects` unless the user says
+otherwise. This is what `corpuslens run` with no arguments reads to find a
+first corpus: it is declared here, per adapter, precisely so that adding a
+new directory adapter that knows where it conventionally lives never means
+editing the CLI's discovery logic — the adapter says where to look, the CLI
+just asks every adapter that has an answer. An adapter with no conventional
+location (e.g. `cursor`, whose sessions live wherever the user happens to
+keep them) simply never calls `register_default_path` and is not offered for
+discovery; that is a fact about the adapter, not a special case in the CLI.
+
 A SEPARATE, smaller registry (`register_label_text` / `get_label_text` /
 `text_capable_of`) holds label-text lookups: a differently-shaped function,
 `label_text(path, ...) -> LabelCorpus`, that `corpuslens label` uses to get a
@@ -36,6 +48,7 @@ _REGISTRY: dict = {}
 _SOURCE: dict = {}
 _PATTERN: dict = {}
 _LABEL_TEXT: dict = {}
+_DEFAULT_PATH: dict = {}
 
 
 def register(name: str, source: str = "dir", pattern: str = "*.jsonl"):
@@ -92,6 +105,43 @@ def text_capable_of(name: str) -> bool:
     """True iff `corpuslens label` can show turn text for this adapter (i.e.
     a `label_text` function is registered for it)."""
     return name in _LABEL_TEXT
+
+
+def register_default_path(name: str, path: str):
+    """Declares the CONVENTIONAL location adapter `name` (a "dir" adapter)
+    reads from on a real machine, e.g. `~/.claude/projects` for claude-code.
+    Used only by `corpuslens run` with no arguments to find a first corpus —
+    it never changes what `get(name)` does or what argument it expects.
+
+    A decorator, like `register()` and `register_label_text()` above, so an
+    adapter module can declare it right next to the `ingest()` function it
+    describes:
+
+        @register_default_path("claude-code", "~/.claude/projects")
+        @register("claude-code")
+        def ingest(path, ...): ...
+
+    `path` is stored as written (with the leading `~`, unexpanded) — the CLI
+    expands and validates it at discovery time, against the actual `$HOME` of
+    the machine it is running on, never against this module's import-time
+    environment."""
+    def deco(fn):
+        _DEFAULT_PATH[name] = path
+        return fn
+    return deco
+
+
+def default_path_of(name: str) -> str | None:
+    """The conventional path registered for `name`, or None if it declared
+    none (e.g. `cursor`, which has no fixed on-disk home)."""
+    return _DEFAULT_PATH.get(name)
+
+
+def discoverable() -> list[str]:
+    """Adapters `corpuslens run` (no arguments) can look for on its own,
+    sorted so discovery order is deterministic and independent of module
+    import order."""
+    return sorted(_DEFAULT_PATH)
 
 
 from . import claude_code, cursor, cursor_store, gemini_cli, sqlite, postgres  # noqa: E402,F401  (registration side effects)

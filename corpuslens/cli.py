@@ -1,5 +1,6 @@
 """corpuslens CLI.
 
+    corpuslens run                                      # zero-config: look, report, run
     corpuslens run <path> --adapter claude-code [--format markdown|json] [--share]
     corpuslens doctor <path> --adapter claude-code      # what would be read, and what dropped
     corpuslens adapters                                 # what can be read, and from what
@@ -23,11 +24,24 @@ instead of adding a mode switch to either of those.
 either format (`--format json --share` for a machine-readable coarsened
 document) rather than forking the renderers. See `corpuslens/share.py` for
 what it coarsens and, just as load-bearing, what it does not claim.
+
+`corpuslens run` with NO arguments is zero-config discovery, not a third
+shape of the command: omit PATH and `--adapter` TOGETHER (giving only one of
+the two is an error, not a partial guess) and it looks in the conventional
+locations each "dir" adapter has declared for itself (see
+`ingest.register_default_path`), reports what it found there BEFORE reading a
+single turn, and then runs the battery on what it found. See `_discover_corpora`
+below for the containment rules (never outside `$HOME`, never through a
+symlink that leaves it) and `run_discovered` for what happens when several
+corpora exist (the largest, by file count, is run — see its docstring for
+why). The explicit two-argument form is unchanged by any of this.
 """
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -124,9 +138,163 @@ def _window(events, since_day, until_day):
     return kept, len(events) - len(kept), f"relative-day window {lo_s}..{hi_s}, inclusive"
 
 
+def _count_files_no_symlinks(root: Path, pattern: str) -> int:
+    """Like `p.rglob(pattern)` in `_check_path`, but never follows a symlinked
+    directory (`os.walk(..., followlinks=False)` lists one without walking
+    into it) and never counts a symlinked file — discovery is looking at
+    locations it was not explicitly told to trust, so a link that happens to
+    point somewhere else on disk is refused rather than followed, unlike the
+    explicit two-argument form (which already trusts whatever the user
+    pointed it at, and is unchanged here)."""
+    n = 0
+    for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):
+        for fn in filenames:
+            if not fnmatch.fnmatch(fn, pattern):
+                continue
+            if (Path(dirpath) / fn).is_symlink():
+                continue
+            n += 1
+    return n
+
+
+def _discover_corpora() -> list[dict]:
+    """For every adapter that has declared a conventional directory
+    (`ingest.register_default_path`), check it WITHOUT reading a byte of the
+    corpus itself: does it exist under `$HOME`, is it actually a directory,
+    and how many files match the adapter's own declared pattern
+    (`ingest.pattern_of`) — the same count `_check_path` reports for the
+    explicit form. Every declared adapter is reported, found or not, so the
+    caller can print the full set of locations that were checked, not just
+    the one that gets used.
+
+    Never widens outside `$HOME`: a declared path that resolves somewhere
+    else (a symlink, or a future adapter that misdeclares one) is refused,
+    not followed — discovery is a guess standing in for a path the user did
+    not type, so it earns none of the trust an explicit argument gets. An
+    unreadable location (permission denied, a broken parent) is reported in
+    `note`, never left to raise.
+
+    Each entry carries BOTH `declared_path` (the adapter's own convention,
+    e.g. '~/.claude/projects' — unexpanded, no username) and `resolved_path`
+    (an absolute path under `$HOME`, needed to actually open files and to run
+    the containment check above). `resolved_path` is for internal use only —
+    reading the corpus, and the `> lo <= x <= hi`-style comparison above — and
+    must NEVER be shown to the user or stored on anything that leaves this
+    process: a resolved path carries the owner's real username. Every caller
+    of this function prints or records `declared_path`, never
+    `resolved_path`; `guard.AuditRecord.discovered_path` enforces the same
+    rule from the other end by refusing to hold a resolved value at all."""
+    home = Path.home().resolve()
+    found = []
+    for name in ingest.discoverable():
+        raw = ingest.default_path_of(name)
+        pat = ingest.pattern_of(name)
+        entry = {"adapter": name, "declared_path": raw, "resolved_path": None,
+                  "n_files": 0, "usable": False, "note": None}
+        try:
+            resolved = Path(raw).expanduser().resolve()
+        except (OSError, RuntimeError) as e:
+            entry["note"] = f"could not resolve ({e})"
+            found.append(entry)
+            continue
+        entry["resolved_path"] = str(resolved)
+        if resolved != home and home not in resolved.parents:
+            entry["note"] = "refusing: resolves outside the home directory"
+            found.append(entry)
+            continue
+        try:
+            if not resolved.exists():
+                entry["note"] = "not present"
+                found.append(entry)
+                continue
+            if not resolved.is_dir():
+                entry["note"] = "exists but is not a directory"
+                found.append(entry)
+                continue
+            n = _count_files_no_symlinks(resolved, pat)
+        except OSError as e:
+            entry["note"] = f"unreadable ({e})"
+            found.append(entry)
+            continue
+        entry["n_files"] = n
+        entry["usable"] = n > 0
+        entry["note"] = (f"{n} {pat} file(s) found" if n
+                         else f"present, but no {pat} files under it")
+        found.append(entry)
+    return found
+
+
+def run_discovered(out: str | None, fmt: str, since_day: int | None,
+                    until_day: int | None, share: bool) -> int:
+    """`corpuslens run` with no PATH and no `--adapter`: look in every
+    adapter's declared conventional location, print what was found at each
+    one BEFORE reading anything, then run the battery on what was found.
+
+    THE MULTIPLE-CORPORA DECISION. When more than one location is usable,
+    this runs the LARGEST by file count and says so, rather than running each
+    in turn or refusing and asking. Reasoning: `run` renders ONE report, and
+    multiplexing it into several would either pick one anyway (a report needs
+    one audit sentence, one set of findings) or dump every corpus's numbers
+    into one call in a shape nothing here renders; asking is right for an
+    interactive prompt but this is a first run that may be piped or scripted,
+    and a question nobody can answer non-interactively is worse than a
+    reasonable default that says what it did and how to override it. Largest
+    is the one most likely to give a first-time reader real numbers instead
+    of a `n < 30` disclaimer. Any of the three options in IDEAS.md's own
+    framing is defensible; this is the one that keeps `run` a single-report
+    command and degrades gracefully to a stated guess instead of a stall."""
+    found = _discover_corpora()
+    lines = ["No path or --adapter given — looking in conventional locations:", ""]
+    for e in found:
+        lines.append(f"  - {e['adapter']}: {e['declared_path']} — {e['note']}")
+    usable = [e for e in found if e["usable"]]
+    if not usable:
+        lines += ["", "No corpus found in any conventional location. Point corpuslens at one "
+                       "explicitly:", "", "  corpuslens run <path> --adapter <adapter>", "",
+                  "Run `corpuslens adapters` to see what each adapter expects."]
+        print("\n".join(lines), file=sys.stderr)
+        return 1
+    chosen = max(usable, key=lambda e: e["n_files"])
+    lines.append("")
+    # DISPLAY the DECLARED form only (e.g. '~/.claude/projects'), never
+    # `resolved_path` — the resolved absolute path is $HOME plus that same
+    # constant, and $HOME is exactly where the owner's real username lives.
+    # `resolved_path` is used below ONLY to hand `run()` a real filesystem
+    # location to read from, never to print.
+    if len(usable) > 1:
+        others = ", ".join(f"{e['adapter']} ({e['n_files']} files)"
+                           for e in usable if e is not chosen)
+        lines.append(f"Found corpora in {len(usable)} locations ({others} too); running the "
+                     f"LARGEST by file count: '{chosen['adapter']}' at "
+                     f"{chosen['declared_path']} ({chosen['n_files']} files). Run corpuslens "
+                     f"with an explicit path and --adapter to analyze a different one instead.")
+    else:
+        lines.append(f"Using '{chosen['adapter']}' at {chosen['declared_path']} "
+                     f"({chosen['n_files']} files).")
+    print("\n".join(lines))
+    print()
+    return run(chosen["resolved_path"], chosen["adapter"], out, None, fmt,
+               since_day, until_day, share, discovered_path=chosen["declared_path"])
+
+
 def run(path: str, adapter: str, out: str | None, table: str | None = None,
         fmt: str = "markdown", since_day: int | None = None,
-        until_day: int | None = None, share: bool = False) -> int:
+        until_day: int | None = None, share: bool = False,
+        discovered_path: str | None = None) -> int:
+    """`path`/`adapter` are always the REAL location to read from, typed by
+    the user or resolved by `run_discovered` — that never changes here.
+
+    `discovered_path`, when not None, is a SEPARATE, DISPLAY-ONLY string:
+    the adapter's declared conventional form (e.g. '~/.claude/projects', from
+    `ingest.default_path_of`) passed by `run_discovered` so the audit record
+    can say the corpus was found rather than typed. It is never derived from
+    `path` here and never resolved — `guard.AuditRecord.__setattr__` refuses
+    a resolved value outright, because a resolved path under $HOME carries
+    the owner's real username into the same sentence that claims nothing
+    identifying left the wall (see NOTES-zeroconf.md). Putting it in the
+    audit record puts it in the SAME sentence that already names the
+    adapter, so a reader of the report alone (not just this run's terminal
+    output) can see what was read."""
     src = ingest.source_of(adapter)
     try:
         events, quarantine, dropped, n_files = _ingest(path, adapter, table)
@@ -149,6 +317,8 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
     guard.audit.n_events = len(events)
     guard.audit.n_dropped = dropped
     guard.audit.adapter = adapter
+    if discovered_path:
+        guard.audit.discovered_path = discovered_path
     if clause:
         guard.audit.filters.append(clause)
         guard.audit.n_filtered = n_filtered
@@ -537,10 +707,15 @@ def main(argv=None) -> int:
                             dest="fmt", help="output format (default: markdown)")
 
     r = sub.add_parser("run", help="run the process battery on a corpus "
-                                    "(a directory, a SQLite .db, or a Postgres DSN)")
-    r.add_argument("path", help="directory of *.jsonl, a SQLite .db file, or a "
-                                "Postgres connection string, per --adapter")
-    r.add_argument("--adapter", required=True, choices=ingest.available())
+                                    "(a directory, a SQLite .db, or a Postgres DSN) -- "
+                                    "or, with no arguments, discover one")
+    r.add_argument("path", nargs="?", default=None,
+                   help="directory of *.jsonl, a SQLite .db file, or a "
+                        "Postgres connection string, per --adapter. Omit this AND --adapter "
+                        "together to auto-discover a corpus in conventional locations "
+                        "(~/.claude/projects, ~/.cursor/chats, ~/.gemini/tmp).")
+    r.add_argument("--adapter", default=None, choices=ingest.available(),
+                   help="required unless PATH is also omitted for auto-discovery")
     r.add_argument("--out", default=None)
     r.add_argument("--table", default=None,
                    help="db adapters only: the turns table (schema.table ok); "
@@ -609,6 +784,12 @@ def main(argv=None) -> int:
                 and args.since_day > args.until_day:
             print(f"error: --since-day {args.since_day} is after --until-day {args.until_day} "
                   f"— that window is empty.", file=sys.stderr)
+            return 2
+        if args.path is None and args.adapter is None:
+            return run_discovered(args.out, args.fmt, args.since_day, args.until_day, args.share)
+        if args.path is None or args.adapter is None:
+            print("error: give both PATH and --adapter, or neither (to auto-discover a corpus "
+                  "in conventional locations) — see `corpuslens run --help`.", file=sys.stderr)
             return 2
         return run(args.path, args.adapter, args.out, args.table, args.fmt,
                    args.since_day, args.until_day, args.share)
