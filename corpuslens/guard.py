@@ -83,6 +83,18 @@ class AuditRecord:
     n_events: int = 0
     n_dropped: int = 0
     adapter: Optional[str] = None
+    # Set only when `corpuslens run` was given no path/--adapter and chose this
+    # corpus itself (see cli.py's zero-config discovery). None for every
+    # explicit-path run, which is the overwhelming majority of runs and whose
+    # sentence must read exactly as it always has. Discovery is a GUESS about
+    # intent standing in for something the user did not type, so unlike an
+    # explicit path (which is already in the user's own command line) this one
+    # has to appear in the report itself, not just a terminal preamble that
+    # vanishes once the report is written to --out and read later on its own —
+    # see NOTES-zeroconf.md for the reasoning. `share.coarsen_audit` strips it:
+    # a home-directory path can carry the owner's username and is exactly the
+    # kind of machine-identifying detail share mode exists to omit.
+    discovered_path: Optional[str] = None
     filters: list = field(default_factory=list)   # human-readable filter clauses
     n_filtered: int = 0                            # events excluded BY those filters
 
@@ -93,6 +105,7 @@ class AuditRecord:
         return {
             "profile": self.profile,
             "adapter": self.adapter,
+            "discovered_path": self.discovered_path,
             "granted": list(self.granted),
             "denied": list(self.denied),
             "analyzers_run": list(self.analyzers_run),
@@ -107,6 +120,14 @@ class AuditRecord:
     def sentence(self) -> str:
         g = ", ".join(self.granted) or "nothing beyond process analysis"
         r = f"; refused: {', '.join(self.analyzers_refused)}" if self.analyzers_refused else ""
+        disco = ""
+        if self.discovered_path:
+            # No path or --adapter was typed this run — the tool guessed, so
+            # the guess belongs in the same sentence the adapter name already
+            # lives in, not just in a terminal message the reader of a saved
+            # report will never see.
+            disco = (f"No path or --adapter was given: corpuslens discovered this corpus "
+                     f"itself at {self.discovered_path}, using the '{self.adapter}' adapter. ")
         f = ""
         if self.filters:
             # a filtered run analyzes a SUBSET — say so, and say how big the cut was,
@@ -114,7 +135,8 @@ class AuditRecord:
             f = (f"This run was filtered ({'; '.join(self.filters)}): {self.n_filtered} further "
                  f"event(s) fell outside the window and are excluded from every number below, "
                  f"so these are subset numbers, not corpus numbers. ")
-        base = (f + f"This run read {self.n_events} events (dropped {self.n_dropped}, counted not hidden), "
+        base = (disco + f
+                + f"This run read {self.n_events} events (dropped {self.n_dropped}, counted not hidden), "
                 f"ran {len(self.analyzers_run)} process analyzers under profile '{self.profile}', "
                 f"and was granted {g}{r}. ")
         if self.granted:

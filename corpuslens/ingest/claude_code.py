@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..model import AuthorClass, CoarseTime, DataType, Event, Quarantine, Surface
-from . import register, register_label_text
+from . import register, register_default_path, register_label_text
 from .injection import authored_text
 
 ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T")
@@ -362,6 +362,7 @@ def _ingest_impl(path: str, corpus_id: str, want_text: bool):
     return events, quarantine, dropped, text_by_ref
 
 
+@register_default_path("claude-code", "~/.claude/projects")
 @register("claude-code")
 def ingest(path: str, corpus_id: str = "corpus"):
     """(events, quarantine, dropped) — always exactly this 3-tuple, for every

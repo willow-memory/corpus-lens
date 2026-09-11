@@ -67,7 +67,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..model import Surface
-from . import register
+from . import register, register_default_path
 from ._rows import assemble
 from .claude_code import _iter_lines, _parse_ts
 
@@ -114,6 +114,7 @@ def _session_kind(lines) -> str | None:
     return None
 
 
+@register_default_path("gemini-cli", "~/.gemini/tmp")
 @register("gemini-cli")
 def ingest(path: str, corpus_id: str = "corpus"):
     root = Path(path)

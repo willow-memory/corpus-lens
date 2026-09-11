@@ -157,10 +157,19 @@ def coarsen_audit(audit):
     functions of `self`'s fields, so calling them on this copy is the ONLY
     code path that produces either; there is no second, separately-written
     sentence to drift out of sync with the fields (or with a future edit to
-    `sentence()`'s wording)."""
+    `sentence()`'s wording).
+
+    Same reasoning covers `discovered_path`: it is set only when `corpuslens
+    run` was given no path/--adapter and found the corpus itself under the
+    owner's home directory (see cli.py's zero-config discovery), and a home
+    path can carry the owner's username. That is exactly the class of
+    machine-identifying detail share mode exists to omit, so it is dropped
+    here rather than carried into an output meant to leave the machine —
+    never rounded, never partially shown, gone."""
     return dataclasses.replace(
         audit,
         n_events=band_n(audit.n_events),
         n_dropped=band_n(audit.n_dropped),
         n_filtered=band_n(audit.n_filtered),
+        discovered_path=None,
     )
