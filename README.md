@@ -294,7 +294,12 @@ statement of what left the wall is not a corpuslens result.
 
 The filter is an **allowlist of field names**. A field a future analyzer invents
 is excluded by default rather than included by default, which is the same
-fail-closed rule the Guard follows: absence of policy reads as denial.
+fail-closed rule the Guard follows: absence of policy reads as denial. Before
+emitting, the Guard also runs `scan_share_shape` on the coarsened payload
+itself — every field allowlisted, every denominator a band, never an exact
+count — a check on the payload's *shape*, distinct from (and stricter than)
+`scan_egress`'s check of the *rendered text* for quarantined values. Neither
+check tells you whether the result is safe to publish; see below.
 
 **Read what it claims carefully.** Share mode is *coarsened*. It is not
 anonymized and not de-identified, and this project has **not measured** whether

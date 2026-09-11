@@ -47,6 +47,7 @@ from typing import Optional
 
 from .egress_shapes import find_structural_leaks
 from .model import PERSON_CLAIM_TYPES, PROCESS_CLAIM_TYPES, Quarantine
+from .share_shape import find_shape_violations
 
 
 class WallError(Exception):
@@ -337,6 +338,42 @@ class Guard:
                 "was never quarantined, so the literal scan could not see it; "
                 "that is a highest-class bug, report it like one.")
         return text
+
+    def scan_share_shape(self, results: dict, audit_dict: dict) -> None:
+        """The second, distinct check `DESIGN-guard-extraction.md` (2a) names
+        as missing: a schema/shape assertion on the COARSENED share payload,
+        run on the structured dict BEFORE it is rendered to text — distinct
+        from `scan_egress`, which only ever sees rendered text and can only
+        ask whether a quarantined literal or shape appears in it. Neither
+        phase of `scan_egress` has any concept of "this field is not
+        allowlisted" or "this denominator is an exact count, not a band" —
+        that gap is real and was hit in production (see the audit note in
+        `DESIGN-guard-extraction.md` §2a: a first share-mode implementation
+        banded every analyzer's `n` but still published the corpus's exact
+        `n_events`, and `scan_egress` passed it cleanly, because an exact `n`
+        is neither a quarantined literal nor a recognizable structural
+        shape).
+
+        Delegates the actual check to `share_shape.find_shape_violations`,
+        which is pure and returns violation LABELS only — this method's only
+        job is the same one `scan_egress` already does for its own findings:
+        raise, so a caller cannot compute a verdict and then forget to act on
+        it. The raised error names the violated fields, never a payload
+        value, matching every other error this module raises.
+
+        THIS DOES NOT VERIFY THE COARSENED VALUES ARE SAFE TO PUBLISH — only
+        that the coarsening step ran and produced the expected shape (every
+        field allowlisted, every denominator a band). See `share_shape.py`'s
+        module docstring and `share.py`'s for what neither this check nor
+        share mode itself claims."""
+        violations = find_shape_violations(results, audit_dict)
+        if violations:
+            raise WallError(
+                "share shape scan: the coarsened share payload contains "
+                f"{', '.join(violations)} — refusing to emit. This means the "
+                "coarsening step in share.py did not run, or a field/denominator "
+                "was added without being reviewed onto its allowlist; that is a "
+                "highest-class bug, report it like one.")
 
     def n_events(self) -> int:
         return self.audit.n_events
