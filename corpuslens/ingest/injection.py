@@ -38,6 +38,17 @@ _INJECTED_TAGS = (
     # The inner tags (task-id, status, summary, result, usage …) are children of
     # this one, so stripping the wrapper takes them with it.
     "task-notification",
+    # Gemini CLI (`google-gemini/gemini-cli`, package `@google/gemini-cli-core`),
+    # read from source 2026-09-11, not from an observed corpus — see the
+    # provenance note in `ingest/gemini_cli.py`. `<session_context>` is the
+    # cwd/date/OS/directory-tree/memory block `environmentContext.ts` inserts
+    # as the session's first "user" turn; `<hook_context>` wraps output an
+    # external hook returns, injected into a later "user" turn from
+    # `core/client.ts` and `coreToolHookTriggers.ts`. Gemini CLI's own resume
+    # code (`utils/sessionUtils.ts::isIgnoredUserContent`) already treats both
+    # prefixes as not-a-real-user-turn for its own purposes — the same
+    # front-loading shape as every tag above, this runtime's names for it.
+    "session_context", "hook_context",
 )
 
 #: An injected block may carry attributes — `<mcp_instructions description="…">`
