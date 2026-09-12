@@ -7,6 +7,13 @@ amendments — corrections sit beside the record they correct, never overwrite i
 Versioned sections are written by release-please from the commit messages; the
 hand-written history below them predates the release pipeline.
 
+## [0.7.2](https://github.com/willow-memory/corpus-lens/compare/v0.7.1...v0.7.2) (2026-09-12)
+
+
+### Fixed
+
+* **ingest:** a harness-written user turn is bookkeeping, keyed on its own fields ([1172ea1](https://github.com/willow-memory/corpus-lens/commit/1172ea1a6cfd93b46cb598a498295590c9b2ea12))
+
 ## [0.7.1](https://github.com/willow-memory/corpus-lens/compare/v0.7.0...v0.7.1) (2026-09-11)
 
 
