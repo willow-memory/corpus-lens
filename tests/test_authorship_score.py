@@ -49,6 +49,7 @@ from corpuslens import label as labelmod
 from corpuslens.cli import main as cli_main
 from corpuslens.model import AuthorClass, CoarseTime, DataType, Event, Surface
 
+from test_label import _leaks_in
 from test_pipeline import _cc_line, _write
 
 
@@ -443,10 +444,9 @@ class LabelCliAuthorshipTests(LabelCorpusFixture):
             self.assertIn(rec["label"], ("human", "agent"))
         # "y" on the authorship question means HUMAN was recorded
         self.assertTrue(all(r["label"] == "human" for r in doc["authorship_labels"]))
-        # never leaks content
+        # never leaks content — `_leaks_in` is test_label's scan, planted there
         raw = store.read_text()
-        for leak in ("build the parser", "config file", "2026-02-01"):
-            self.assertNotIn(leak, raw)
+        self.assertEqual(_leaks_in(raw, ("build the parser", "config file", "2026-02-01")), [])
 
     def test_answering_n_on_the_authorship_question_records_agent(self):
         store = self.d / "labels.json"

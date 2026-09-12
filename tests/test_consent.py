@@ -16,6 +16,7 @@ And two things the seam deliberately leaves out are pinned as absences: the
 subject's id never reaches a report, and a consent grant for
 `person_inference` does not admit a person-claim analyzer.
 """
+import ast
 import hashlib
 import io
 import json
@@ -53,6 +54,44 @@ def _run(argv):
     return rc, out.getvalue(), err.getvalue()
 
 
+# ── the three source scans, as helpers so they can be planted ──────────────
+# Each was an inline check in a test body until tests/test_scans_fire.py's
+# meta-scan reported it: a scan written inline has nothing to name and
+# nothing to plant, so it can never be shown to fire. Factored out, each has
+# a planted-violation test below.
+
+def _non_stdlib_imports(source):
+    """Every absolute import in `source` whose top-level module is not in the
+    standard library — the reason a stdlib-only-by-charter package can take
+    the vendored core at all."""
+    stdlib = set(getattr(sys, "stdlib_module_names", set())) | {"__future__"}
+    offenders = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            offenders += [a.name for a in node.names if a.name.split(".")[0] not in stdlib]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0:
+            if (node.module or "").split(".")[0] not in stdlib:
+                offenders.append(node.module)
+    return offenders
+
+
+def _vendored_body_names(path, needle):
+    """Whether the vendored body of `path` — from `_MARKER` to EOF, the part
+    pinned to willow-mcp — names `needle`. The local docstring above the
+    marker is not the body and may say what it likes."""
+    text = path.read_text(encoding="utf-8")
+    return needle in text[text.index(_MARKER):]
+
+
+def _run_parser_mentions(cli_path, needle):
+    """Whether cli.py's `run` sub-parser block — the text between
+    `sub.add_parser("run"` and `sub.add_parser("doctor"` — carries `needle`.
+    Read from the source, because argparse exits on --help."""
+    src = cli_path.read_text(encoding="utf-8")
+    block = src[src.index('sub.add_parser("run"'):src.index('sub.add_parser("doctor"')]
+    return needle in block
+
+
 class VendoredCopyTests(unittest.TestCase):
     def test_core_body_matches_willow_mcp_pin(self):
         text = (PKG / "core.py").read_text(encoding="utf-8")
@@ -61,21 +100,31 @@ class VendoredCopyTests(unittest.TestCase):
 
     def test_core_imports_stdlib_only(self):
         """The reason a stdlib-only-by-charter package can take this at all."""
-        import ast
-        stdlib = set(getattr(sys, "stdlib_module_names", set())) | {"__future__"}
-        tree = ast.parse((PKG / "core.py").read_text(encoding="utf-8"))
-        offenders = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                offenders += [a.name for a in node.names if a.name.split(".")[0] not in stdlib]
-            elif isinstance(node, ast.ImportFrom) and node.level == 0:
-                if (node.module or "").split(".")[0] not in stdlib:
-                    offenders.append(node.module)
-        self.assertEqual(offenders, [])
+        self.assertEqual(
+            _non_stdlib_imports((PKG / "core.py").read_text(encoding="utf-8")), [])
+
+    def test_planted_third_party_import_is_caught(self):
+        self.assertEqual(
+            sorted(_non_stdlib_imports(
+                "import json\nimport requests\nfrom yaml import safe_load\n"
+                "from . import sibling\n")),
+            ["requests", "yaml"],   # the relative import is the package's own
+        )
 
     def test_core_never_imports_corpuslens(self):
-        text = (PKG / "core.py").read_text(encoding="utf-8")
-        self.assertNotIn("corpuslens", text[text.index(_MARKER):])
+        self.assertFalse(_vendored_body_names(PKG / "core.py", "corpuslens"))
+
+    def test_planted_corpuslens_reference_in_the_body_is_caught(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            planted = Path(tmp) / "core.py"
+            planted.write_text(
+                '"""A docstring may say corpuslens; the body may not."""\n'
+                f"{_MARKER}\nimport corpuslens\n", encoding="utf-8")
+            self.assertTrue(_vendored_body_names(planted, "corpuslens"))
+            planted.write_text(
+                '"""A docstring may say corpuslens; the body may not."""\n'
+                f"{_MARKER}\nimport json\n", encoding="utf-8")
+            self.assertFalse(_vendored_body_names(planted, "corpuslens"))
 
     def test_scope_names_line_up_with_the_guard(self):
         """Same name on purpose, wired on purpose NOT at all — see binding."""
@@ -308,11 +357,25 @@ class WhatIsDeliberatelyNotWiredTests(unittest.TestCase):
     def test_run_has_no_flag_that_grants(self):
         """`consent grant` is the only door; `run`'s parser only ever LOOKS UP
         a grant. Read from the source: argparse exits on --help."""
-        src = (HERE.parent / "corpuslens" / "cli.py").read_text(encoding="utf-8")
-        run_block = src[src.index('sub.add_parser("run"'):src.index('sub.add_parser("doctor"')]
-        self.assertNotIn("--grant", run_block)
-        self.assertNotIn("consentmod.grant", run_block)
-        self.assertIn("grant must verify", run_block)   # the flag's help says what it checks
+        cli = HERE.parent / "corpuslens" / "cli.py"
+        self.assertFalse(_run_parser_mentions(cli, "--grant"))
+        self.assertFalse(_run_parser_mentions(cli, "consentmod.grant"))
+        self.assertTrue(_run_parser_mentions(cli, "grant must verify"))   # the flag's help says what it checks
+
+    def test_planted_grant_flag_on_run_is_caught(self):
+        """And the slice is what makes it a `run` check: the same flag on the
+        `doctor` parser is not `run`'s and must not be reported."""
+        with tempfile.TemporaryDirectory() as tmp:
+            planted = Path(tmp) / "cli.py"
+            planted.write_text(
+                'run = sub.add_parser("run")\nrun.add_argument("--grant")\n'
+                'doc = sub.add_parser("doctor")\n', encoding="utf-8")
+            self.assertTrue(_run_parser_mentions(planted, "--grant"))
+            planted.write_text(
+                'run = sub.add_parser("run")\n'
+                'doc = sub.add_parser("doctor")\ndoc.add_argument("--grant")\n',
+                encoding="utf-8")
+            self.assertFalse(_run_parser_mentions(planted, "--grant"))
 
 
 if __name__ == "__main__":
