@@ -4,6 +4,11 @@ Things worth building, with enough of the reasoning that a future reader can
 disagree with it. Nothing here is a promise — the README's "named and
 deliberately unbuilt" list is the short version, and this is the long one.
 
+The **numbered index** of everything here is [docs/ideas.md](docs/ideas.md):
+one line per item, read by willow-reconciler and joined to commits by
+`Idea-Id` trailers (see CONTRIBUTING.md). This file keeps the reasoning; that
+file keeps the numbers, and its numbers are permanent.
+
 The rule that governs all of it: **a feature that cannot state its denominator,
 or that would make the tool claim more than it can support, does not get built
 here no matter how good the demo would look.**

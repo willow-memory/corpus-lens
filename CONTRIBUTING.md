@@ -69,6 +69,26 @@ are the acceptance tests for the centerpiece — including one that *documents*
 what the wall does NOT hide, so nobody silently re-introduces an overclaim. CI
 runs the suite on Python 3.10–3.14 plus a packaging smoke test.
 
+## The Idea-Id commit-trailer convention
+
+A commit that lands an idea recorded in [docs/ideas.md](docs/ideas.md) carries
+an `Idea-Id: willow-ideas-<num>` git trailer (add `Idea-Status: partial` when a
+commit only partly lands it). The prefix is the fleet's, not this repo's — at
+willow-reconciler 0.6.0 `reconciler/ids.py` derives the id from the item's
+number alone. It is the durable join key willow-reconciler reads; a wrong id is
+worse than no id, so never type one by hand:
+
+    reconciler id --repo ./ --doc docs/ideas.md --grep "words from the item"
+    reconciler install-hook --repo ./       # derives it from a branch named idea-NN
+
+The reconciler is not a dependency of this repo (stdlib-only, tests included);
+install it in a throwaway venv, `pip install "willow-reconciler>=0.6.0"`, to
+run those. Write the repo as `./`, not `.`: at 0.6.0 a `--repo` with no slash
+in it is read as a bare fleet name, not a path. `.github/workflows/trailers.yml` runs `reconciler verify` on every
+PR and fails on a trailer that names an item the doc does not contain. The
+long-form reasoning behind each item stays in [IDEAS.md](IDEAS.md); the
+numbers in docs/ideas.md are permanent and are never reused.
+
 ## Releasing
 
 Releases are cut by release-please, on the fleet's standard shape (ported from
