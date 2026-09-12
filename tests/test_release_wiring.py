@@ -118,6 +118,24 @@ def _packaged_disagreements(packaged: tuple[str, ...], wheel: list[str]) -> list
     )
 
 
+#: A top-level `permissions:` block — at column 0, so a job-level block does
+#: not count for the workflow and a commented-out one does not count at all.
+_PERMISSIONS_BLOCK = re.compile(r"^permissions:", re.MULTILINE)
+
+
+def _workflows_without_permissions(workflows_dir: Path) -> list[str]:
+    """Workflow files that declare no top-level `permissions:` block and so
+    run with the repository's default `GITHUB_TOKEN` scope. CodeQL reported
+    the first such file added after the others had all declared theirs; the
+    scope is a claim about what a workflow may do, and it is made explicitly
+    here or not at all."""
+    return sorted(
+        path.name
+        for path in workflows_dir.glob("*.yml")
+        if not _PERMISSIONS_BLOCK.search(path.read_text(encoding="utf-8"))
+    )
+
+
 def _hidden_types(config: dict) -> frozenset[str]:
     """The conventional-commit types the config hides from the changelog —
     and therefore from cutting a release."""
@@ -162,6 +180,31 @@ class TitleGuardIsWiredWhereAutoMergeIsArmed(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertEqual(_auto_merge_without_title_guard(by_hand), [])
+
+
+class EveryWorkflowDeclaresItsTokenScope(unittest.TestCase):
+    """No workflow inherits the repository's default `GITHUB_TOKEN` scope."""
+
+    def test_every_workflow_declares_a_permissions_block(self):
+        self.assertTrue(list(WORKFLOWS.glob("*.yml")), "the workflows directory is expected to be non-empty")
+        self.assertEqual(_workflows_without_permissions(WORKFLOWS), [])
+
+    def test_planted_workflow_without_a_permissions_block_is_reported(self):
+        """Planted: a tree with one scoped workflow, one that only scopes a
+        job (not the workflow), one with the block commented out, and one
+        with none at all — the last three are reported, the first is not."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workflows = Path(tmp)
+            (workflows / "scoped.yml").write_text(
+                "name: a\non: push\npermissions:\n  contents: read\njobs: {}\n", encoding="utf-8")
+            (workflows / "job-only.yml").write_text(
+                "name: b\non: push\njobs:\n  x:\n    permissions:\n      contents: read\n",
+                encoding="utf-8")
+            (workflows / "commented.yml").write_text(
+                "name: c\non: push\n# permissions:\n#   contents: read\njobs: {}\n", encoding="utf-8")
+            (workflows / "bare.yml").write_text("name: d\non: push\njobs: {}\n", encoding="utf-8")
+            self.assertEqual(_workflows_without_permissions(workflows),
+                             ["bare.yml", "commented.yml", "job-only.yml"])
 
 
 class PackagedConstantAgreesWithPyproject(unittest.TestCase):

@@ -18,6 +18,12 @@ on:
   pull_request:
     branches: [main]
 
+# The job checks out, installs and runs `git log`; it writes nothing, so the
+# token gets exactly that. Every workflow here declares its scope — a test
+# asserts it — rather than inheriting the repository default.
+permissions:
+  contents: read
+
 jobs:
   verify-trailers:
     runs-on: ubuntu-latest
