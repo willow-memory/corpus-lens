@@ -609,7 +609,7 @@ the drops still counted, the wall still holds. It changes what the numbers
 *mean* — and a tool that describes itself as a lens for studying yourself should
 say out loud that looking is not a neutral act.
 
-## Status: spine (0.2.0, on PyPI)
+## Status: spine
 
 Built: event model, the wall, seven adapters (claude-code, cursor, cursor-store,
 gemini-cli, forge, sqlite, postgres), injection filter, six analyzers with per-analyzer
@@ -619,14 +619,24 @@ computation, CLI (`run` — with zero-argument discovery — `doctor`, `adapters
 share + label + diff + fingerprint + a regression test for every review and
 dogfooding finding).
 
-**0.2.0 is still a spine, and the version number still says so.** The wall, the
-adapters and the analyzers are tested and the report is honest about its own
-denominators — but the classifiers are heuristics whose error nobody has
-measured yet (`label` is how you measure it; nobody has run it on a large
-corpus), the reference numbers are one verified N=1, and the list below is
-real. This is not a 1.x compatibility promise, and the one time the release
+**At 0.2.0 this was a spine, and the version number said so.** The wall, the
+adapters and the analyzers were tested and the report was honest about its own
+denominators — but the classifiers were heuristics whose error nobody had
+measured yet (`label` is how you measure it; nobody had run it on a large
+corpus), the reference numbers were one verified N=1, and the list below was
+real. That was not a 1.x compatibility promise, and the one time the release
 pipeline accidentally published it as one, it was withdrawn
 ([BUGS.md](BUGS.md)).
+
+**What is true now:** the top section of `CHANGELOG.md` is the release that is
+on PyPI — read it, not this section, for the version. Several releases have
+landed since 0.2.0 (an authorship classifier, a forge adapter, a consent core,
+structural-vs-malformed drop accounting, a share-shape guard, among them); see
+`CHANGELOG.md` for what shipped and when. The "spine" framing below, and the
+unbuilt list that follows it, describe the project's shape as audited at
+0.2.0 and have not been re-audited against every release since — read them as
+dated history and a still-open ideas list, not a live inventory of the
+current version.
 
 **What 0.2.0 added, and what it cost.** Seven features landed at once, each
 built in isolation and then audited against these rules before merging. The
