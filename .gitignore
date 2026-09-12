@@ -7,3 +7,6 @@ build/
 
 # Claude Code agent worktrees — ephemeral tooling state, never part of the project.
 .claude/worktrees/
+
+# Local lens run output
+.lens-out/

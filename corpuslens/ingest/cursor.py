@@ -15,6 +15,7 @@ stay distinct.
 
 from __future__ import annotations
 
+import calendar
 import datetime
 import re
 from pathlib import Path
@@ -45,7 +46,13 @@ MON = {
         )
     )
 }
+for _i in range(1, 13):
+    MON[calendar.month_abbr[_i]] = _i
 TAG = re.compile(r"^\s*<timestamp>\w+,\s+(\w+)\s+(\d{1,2}),\s+(\d{4})")
+
+
+def _month_num(token: str) -> int | None:
+    return MON.get(token)
 
 
 @register("cursor")
@@ -84,11 +91,12 @@ def ingest(path: str, corpus_id: str = "corpus"):
             for bi, blk in enumerate(blocks):
                 txt = blk.get("text") or ""
                 m = TAG.match(txt)
-                if not m or m[1] not in MON:
+                month = _month_num(m[1]) if m else None
+                if not m or month is None:
                     drops.add(MISSING_TIMESTAMP)  # every non-dated block counted
                     continue
                 try:
-                    d = datetime.date(int(m[3]), MON[m[1]], int(m[2]))
+                    d = datetime.date(int(m[3]), month, int(m[2]))
                 except ValueError:
                     drops.add(MISSING_TIMESTAMP)
                     continue
