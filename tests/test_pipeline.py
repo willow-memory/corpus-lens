@@ -295,23 +295,33 @@ class PipelineTests(unittest.TestCase):
         )
         sub = tempfile.TemporaryDirectory()
         Path(sub.name, "naive.jsonl").write_bytes(j.read_bytes())
-        old = os.environ.get("TZ")
-        try:
-            os.environ["TZ"] = "Asia/Kolkata"
-            import time
+        import time
 
-            time.tzset()
+        def five_minutes_apart():
             events, q, _ = ingest.get("claude-code")(sub.name)
             deltas = [e.time.delta_prev_s for e in events if e.time.delta_prev_s is not None]
             self.assertIn(300.0, deltas)  # 5 min, independent of host TZ
-        finally:
-            if old is None:
-                os.environ.pop("TZ", None)
-            else:
-                os.environ["TZ"] = old
-            import time
 
-            time.tzset()
+        tzset = getattr(time, "tzset", None)
+        if tzset is None:
+            # Windows: `time.tzset` does not exist and the C runtime does not
+            # re-read TZ, so the host zone cannot be swapped under the test.
+            # The property still holds or fails under the host's own zone;
+            # that is the weaker half of this check, run rather than skipped,
+            # and the strong half runs on every POSIX leg of the matrix.
+            five_minutes_apart()
+        else:
+            old = os.environ.get("TZ")
+            try:
+                os.environ["TZ"] = "Asia/Kolkata"
+                tzset()
+                five_minutes_apart()
+            finally:
+                if old is None:
+                    os.environ.pop("TZ", None)
+                else:
+                    os.environ["TZ"] = old
+                tzset()
         sub.cleanup()
 
     def test_classifier_prose_false_positives_fixed(self):

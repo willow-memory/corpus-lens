@@ -92,6 +92,14 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Put psql on PATH
+        # The postgres adapter shells out to `psql`, and its wiring test needs
+        # the binary present to observe the closed-class error a malformed
+        # DSN produces. The Linux image has it on PATH; the Windows image
+        # ships PostgreSQL under `PGBIN` and leaves it off PATH. Same
+        # precondition on both legs, then — if PGBIN is unset here the test
+        # fails visibly with the adapter's own "requires psql" message.
+        run: echo "$PGBIN" >> "$GITHUB_PATH"
       - name: Run the test suite (warnings are errors)
         run: python -m unittest discover -s tests -v
       - name: Fail on leaked file handles
