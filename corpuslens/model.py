@@ -12,6 +12,7 @@ deliberately ABSENT from the feature set — that feature is exactly where
 names and identities live, and it must not exist until the feature layer has
 its own PII scrub. Absence is the current scrub.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -24,9 +25,9 @@ class Surface(str, Enum):
     WEB = "web"
     IDE = "ide"
     FLEET = "fleet"
-    DB = "db"        # sourced from a SQLite/Postgres corpus; the original
-                     # interaction surface is not preserved by the store, so we
-                     # label it honestly as "database" rather than guess one.
+    DB = "db"  # sourced from a SQLite/Postgres corpus; the original
+    # interaction surface is not preserved by the store, so we
+    # label it honestly as "database" rather than guess one.
 
 
 class AuthorClass(str, Enum):
@@ -46,33 +47,37 @@ class DataType(str, Enum):
 # Analyzers must declare what KIND of statement they emit. Only process-shaped
 # claims are representable; "he is [category]" has no claim type, so it cannot
 # be output. Adding a person-shaped claim type is a deliberate, reviewable act.
-PROCESS_CLAIM_TYPES = frozenset({
-    "steering_density",       # where intent arrives (upfront vs mid-task)
-    "composition_mix",        # authored / read-ref / deliberation shares
-    "thread_shape",           # threads, resumptions, concurrency (relative days)
-    "tempo",                  # inter-event durations
-    "clarification_pull",     # fork/deferral rates
-    "turns_to_completion",
-    "leakage_demonstration",  # quarantined class: proves a leak, never ships data
-    "authorship_mix",         # HUMAN/AGENT/UNKNOWN share of operator-role turns.
-                              # Checks the "the operator role is a person" assumption
-                              # every other analyzer silently inherits — and which the
-                              # tool was measured getting wrong on an agent corpus.
-                              # Process-shaped, never person-shaped: it says which
-                              # CLASS of author filled a role this corpus already has,
-                              # and can never say which person. `subject.py` derives a
-                              # run's subject from it; `authorship.py` computes it.
-    "authoring_plurality",    # opaque count + shape of distinct operator-role authoring
-                              # signatures — a corpus property ("how many sources"), never
-                              # a per-turn attribution and never a claim about which of
-                              # them is which person; see analyze/signatures.py
-})
+PROCESS_CLAIM_TYPES = frozenset(
+    {
+        "steering_density",  # where intent arrives (upfront vs mid-task)
+        "composition_mix",  # authored / read-ref / deliberation shares
+        "thread_shape",  # threads, resumptions, concurrency (relative days)
+        "tempo",  # inter-event durations
+        "clarification_pull",  # fork/deferral rates
+        "turns_to_completion",
+        "leakage_demonstration",  # quarantined class: proves a leak, never ships data
+        "authorship_mix",  # HUMAN/AGENT/UNKNOWN share of operator-role turns.
+        # Checks the "the operator role is a person" assumption
+        # every other analyzer silently inherits — and which the
+        # tool was measured getting wrong on an agent corpus.
+        # Process-shaped, never person-shaped: it says which
+        # CLASS of author filled a role this corpus already has,
+        # and can never say which person. `subject.py` derives a
+        # run's subject from it; `authorship.py` computes it.
+        "authoring_plurality",  # opaque count + shape of distinct operator-role authoring
+        # signatures — a corpus property ("how many sources"), never
+        # a per-turn attribution and never a claim about which of
+        # them is which person; see analyze/signatures.py
+    }
+)
 
-PERSON_CLAIM_TYPES = frozenset({
-    # Representable ONLY inside the quarantined demonstration class; no analyzer
-    # in the default registry may declare these.
-    "life_partition",         # weekday x hour maps, custody-shaped inference
-})
+PERSON_CLAIM_TYPES = frozenset(
+    {
+        # Representable ONLY inside the quarantined demonstration class; no analyzer
+        # in the default registry may declare these.
+        "life_partition",  # weekday x hour maps, custody-shaped inference
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -87,17 +92,18 @@ class CoarseTime:
     otherwise. What the wall protects is the absolute anchor (which real date
     is day 0, which timezone, which hour) — not the fact that the operator has
     a weekly rhythm. See guard.py and README for the guarantee as stated."""
+
     day_offset: int
     delta_prev_s: Optional[float] = None  # fine RELATIVE time is process-safe
 
 
 @dataclass
 class Event:
-    event_id: str              # opaque hash — never a filename (filenames leak dates/names)
+    event_id: str  # opaque hash — never a filename (filenames leak dates/names)
     corpus_id: str
     adapter_id: str
-    source_ref: str            # opaque hash; the real file:line lives in Quarantine.ref_map
-    thread_id: str             # opaque hash of the session — no filename
+    source_ref: str  # opaque hash; the real file:line lives in Quarantine.ref_map
+    thread_id: str  # opaque hash of the session — no filename
     surface: Surface
     author_class: AuthorClass
     data_type: DataType
@@ -117,6 +123,7 @@ class Quarantine:
     "filename:line" so re-derivation is still possible — but only through the
     Guard, because filenames routinely embed dates (`chat-2026-02-01T14.jsonl`)
     and names, which would smuggle absolute time and identity past the wall."""
-    base_date_iso: Optional[str] = None   # calendar anchor for day_offset 0
+
+    base_date_iso: Optional[str] = None  # calendar anchor for day_offset 0
     local_tz: Optional[str] = None
-    ref_map: dict = field(default_factory=dict)   # opaque_ref -> "file:line"
+    ref_map: dict = field(default_factory=dict)  # opaque_ref -> "file:line"

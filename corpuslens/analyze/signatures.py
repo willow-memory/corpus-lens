@@ -86,12 +86,13 @@ be blind to that fact — that corpus is out of scope for this whole project
 would be the guardian-consent tool IDEAS.md names as deliberately unbuilt,
 arrived at by accident through a side door.
 """
+
 from __future__ import annotations
 
 from collections import Counter, defaultdict
 
 from ..model import AuthorClass, DataType
-from . import SMALL_N, register, semantic_hash
+from . import SMALL_N, register
 
 # `corpuslens/authorship.py` is a SIBLING deliverable — HUMAN/AGENT/UNKNOWN and
 # classify_turn(features, marked_machine) — built elsewhere, not rebuilt here
@@ -113,6 +114,7 @@ except ImportError:  # pragma: no cover — exercised via the stub in tests
     def classify_turn(features: dict, marked_machine: bool = False) -> str:
         return AGENT if marked_machine else UNKNOWN
 
+
 # What `authoring_plurality`'s number MEANS: eligibility is operator prompt
 # turns with >=12 characters (the same de-injection floor every other
 # analyzer here uses); a turn's length band is fixed word-count cutoffs, not
@@ -124,14 +126,20 @@ except ImportError:  # pragma: no cover — exercised via the stub in tests
 # `_AGENT_SPLIT_MIN_N` turns. Move any of these and "N distinct signatures"
 # counts a different partition under the same name.
 _MIN_CHARS = 12
-_SHORT_MAX_WORDS = 5     # word_count <= this -> "short"
-_LONG_MIN_WORDS = 40     # word_count > this -> "long"; between the two -> "medium"
+_SHORT_MAX_WORDS = 5  # word_count <= this -> "short"
+_LONG_MIN_WORDS = 40  # word_count > this -> "long"; between the two -> "medium"
 _BAND_FLOOR_SHARE = 0.15
 _BAND_MIN_COUNT = 5
 _AGENT_SPLIT_MIN_N = SMALL_N
 
-_SIGNATURE_INPUTS = (str(_MIN_CHARS), str(_SHORT_MAX_WORDS), str(_LONG_MIN_WORDS),
-                     str(_BAND_FLOOR_SHARE), str(_BAND_MIN_COUNT), str(_AGENT_SPLIT_MIN_N))
+_SIGNATURE_INPUTS = (
+    str(_MIN_CHARS),
+    str(_SHORT_MAX_WORDS),
+    str(_LONG_MIN_WORDS),
+    str(_BAND_FLOOR_SHARE),
+    str(_BAND_MIN_COUNT),
+    str(_AGENT_SPLIT_MIN_N),
+)
 _SIGNATURE_HASH = "94f4f8624a39e8fd"
 
 
@@ -148,17 +156,23 @@ def _majority_band(feats: list) -> str:
     return Counter(bands).most_common(1)[0][0]
 
 
-@register("signature_plurality", claims=("authoring_plurality",),
-          denominator="operator prompt turns with >=12 characters (de-injected), classified by "
-                      "the authorship contract (authorship.py)",
-          version=1,
-          grading_question=("none of GRADING.md's numbered questions — the rubric's ten questions "
-                             "assume one operator directing one machine (see IDEAS.md, 'Process "
-                             "when the work is delegated'); this analyzer checks that precondition "
-                             "rather than answering a numbered question, and is scoped to say "
-                             "nothing about people — only how many distinct operator-role "
-                             "signatures produced the corpus"),
-          semantic_hash=_SIGNATURE_HASH, semantic_inputs=_SIGNATURE_INPUTS)
+@register(
+    "signature_plurality",
+    claims=("authoring_plurality",),
+    denominator="operator prompt turns with >=12 characters (de-injected), classified by "
+    "the authorship contract (authorship.py)",
+    version=1,
+    grading_question=(
+        "none of GRADING.md's numbered questions — the rubric's ten questions "
+        "assume one operator directing one machine (see IDEAS.md, 'Process "
+        "when the work is delegated'); this analyzer checks that precondition "
+        "rather than answering a numbered question, and is scoped to say "
+        "nothing about people — only how many distinct operator-role "
+        "signatures produced the corpus"
+    ),
+    semantic_hash=_SIGNATURE_HASH,
+    semantic_inputs=_SIGNATURE_INPUTS,
+)
 def signature_plurality(events):
     """Count distinct authoring signatures in the operator role.
 
@@ -170,15 +184,23 @@ def signature_plurality(events):
     or time. `SMALL_N` and "the contract found nothing confident" both refuse
     rather than report a manufactured count.
     """
-    turns = [e.features for e in events
-             if e.author_class is AuthorClass.OPERATOR and e.data_type is DataType.PROMPT
-             and e.features.get("char_count", 0) >= _MIN_CHARS]
+    turns = [
+        e.features
+        for e in events
+        if e.author_class is AuthorClass.OPERATOR
+        and e.data_type is DataType.PROMPT
+        and e.features.get("char_count", 0) >= _MIN_CHARS
+    ]
     total = len(turns)
     if total < SMALL_N:
-        return {"error": (f"only {total} eligible operator turn(s) — below the {SMALL_N}-turn "
-                          "floor this tool uses everywhere a small sample would read as a finding "
-                          "instead of noise. Clustering a handful of turns into 'signatures' would "
-                          "manufacture a result, so this refuses instead of reporting one.")}
+        return {
+            "error": (
+                f"only {total} eligible operator turn(s) — below the {SMALL_N}-turn "
+                "floor this tool uses everywhere a small sample would read as a finding "
+                "instead of noise. Clustering a handful of turns into 'signatures' would "
+                "manufacture a result, so this refuses instead of reporting one."
+            )
+        }
 
     human_feats, agent_feats, unknown_feats = [], [], []
     for f in turns:
@@ -192,10 +214,14 @@ def signature_plurality(events):
             unknown_feats.append(f)
 
     if not human_feats and not agent_feats:
-        return {"error": (f"{total} eligible operator turns, and the authorship contract could "
-                          "not confidently classify any of them as human- or machine-authored — "
-                          "every one came back UNKNOWN. Reporting a signature count built on zero "
-                          "confident labels would be a guess wearing a number, so this refuses.")}
+        return {
+            "error": (
+                f"{total} eligible operator turns, and the authorship contract could "
+                "not confidently classify any of them as human- or machine-authored — "
+                "every one came back UNKNOWN. Reporting a signature count built on zero "
+                "confident labels would be a guess wearing a number, so this refuses."
+            )
+        }
 
     # sort_key -> (share_of_all_turns, typical_length_band). The key is used
     # ONLY to fix a deterministic, non-meaningful order below (point 7 in the
@@ -212,12 +238,15 @@ def signature_plurality(events):
         for f in agent_feats:
             by_band[_length_band(f.get("word_count", 0))].append(f)
         qualifying = sorted(
-            (band, members) for band, members in by_band.items()
+            (band, members)
+            for band, members in by_band.items()
             if len(members) >= _BAND_MIN_COUNT and len(members) / n_agent >= _BAND_FLOOR_SHARE
         )
         if len(qualifying) >= 2:
             covered = sum(len(members) for _, members in qualifying)
-            leftover = n_agent - covered  # non-qualifying bands, folded away — never their own signature
+            leftover = (
+                n_agent - covered
+            )  # non-qualifying bands, folded away — never their own signature
             largest = max(range(len(qualifying)), key=lambda i: len(qualifying[i][1]))
             for i, (band, members) in enumerate(qualifying):
                 count = len(members) + (leftover if i == largest else 0)
@@ -228,23 +257,28 @@ def signature_plurality(events):
     ordered = [found[k] for k in sorted(found)]  # alphabetical key only: no rank implied
     count = len(ordered)
     unclassified_pct = round(100 * len(unknown_feats) / total, 1)
-    signatures = [{"index": i, "share_of_turns_pct": round(100 * share, 1),
-                   "typical_length_band": band}
-                  for i, (share, band) in enumerate(ordered)]
+    signatures = [
+        {"index": i, "share_of_turns_pct": round(100 * share, 1), "typical_length_band": band}
+        for i, (share, band) in enumerate(ordered)
+    ]
 
     return {
-        "headline": (f"This corpus's operator-role turns show {count} distinct authoring "
-                     f"signature{'s' if count != 1 else ''} (opaque index only — this does not "
-                     f"say which one is you, and it never distinguishes between two humans)."),
+        "headline": (
+            f"This corpus's operator-role turns show {count} distinct authoring "
+            f"signature{'s' if count != 1 else ''} (opaque index only — this does not "
+            f"say which one is you, and it never distinguishes between two humans)."
+        ),
         "n": total,
         "signature_count": count,
         "signatures": signatures,
         "unclassified_turns_pct": unclassified_pct,
-        "reading": ("1 signature = this corpus's operator role reads as one uniform authoring "
-                    "process. More than 1 means it is not — it stopped after the first split it "
-                    "was confident about, so treat this count as a floor, never a ceiling: a real "
-                    "third or fourth source can hide inside a signature this analyzer merged away, "
-                    "but it will never invent one that is not there. It does not and cannot say "
-                    "whether an extra signature is a second agent or a second person — that "
-                    "question is out of scope for this tool by design (README: owner == subject)."),
+        "reading": (
+            "1 signature = this corpus's operator role reads as one uniform authoring "
+            "process. More than 1 means it is not — it stopped after the first split it "
+            "was confident about, so treat this count as a floor, never a ceiling: a real "
+            "third or fourth source can hide inside a signature this analyzer merged away, "
+            "but it will never invent one that is not there. It does not and cannot say "
+            "whether an extra signature is a second agent or a second person — that "
+            "question is out of scope for this tool by design (README: owner == subject)."
+        ),
     }

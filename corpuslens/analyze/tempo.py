@@ -12,6 +12,7 @@ before ~03:00 local. Percentiles over individual gaps do not sharpen that
 bound; a published per-day span would. So the bound stays where it is
 disclosed, and no analyzer here tightens it.
 """
+
 from __future__ import annotations
 
 import statistics
@@ -19,8 +20,8 @@ import statistics
 from ..model import AuthorClass, DataType
 from . import register, semantic_hash
 
-BURST_S = 60.0        # a follow-up inside a minute: still mid-thought
-RESUMED_S = 1800.0    # half an hour later: you went away and came back
+BURST_S = 60.0  # a follow-up inside a minute: still mid-thought
+RESUMED_S = 1800.0  # half an hour later: you went away and came back
 
 # `tempo`'s number MEANS: gaps bucketed at BURST_S/RESUMED_S, over prompts
 # with >=12 chars. Move either threshold and "burst share" counts a different
@@ -41,14 +42,20 @@ def _pct(part: int, whole: int) -> float:
     return round(100 * part / whole, 1) if whole else 0.0
 
 
-@register("tempo", claims=("tempo",),
-          denominator="operator prompt turns (>=12 chars) carrying a within-day tempo delta",
-          version=1,
-          grading_question=("none of GRADING.md's numbered questions directly — thematically "
-                             "closest to question 1 (arrival) and question 4 (thread rhythm), but "
-                             "neither asks for second/minute-level inter-turn gaps; this is a "
-                             "supporting signal, not one of the ten measurements"),
-          semantic_hash=_TEMPO_HASH, semantic_inputs=_TEMPO_INPUTS)
+@register(
+    "tempo",
+    claims=("tempo",),
+    denominator="operator prompt turns (>=12 chars) carrying a within-day tempo delta",
+    version=1,
+    grading_question=(
+        "none of GRADING.md's numbered questions directly — thematically "
+        "closest to question 1 (arrival) and question 4 (thread rhythm), but "
+        "neither asks for second/minute-level inter-turn gaps; this is a "
+        "supporting signal, not one of the ten measurements"
+    ),
+    semantic_hash=_TEMPO_HASH,
+    semantic_inputs=_TEMPO_INPUTS,
+)
 def tempo(events):
     """Inter-turn gaps between your own prompts, within a thread and within a day.
 
@@ -58,20 +65,29 @@ def tempo(events):
     (`cursor-store`). Those turns are counted as uncovered, never imputed — an
     interpolated gap is indistinguishable from a measured one downstream.
     """
-    turns = [e for e in events
-             if e.author_class is AuthorClass.OPERATOR and e.data_type is DataType.PROMPT
-             and e.features.get("char_count", 0) >= 12]
+    turns = [
+        e
+        for e in events
+        if e.author_class is AuthorClass.OPERATOR
+        and e.data_type is DataType.PROMPT
+        and e.features.get("char_count", 0) >= 12
+    ]
     eligible = len(turns)
     if not eligible:
         return {"error": "no operator prompts found"}
     deltas = [e.time.delta_prev_s for e in turns if e.time.delta_prev_s is not None]
     n = len(deltas)
     if not n:
-        return {"error": ("no within-day tempo deltas in this corpus — every operator turn "
-                          "opens a thread, follows a censored midnight crossing, or comes from "
-                          "a store that does not clock prompts (cursor-store). Tempo is not "
-                          "computable here, and is not guessed at."),
-                "eligible_turns": eligible, "delta_coverage_pct": 0.0}
+        return {
+            "error": (
+                "no within-day tempo deltas in this corpus — every operator turn "
+                "opens a thread, follows a censored midnight crossing, or comes from "
+                "a store that does not clock prompts (cursor-store). Tempo is not "
+                "computable here, and is not guessed at."
+            ),
+            "eligible_turns": eligible,
+            "delta_coverage_pct": 0.0,
+        }
     q = statistics.quantiles(deltas, n=4) if n >= 4 else None
     median = round(statistics.median(deltas), 1)
     cov = _pct(n, eligible)
@@ -85,15 +101,19 @@ def tempo(events):
         # the wording now matches the computation, and no number moved, so no
         # analyzer version bump. Measuring prompt-to-prompt instead remains a
         # real option, and it WOULD move every number and need the bump.
-        "headline": (f"A median {median}s passes before each of your prompts — measured from "
-                     f"whatever the thread recorded last, usually the machine's reply, not from "
-                     f"your previous prompt (measurable on {cov}% of eligible turns)."),
+        "headline": (
+            f"A median {median}s passes before each of your prompts — measured from "
+            f"whatever the thread recorded last, usually the machine's reply, not from "
+            f"your previous prompt (measurable on {cov}% of eligible turns)."
+        ),
         "n": n,
         "n_deltas": n,
         "eligible_turns": eligible,
         "delta_coverage_pct": cov,
-        "coverage_note": ("uncovered turns open a thread, sit after a censored midnight "
-                          "crossing, or come from a corpus with no prompt clock — never imputed"),
+        "coverage_note": (
+            "uncovered turns open a thread, sit after a censored midnight "
+            "crossing, or come from a corpus with no prompt clock — never imputed"
+        ),
         "median_gap_s": median,
         "p25_gap_s": round(q[0], 1) if q else None,
         "p75_gap_s": round(q[2], 1) if q else None,
@@ -101,21 +121,29 @@ def tempo(events):
         "burst_threshold_s": BURST_S,
         "resumed_pct": _pct(sum(1 for d in deltas if d >= RESUMED_S), n),
         "resumed_threshold_s": RESUMED_S,
-        "reading": ("high burst share = you steer in volleys, several corrections per thought; "
-                    "high resumed share = you leave the machine running and return. This is the "
-                    "rate at which YOUR turns arrive — on a cursor-store corpus it would be the "
-                    "machine's step rate, which is why that corpus reports no tempo at all."),
+        "reading": (
+            "high burst share = you steer in volleys, several corrections per thought; "
+            "high resumed share = you leave the machine running and return. This is the "
+            "rate at which YOUR turns arrive — on a cursor-store corpus it would be the "
+            "machine's step rate, which is why that corpus reports no tempo at all."
+        ),
     }
 
 
-@register("thread_span", claims=("thread_shape",),
-          denominator="threads with >=1 event (relative days only)",
-          version=1,
-          grading_question=("part of question 4 — span and density are the complement to "
-                             "thread_shape's resumption gaps, but GRADING.md's question 4 also "
-                             "asks for per-day/month activity counts and whether a return was "
-                             "productive, neither of which this reports"),
-          semantic_hash=_THREAD_SPAN_HASH, semantic_inputs=_THREAD_SPAN_INPUTS)
+@register(
+    "thread_span",
+    claims=("thread_shape",),
+    denominator="threads with >=1 event (relative days only)",
+    version=1,
+    grading_question=(
+        "part of question 4 — span and density are the complement to "
+        "thread_shape's resumption gaps, but GRADING.md's question 4 also "
+        "asks for per-day/month activity counts and whether a return was "
+        "productive, neither of which this reports"
+    ),
+    semantic_hash=_THREAD_SPAN_HASH,
+    semantic_inputs=_THREAD_SPAN_INPUTS,
+)
 def thread_span(events):
     """How long a thread stays open, and how densely it is worked.
 
@@ -132,13 +160,15 @@ def thread_span(events):
     spans: list = []
     densities: list = []
     for ds in days.values():
-        span = max(ds) - min(ds) + 1          # inclusive: a one-day thread spans 1 day
+        span = max(ds) - min(ds) + 1  # inclusive: a one-day thread spans 1 day
         spans.append(span)
         densities.append(len(ds) / span)
     med_span = statistics.median(spans)
     return {
-        "headline": (f"Half your threads span {med_span} day(s) or less; the longest stays open "
-                     f"across {max(spans)}."),
+        "headline": (
+            f"Half your threads span {med_span} day(s) or less; the longest stays open "
+            f"across {max(spans)}."
+        ),
         "n": len(days),
         "threads": len(days),
         "single_day_threads_pct": _pct(sum(1 for s in spans if s == 1), len(spans)),
@@ -147,8 +177,10 @@ def thread_span(events):
         "median_active_days": statistics.median(len(ds) for ds in days.values()),
         "median_density": round(statistics.median(densities), 3),
         "density_definition": "active days / (last day - first day + 1), per thread, median of that",
-        "reading": ("density near 1.0 = threads are worked and closed; a low median density with "
-                    "a long median span = you keep many threads open across weeks and return to "
-                    "them. Spans are relative-day differences: they preserve weekly cadence and "
-                    "carry no calendar date."),
+        "reading": (
+            "density near 1.0 = threads are worked and closed; a low median density with "
+            "a long median span = you keep many threads open across weeks and return to "
+            "them. Spans are relative-day differences: they preserve weekly cadence and "
+            "carry no calendar date."
+        ),
     }

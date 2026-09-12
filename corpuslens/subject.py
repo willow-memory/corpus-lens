@@ -38,6 +38,7 @@ reports what corpuslens BELIEVES, from a classifier that can be wrong, and
 direction. See `guard.AuditRecord.sentence()` for where that belief — and
 its own fallibility — gets said out loud to the reader.
 """
+
 from __future__ import annotations
 
 from .analyze import SMALL_N
@@ -75,10 +76,13 @@ _LEADER_MIN = 20
 MAX_UNCLASSIFIED_FRAC = 0.50
 
 
-def infer_subject(results: dict, small_n: int = SMALL_N,
-                   dominant_frac: float = DOMINANT_FRAC,
-                   max_unclassified_frac: float = MAX_UNCLASSIFIED_FRAC,
-                   leader_min: int = _LEADER_MIN) -> tuple[str, str]:
+def infer_subject(
+    results: dict,
+    small_n: int = SMALL_N,
+    dominant_frac: float = DOMINANT_FRAC,
+    max_unclassified_frac: float = MAX_UNCLASSIFIED_FRAC,
+    leader_min: int = _LEADER_MIN,
+) -> tuple[str, str]:
     """Derive this run's SUBJECT from `results["authorship_mix"]` — never from
     a flag, per `cli.py`'s standing claim that there is no CLI switch for a
     capability-shaped decision like this one. Returns `(subject, reason)`:
@@ -96,17 +100,23 @@ def infer_subject(results: dict, small_n: int = SMALL_N,
     """
     res = results.get("authorship_mix") if results else None
     if not res:
-        return SUBJECT_UNKNOWN, ("no authorship classification ran this build (the "
-                                  "authorship_mix analyzer is not registered) — not enough "
-                                  "evidence to call the operator role human or agent")
+        return SUBJECT_UNKNOWN, (
+            "no authorship classification ran this build (the "
+            "authorship_mix analyzer is not registered) — not enough "
+            "evidence to call the operator role human or agent"
+        )
     if "error" in res:
-        return SUBJECT_UNKNOWN, (f"authorship_mix could not compute a classification "
-                                  f"({res['error']}) — not enough evidence to call the "
-                                  "operator role human or agent")
+        return SUBJECT_UNKNOWN, (
+            f"authorship_mix could not compute a classification "
+            f"({res['error']}) — not enough evidence to call the "
+            "operator role human or agent"
+        )
     n = res.get("n")
     if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
-        return SUBJECT_UNKNOWN, ("authorship_mix reported no classified operator-role turns "
-                                  "— not enough evidence to call the operator role human or agent")
+        return SUBJECT_UNKNOWN, (
+            "authorship_mix reported no classified operator-role turns "
+            "— not enough evidence to call the operator role human or agent"
+        )
     # The floor is on the turns SUPPORTING the leading class, not on corpus size.
     #
     # It used to be `n < small_n`, borrowed from SMALL_N, and that made the rule
@@ -132,24 +142,34 @@ def infer_subject(results: dict, small_n: int = SMALL_N,
     human_pct, agent_pct, unknown_pct = _pct("human_pct"), _pct("agent_pct"), _pct("unknown_pct")
 
     if unknown_pct / 100.0 > max_unclassified_frac:
-        return SUBJECT_UNKNOWN, (f"the classifier could not place {unknown_pct}% of {n} "
-                                  "classified operator-role turns in either class — too little "
-                                  "evidence for a categorical call")
+        return SUBJECT_UNKNOWN, (
+            f"the classifier could not place {unknown_pct}% of {n} "
+            "classified operator-role turns in either class — too little "
+            "evidence for a categorical call"
+        )
     leader_pct = max(human_pct, agent_pct)
     leader_turns = int(round(n * leader_pct / 100.0))
     if leader_turns < leader_min:
-        return SUBJECT_UNKNOWN, (f"only {leader_turns} of {n} classified operator-role turn(s) "
-                                  f"support the leading class, below the {leader_min}-turn "
-                                  "convention this tool uses before making a categorical call "
-                                  "— not enough evidence")
+        return SUBJECT_UNKNOWN, (
+            f"only {leader_turns} of {n} classified operator-role turn(s) "
+            f"support the leading class, below the {leader_min}-turn "
+            "convention this tool uses before making a categorical call "
+            "— not enough evidence"
+        )
     if human_pct / 100.0 >= dominant_frac:
-        return SUBJECT_HUMAN, (f"{human_pct}% of {n} classified operator-role turns read as "
-                                f"human (>= the {int(dominant_frac * 100)}% threshold for a "
-                                "predominant call)")
+        return SUBJECT_HUMAN, (
+            f"{human_pct}% of {n} classified operator-role turns read as "
+            f"human (>= the {int(dominant_frac * 100)}% threshold for a "
+            "predominant call)"
+        )
     if agent_pct / 100.0 >= dominant_frac:
-        return SUBJECT_AGENT, (f"{agent_pct}% of {n} classified operator-role turns read as "
-                                f"agent (>= the {int(dominant_frac * 100)}% threshold for a "
-                                "predominant call)")
-    return SUBJECT_MIXED, (f"neither class reaches the {int(dominant_frac * 100)}% threshold "
-                            f"({human_pct}% human, {agent_pct}% agent of {n} turns) — this "
-                            "run's operator role mixes both")
+        return SUBJECT_AGENT, (
+            f"{agent_pct}% of {n} classified operator-role turns read as "
+            f"agent (>= the {int(dominant_frac * 100)}% threshold for a "
+            "predominant call)"
+        )
+    return SUBJECT_MIXED, (
+        f"neither class reaches the {int(dominant_frac * 100)}% threshold "
+        f"({human_pct}% human, {agent_pct}% agent of {n} turns) — this "
+        "run's operator role mixes both"
+    )

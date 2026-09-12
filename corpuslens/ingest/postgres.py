@@ -20,6 +20,7 @@ is.) Columns are alias-resolved (see `_rows.py`); the wall applies
 exactly as elsewhere — locators are host-free `"<table>:row<n>"`, hashed before
 they reach an Event, and the calendar anchor is quarantined.
 """
+
 from __future__ import annotations
 
 import csv
@@ -29,12 +30,22 @@ import subprocess
 from ..failure_classes import describe as _describe_failure
 from ..model import Surface
 from . import register
-from ._rows import (assemble, classify_role, parse_db_ts, require_columns,
-                    resolve_columns)
+from ._rows import assemble, classify_role, parse_db_ts, require_columns, resolve_columns
 from .drops import DropCounts, MISSING_TIMESTAMP, UNPARSEABLE_LINE, UNRECOGNIZED_ROLE
 
-_TABLE_PREFERENCE = ("turns", "messages", "events", "conversation", "conversations",
-                     "chat", "chats", "log", "logs", "records", "sessions")
+_TABLE_PREFERENCE = (
+    "turns",
+    "messages",
+    "events",
+    "conversation",
+    "conversations",
+    "chat",
+    "chats",
+    "log",
+    "logs",
+    "records",
+    "sessions",
+)
 _TIMEOUT_S = 300
 
 
@@ -63,7 +74,8 @@ def _psql(dsn: str, sql: str, copy: bool = False) -> str:
     except FileNotFoundError:
         raise RuntimeError(
             "the postgres adapter requires the `psql` client binary on PATH "
-            "(corpuslens keeps zero Python dependencies by shelling out to it)")
+            "(corpuslens keeps zero Python dependencies by shelling out to it)"
+        )
     except subprocess.TimeoutExpired:
         raise RuntimeError(f"psql timed out after {_TIMEOUT_S}s")
     if proc.returncode != 0:
@@ -77,11 +89,13 @@ def _psql(dsn: str, sql: str, copy: bool = False) -> str:
 
 
 def _catalog_tables(dsn: str):
-    out = _psql(dsn,
-                "SELECT table_schema || chr(9) || table_name "
-                "FROM information_schema.tables "
-                "WHERE table_schema NOT IN ('pg_catalog','information_schema') "
-                "AND table_type='BASE TABLE' ORDER BY table_schema, table_name")
+    out = _psql(
+        dsn,
+        "SELECT table_schema || chr(9) || table_name "
+        "FROM information_schema.tables "
+        "WHERE table_schema NOT IN ('pg_catalog','information_schema') "
+        "AND table_type='BASE TABLE' ORDER BY table_schema, table_name",
+    )
     pairs = []
     for ln in out.splitlines():
         if "\t" in ln:
@@ -95,15 +109,17 @@ def _resolve_table(dsn: str, table: str | None):
     if not pairs:
         raise ValueError("no base tables found for this connection")
     if table:
-        want_sch, want_tbl = (table.split(".", 1) if "." in table else (None, table))
-        hits = [(s, t) for (s, t) in pairs
-                if t == want_tbl and (want_sch is None or s == want_sch)]
+        want_sch, want_tbl = table.split(".", 1) if "." in table else (None, table)
+        hits = [(s, t) for (s, t) in pairs if t == want_tbl and (want_sch is None or s == want_sch)]
         if not hits:
-            raise ValueError(f"table {table!r} not found; candidates: "
-                             f"{[f'{s}.{t}' for s, t in pairs]}")
+            raise ValueError(
+                f"table {table!r} not found; candidates: {[f'{s}.{t}' for s, t in pairs]}"
+            )
         if len(hits) > 1:
-            raise ValueError(f"{table!r} is ambiguous across schemas "
-                             f"{[s for s, _ in hits]}; qualify as schema.table")
+            raise ValueError(
+                f"{table!r} is ambiguous across schemas "
+                f"{[s for s, _ in hits]}; qualify as schema.table"
+            )
         return hits[0]
     if len(pairs) == 1:
         return pairs[0]
@@ -111,18 +127,24 @@ def _resolve_table(dsn: str, table: str | None):
         hits = [(s, t) for s, t in pairs if t.lower() == pref]
         if len(hits) == 1:
             return hits[0]
-        if len(hits) > 1:                          # same preferred name in N schemas
-            raise ValueError(f"table {pref!r} exists in multiple schemas "
-                             f"{[s for s, _ in hits]}; qualify as schema.table")
-    raise ValueError(f"{len(pairs)} base tables and no obvious corpus table — "
-                     f"pass --table. Candidates: {[f'{s}.{t}' for s, t in pairs]}")
+        if len(hits) > 1:  # same preferred name in N schemas
+            raise ValueError(
+                f"table {pref!r} exists in multiple schemas "
+                f"{[s for s, _ in hits]}; qualify as schema.table"
+            )
+    raise ValueError(
+        f"{len(pairs)} base tables and no obvious corpus table — "
+        f"pass --table. Candidates: {[f'{s}.{t}' for s, t in pairs]}"
+    )
 
 
 def _columns(dsn: str, schema: str, table: str):
-    out = _psql(dsn,
-                "SELECT column_name FROM information_schema.columns "
-                f"WHERE table_schema = {_lit(schema)} AND table_name = {_lit(table)} "
-                "ORDER BY ordinal_position")
+    out = _psql(
+        dsn,
+        "SELECT column_name FROM information_schema.columns "
+        f"WHERE table_schema = {_lit(schema)} AND table_name = {_lit(table)} "
+        "ORDER BY ordinal_position",
+    )
     return [c for c in out.splitlines() if c]
 
 
@@ -135,10 +157,12 @@ def ingest(dsn: str, corpus_id: str = "corpus", table: str | None = None):
     m = resolve_columns(cols)
     require_columns(m, f"{schema}.{tbl}", cols)
 
-    sess_expr = f'{_ident(m["session"])}::text' if m["session"] else "''"
-    select = (f'SELECT {_ident(m["ts"])}::text, {_ident(m["role"])}::text, '
-              f'{_ident(m["content"])}::text, {sess_expr} '
-              f'FROM {_ident(schema)}.{_ident(tbl)}')
+    sess_expr = f"{_ident(m['session'])}::text" if m["session"] else "''"
+    select = (
+        f"SELECT {_ident(m['ts'])}::text, {_ident(m['role'])}::text, "
+        f"{_ident(m['content'])}::text, {sess_expr} "
+        f"FROM {_ident(schema)}.{_ident(tbl)}"
+    )
     stream = _psql(dsn, f"COPY ({select}) TO STDOUT WITH (FORMAT csv)", copy=True)
 
     raw = []

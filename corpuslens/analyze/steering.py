@@ -3,13 +3,14 @@
 All computations use relative time only (day offsets, per-thread ordering).
 No calendar is reachable from here — that is the wall doing its job.
 """
+
 from __future__ import annotations
 
 import statistics
 from collections import defaultdict
 
 from ..model import AuthorClass, DataType
-from . import register, semantic_hash
+from . import register
 
 # What `steering_density`'s number MEANS: an operator prompt turn is "mid-task"
 # iff it is not the first prompt in its thread, filtered to prompts with
@@ -20,16 +21,23 @@ _STEERING_DENSITY_INPUTS = (_MIN_CHARS,)
 _STEERING_DENSITY_HASH = "d189e509a912fc3e"
 
 
-@register("steering_density", claims=("steering_density",),
-          denominator="operator prompt turns with >=12 characters (de-injected)",
-          version=1, grading_question="question 1",
-          semantic_hash=_STEERING_DENSITY_HASH,
-          semantic_inputs=_STEERING_DENSITY_INPUTS)
+@register(
+    "steering_density",
+    claims=("steering_density",),
+    denominator="operator prompt turns with >=12 characters (de-injected)",
+    version=1,
+    grading_question="question 1",
+    semantic_hash=_STEERING_DENSITY_HASH,
+    semantic_inputs=_STEERING_DENSITY_INPUTS,
+)
 def steering_density(events):
     sess = defaultdict(list)
     for e in events:
-        if e.author_class is AuthorClass.OPERATOR and e.data_type is DataType.PROMPT \
-                and e.features.get("char_count", 0) >= 12:
+        if (
+            e.author_class is AuthorClass.OPERATOR
+            and e.data_type is DataType.PROMPT
+            and e.features.get("char_count", 0) >= 12
+        ):
             sess[e.thread_id].append(e)
     if not sess:
         return {"error": "no operator prompts found"}
@@ -41,8 +49,10 @@ def steering_density(events):
     followups = [e.features["word_count"] for v in sess.values() for e in v[1:]]
     mid_pct = round(100 * mid / total, 1)
     return {
-        "headline": (f"{mid_pct}% of your prompt turns arrive mid-task rather than in a "
-                     f"session's opening prompt."),
+        "headline": (
+            f"{mid_pct}% of your prompt turns arrive mid-task rather than in a "
+            f"session's opening prompt."
+        ),
         "n": total,
         "sessions": len(sess),
         "total_turns": total,
@@ -52,8 +62,10 @@ def steering_density(events):
         "work_session_median_turns": statistics.median(multi) if multi else 0,
         "opener_median_words": statistics.median(openers),
         "followup_median_words": statistics.median(followups) if followups else 0,
-        "reference": {"measured_director": "96.8% mid-task, 26-turn work sessions",
-                      "swe_bench_tau_bench": "0% mid-task by construction"},
+        "reference": {
+            "measured_director": "96.8% mid-task, 26-turn work sessions",
+            "swe_bench_tau_bench": "0% mid-task by construction",
+        },
     }
 
 
@@ -65,36 +77,47 @@ _THREAD_SHAPE_INPUTS = _RESUM_BUCKETS
 _THREAD_SHAPE_HASH = "7bc2e182895dfa7c"
 
 
-@register("thread_shape", claims=("thread_shape",),
-          denominator="threads with >=1 active day (relative days only)",
-          version=1,
-          grading_question=("part of question 4 — it counts resumption gaps in disjoint "
-                             "2-7/7-14/14+ day buckets and same-day concurrency, but GRADING.md "
-                             "also asks for a >=30-day bucket and monthly counts, and for whether "
-                             "a resumption was a PRODUCTIVE return, which this does not check"),
-          semantic_hash=_THREAD_SHAPE_HASH,
-          semantic_inputs=_THREAD_SHAPE_INPUTS)
+@register(
+    "thread_shape",
+    claims=("thread_shape",),
+    denominator="threads with >=1 active day (relative days only)",
+    version=1,
+    grading_question=(
+        "part of question 4 — it counts resumption gaps in disjoint "
+        "2-7/7-14/14+ day buckets and same-day concurrency, but GRADING.md "
+        "also asks for a >=30-day bucket and monthly counts, and for whether "
+        "a resumption was a PRODUCTIVE return, which this does not check"
+    ),
+    semantic_hash=_THREAD_SHAPE_HASH,
+    semantic_inputs=_THREAD_SHAPE_INPUTS,
+)
 def thread_shape(events):
     days = defaultdict(set)
     for e in events:
         days[e.thread_id].add(e.time.day_offset)
+
     def resum(ds, lo, hi=None):
         """Count gaps between consecutive active days in [lo, hi). Buckets are
         DISJOINT so they never double-count a single long gap."""
         s = sorted(ds)
-        return sum(1 for a, b in zip(s, s[1:]) if lo <= (b - a) < (hi or 10 ** 9))
+        return sum(1 for a, b in zip(s, s[1:]) if lo <= (b - a) < (hi or 10**9))
+
     day_threads = defaultdict(set)
     for t, ds in days.items():
         for d in ds:
             day_threads[d].add(t)
     conc = [len(v) for v in day_threads.values()]
-    resumptions = (sum(resum(d, 2, 7) for d in days.values())
-                   + sum(resum(d, 7, 14) for d in days.values())
-                   + sum(resum(d, 14) for d in days.values()))
+    resumptions = (
+        sum(resum(d, 2, 7) for d in days.values())
+        + sum(resum(d, 7, 14) for d in days.values())
+        + sum(resum(d, 14) for d in days.values())
+    )
     peak = max(conc) if conc else 0
     return {
-        "headline": (f"{len(days)} thread(s), picked back up {resumptions} time(s) after a gap of "
-                     f"2 days or more; at the busiest, {peak} ran on the same day."),
+        "headline": (
+            f"{len(days)} thread(s), picked back up {resumptions} time(s) after a gap of "
+            f"2 days or more; at the busiest, {peak} ran on the same day."
+        ),
         "n": len(days),
         "threads": len(days),
         "resumptions_2to6d": sum(resum(d, 2, 7) for d in days.values()),
@@ -103,6 +126,8 @@ def thread_shape(events):
         "buckets": "disjoint day-gap ranges — sum them for total resumptions >=2d",
         "concurrency_median": statistics.median(conc) if conc else 0,
         "concurrency_peak": max(conc) if conc else 0,
-        "note": ("derived from log-field dates only; content dates once inflated this 10x. "
-                 "Day gaps are relative — they preserve weekly cadence but not calendar dates."),
+        "note": (
+            "derived from log-field dates only; content dates once inflated this 10x. "
+            "Day gaps are relative — they preserve weekly cadence but not calendar dates."
+        ),
     }

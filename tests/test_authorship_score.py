@@ -34,6 +34,7 @@ classifiers:
   * when the module is not installed, `label`/`score` for the four regex
     classifiers are completely unaffected (no crash, no behavior change).
 """
+
 import io
 import itertools
 import json
@@ -64,9 +65,18 @@ def _ev(ref, author, dtype, chars=40, word_count=8, features=None):
     f = {"char_count": chars, "word_count": word_count}
     if features:
         f.update(features)
-    return Event(event_id=ref, corpus_id="c", adapter_id="a", source_ref=ref,
-                 thread_id="t", surface=Surface.CLI, author_class=author,
-                 data_type=dtype, time=CoarseTime(day_offset=0), features=f)
+    return Event(
+        event_id=ref,
+        corpus_id="c",
+        adapter_id="a",
+        source_ref=ref,
+        thread_id="t",
+        surface=Surface.CLI,
+        author_class=author,
+        data_type=dtype,
+        time=CoarseTime(day_offset=0),
+        features=f,
+    )
 
 
 def _make_stub(word_threshold=3):
@@ -108,6 +118,7 @@ class _WithStub:
 
     def __enter__(self):
         import corpuslens
+
         self._pkg = corpuslens
         self._patcher = mock.patch.dict(sys.modules, {"corpuslens.authorship": self.mod})
         self._patcher.__enter__()
@@ -156,6 +167,7 @@ class _BlockAuthorshipImport:
 
     def __enter__(self):
         import corpuslens
+
         self._pkg = corpuslens
         self._saved = sys.modules.pop("corpuslens.authorship", None)
         # `from . import authorship` returns the PARENT PACKAGE'S attribute when
@@ -189,6 +201,7 @@ def _block_authorship_for_test(case):
 
 # ── the contract loader, with the module genuinely blocked ─────
 
+
 class ContractUnavailableTests(unittest.TestCase):
     def test_authorship_contract_raises_a_clear_error_when_the_module_is_absent(self):
         with _BlockAuthorshipImport(), self.assertRaises(labelmod.AuthorshipUnavailable) as ctx:
@@ -204,6 +217,7 @@ class ContractUnavailableTests(unittest.TestCase):
 
 
 # ── store shape: separate version axis, string label, nothing else ────────
+
 
 class AuthorshipStoreTests(unittest.TestCase):
     def test_a_store_that_never_touches_authorship_round_trips_unchanged(self):
@@ -277,6 +291,7 @@ class AuthorshipStoreTests(unittest.TestCase):
 
 # ── scoring: three-valued, unknown as decline, fn split ────────────────────
 
+
 class AuthorshipScoringTests(unittest.TestCase):
     def test_score_authorship_returns_none_when_the_store_has_no_authorship_labels(self):
         store = labelmod.empty_store()
@@ -294,19 +309,30 @@ class AuthorshipScoringTests(unittest.TestCase):
         # 4 human-labelled turns, 4 agent-labelled turns; classify_turn is the
         # stub: marked_machine -> agent, word_count<3 -> unknown, else human.
         events = [
-            _ev("h-correct", AuthorClass.OPERATOR, DataType.PROMPT, word_count=10),   # -> human
-            _ev("h-wrong", AuthorClass.MACHINE, DataType.RESPONSE, word_count=10),     # -> agent (marked)
-            _ev("h-declined", AuthorClass.OPERATOR, DataType.PROMPT, word_count=1),    # -> unknown
+            _ev("h-correct", AuthorClass.OPERATOR, DataType.PROMPT, word_count=10),  # -> human
+            _ev(
+                "h-wrong", AuthorClass.MACHINE, DataType.RESPONSE, word_count=10
+            ),  # -> agent (marked)
+            _ev("h-declined", AuthorClass.OPERATOR, DataType.PROMPT, word_count=1),  # -> unknown
             _ev("h-correct-2", AuthorClass.OPERATOR, DataType.PROMPT, word_count=10),  # -> human
-            _ev("a-correct", AuthorClass.MACHINE, DataType.RESPONSE, word_count=10),   # -> agent (marked)
-            _ev("a-wrong", AuthorClass.OPERATOR, DataType.PROMPT, word_count=10),      # -> human
-            _ev("a-declined", AuthorClass.OPERATOR, DataType.PROMPT, word_count=1),    # -> unknown (NOT marked machine)
+            _ev(
+                "a-correct", AuthorClass.MACHINE, DataType.RESPONSE, word_count=10
+            ),  # -> agent (marked)
+            _ev("a-wrong", AuthorClass.OPERATOR, DataType.PROMPT, word_count=10),  # -> human
+            _ev(
+                "a-declined", AuthorClass.OPERATOR, DataType.PROMPT, word_count=1
+            ),  # -> unknown (NOT marked machine)
         ]
         store = labelmod.empty_store()
-        for ref, label in [("h-correct", "human"), ("h-wrong", "human"),
-                           ("h-declined", "human"), ("h-correct-2", "human"),
-                           ("a-correct", "agent"), ("a-wrong", "agent"),
-                           ("a-declined", "agent")]:
+        for ref, label in [
+            ("h-correct", "human"),
+            ("h-wrong", "human"),
+            ("h-declined", "human"),
+            ("h-correct-2", "human"),
+            ("a-correct", "agent"),
+            ("a-wrong", "agent"),
+            ("a-declined", "agent"),
+        ]:
             labelmod.add_authorship_label(store, ref, label, "authorship/1")
 
         with _WithStub(_make_stub(word_threshold=3)):
@@ -327,7 +353,7 @@ class AuthorshipScoringTests(unittest.TestCase):
         self.assertEqual(human["tp"], 2)
         self.assertEqual(human["fp"], 1)
         self.assertEqual(human["fn"], 2)
-        self.assertEqual(human["fn_wrong"], 1)     # h-wrong: predicted agent
+        self.assertEqual(human["fn_wrong"], 1)  # h-wrong: predicted agent
         self.assertEqual(human["fn_declined"], 1)  # h-declined: predicted unknown
         self.assertAlmostEqual(human["precision_pct"], 100 * 2 / 3, places=1)
         self.assertAlmostEqual(human["recall_pct"], 100 * 2 / 4, places=1)
@@ -364,7 +390,7 @@ class AuthorshipScoringTests(unittest.TestCase):
         for cls in ("human", "agent"):
             self.assertIsNone(result[cls]["precision_pct"])
             self.assertIn("precision_note", result[cls])
-            self.assertEqual(result[cls]["recall_pct"], 0.0)   # NOT None, NOT 100 — genuinely 0
+            self.assertEqual(result[cls]["recall_pct"], 0.0)  # NOT None, NOT 100 — genuinely 0
             self.assertEqual(result[cls]["fn_declined"], 1)
             self.assertEqual(result[cls]["fn_wrong"], 0)
 
@@ -401,15 +427,25 @@ class AuthorshipScoringTests(unittest.TestCase):
 # ── CLI: `label` asks the authorship question when available, skips it
 #    gracefully when not ────────────────────────────────────────────────────
 
+
 class LabelCorpusFixture(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.d = Path(self.tmp.name)
-        _write(self.d / "s1.jsonl", [
-            _cc_line("user", "build the parser for the config file please", "2026-02-01T10:00:00Z"),
-            _cc_line("assistant", "Done. Should I add validation, or keep it minimal?", "2026-02-01T10:05:00Z"),
-            _cc_line("user", "it still fails on empty input, fix that", "2026-02-01T10:20:00Z"),
-        ])
+        _write(
+            self.d / "s1.jsonl",
+            [
+                _cc_line(
+                    "user", "build the parser for the config file please", "2026-02-01T10:00:00Z"
+                ),
+                _cc_line(
+                    "assistant",
+                    "Done. Should I add validation, or keep it minimal?",
+                    "2026-02-01T10:05:00Z",
+                ),
+                _cc_line("user", "it still fails on empty input, fix that", "2026-02-01T10:20:00Z"),
+            ],
+        )
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -419,22 +455,46 @@ class LabelCliAuthorshipTests(LabelCorpusFixture):
     def test_authorship_question_is_skipped_gracefully_when_the_module_is_absent(self):
         _block_authorship_for_test(self)
         store = self.d / "labels.json"
-        with mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: "y"):
-            rc, out, err = _run(["label", str(self.d), "--adapter", "claude-code",
-                                 "--sample-size", "10", "--store", str(store)])
+        with (
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: "y"),
+        ):
+            rc, out, err = _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "10",
+                    "--store",
+                    str(store),
+                ]
+            )
         self.assertEqual(rc, 0)
         self.assertIn("not installed", out)
         doc = json.loads(store.read_text())
-        self.assertNotIn("authorship_labels", doc)   # unchanged 2-key shape
+        self.assertNotIn("authorship_labels", doc)  # unchanged 2-key shape
 
     def test_authorship_question_is_asked_and_recorded_when_the_module_is_available(self):
         store = self.d / "labels.json"
-        with _WithStub(_make_stub()), \
-             mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: "y"):
-            rc, out, err = _run(["label", str(self.d), "--adapter", "claude-code",
-                                 "--sample-size", "10", "--store", str(store)])
+        with (
+            _WithStub(_make_stub()),
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: "y"),
+        ):
+            rc, out, err = _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "10",
+                    "--store",
+                    str(store),
+                ]
+            )
         self.assertEqual(rc, 0)
         doc = json.loads(store.read_text())
         self.assertEqual(doc["authorship_version"], "authorship/1")
@@ -450,27 +510,63 @@ class LabelCliAuthorshipTests(LabelCorpusFixture):
 
     def test_answering_n_on_the_authorship_question_records_agent(self):
         store = self.d / "labels.json"
-        with _WithStub(_make_stub()), \
-             mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: "n"):
-            _run(["label", str(self.d), "--adapter", "claude-code",
-                 "--sample-size", "10", "--store", str(store)])
+        with (
+            _WithStub(_make_stub()),
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: "n"),
+        ):
+            _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "10",
+                    "--store",
+                    str(store),
+                ]
+            )
         doc = json.loads(store.read_text())
         self.assertTrue(all(r["label"] == "agent" for r in doc["authorship_labels"]))
 
     def test_rerunning_resumes_authorship_labels_too(self):
         store = self.d / "labels.json"
-        with _WithStub(_make_stub()), \
-             mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: "y"):
-            _run(["label", str(self.d), "--adapter", "claude-code",
-                 "--sample-size", "10", "--store", str(store)])
+        with (
+            _WithStub(_make_stub()),
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: "y"),
+        ):
+            _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "10",
+                    "--store",
+                    str(store),
+                ]
+            )
         before = json.loads(store.read_text())["authorship_labels"]
-        with _WithStub(_make_stub()), \
-             mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: "y"):
-            rc, out, _ = _run(["label", str(self.d), "--adapter", "claude-code",
-                              "--sample-size", "10", "--store", str(store)])
+        with (
+            _WithStub(_make_stub()),
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: "y"),
+        ):
+            rc, out, _ = _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "10",
+                    "--store",
+                    str(store),
+                ]
+            )
         self.assertIn("nothing new to label", out)
         after = json.loads(store.read_text())["authorship_labels"]
         self.assertEqual(before, after)
@@ -484,49 +580,104 @@ class LabelCliAuthorshipTests(LabelCorpusFixture):
         store = self.d / "labels.json"
         _block_authorship_for_test(self)
         answers = itertools.cycle(["y", "n"])
-        with mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: next(answers)):
-            _run(["label", str(self.d), "--adapter", "claude-code",
-                 "--sample-size", "10", "--store", str(store)])
+        with (
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: next(answers)),
+        ):
+            _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "10",
+                    "--store",
+                    str(store),
+                ]
+            )
         before = json.loads(store.read_text())["labels"]
         self.assertTrue(before)
         self.assertNotIn("authorship_labels", json.loads(store.read_text()))
 
-        with _WithStub(_make_stub()), \
-             mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: "y"):
-            rc, out, _ = _run(["label", str(self.d), "--adapter", "claude-code",
-                              "--sample-size", "10", "--store", str(store)])
+        with (
+            _WithStub(_make_stub()),
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: "y"),
+        ):
+            rc, out, _ = _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "10",
+                    "--store",
+                    str(store),
+                ]
+            )
         self.assertEqual(rc, 0)
         doc = json.loads(store.read_text())
-        self.assertEqual(doc["labels"], before)   # regex labels untouched, none re-asked
+        self.assertEqual(doc["labels"], before)  # regex labels untouched, none re-asked
         self.assertTrue(doc["authorship_labels"])  # authorship now filled in
 
     def test_label_refuses_a_store_graded_under_a_different_authorship_version(self):
         store = self.d / "labels.json"
-        store.write_text(json.dumps({"classifier_version": None, "labels": [],
-                                     "authorship_version": "authorship/0",
-                                     "authorship_labels": []}))
+        store.write_text(
+            json.dumps(
+                {
+                    "classifier_version": None,
+                    "labels": [],
+                    "authorship_version": "authorship/0",
+                    "authorship_labels": [],
+                }
+            )
+        )
         with _WithStub(_make_stub()):
-            rc, out, err = _run(["label", str(self.d), "--adapter", "claude-code",
-                                 "--store", str(store)])
+            rc, out, err = _run(
+                ["label", str(self.d), "--adapter", "claude-code", "--store", str(store)]
+            )
         self.assertEqual(rc, 2)
         self.assertIn("authorship", err)
 
 
 # ── CLI: `score` renders the three-valued section ───────────────────────────
 
+
 class ScoreCliAuthorshipTests(LabelCorpusFixture):
     def test_score_json_includes_a_per_class_authorship_section(self):
         store = self.d / "labels.json"
-        with _WithStub(_make_stub()), \
-             mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: "y"):
-            _run(["label", str(self.d), "--adapter", "claude-code",
-                 "--sample-size", "10", "--store", str(store)])
+        with (
+            _WithStub(_make_stub()),
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: "y"),
+        ):
+            _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "10",
+                    "--store",
+                    str(store),
+                ]
+            )
         with _WithStub(_make_stub()):
-            rc, out, _ = _run(["score", str(self.d), "--adapter", "claude-code",
-                               "--store", str(store), "--format", "json"])
+            rc, out, _ = _run(
+                [
+                    "score",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--store",
+                    str(store),
+                    "--format",
+                    "json",
+                ]
+            )
         self.assertEqual(rc, 0)
         doc = json.loads(out)
         self.assertIn("authorship", doc)
@@ -536,13 +687,27 @@ class ScoreCliAuthorshipTests(LabelCorpusFixture):
 
     def test_score_markdown_shows_decline_rate_and_never_leaks_the_corpus(self):
         store = self.d / "labels.json"
-        with _WithStub(_make_stub()), \
-             mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: "y"):
-            _run(["label", str(self.d), "--adapter", "claude-code",
-                 "--sample-size", "10", "--store", str(store)])
+        with (
+            _WithStub(_make_stub()),
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: "y"),
+        ):
+            _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "10",
+                    "--store",
+                    str(store),
+                ]
+            )
         with _WithStub(_make_stub()):
-            rc, out, _ = _run(["score", str(self.d), "--adapter", "claude-code", "--store", str(store)])
+            rc, out, _ = _run(
+                ["score", str(self.d), "--adapter", "claude-code", "--store", str(store)]
+            )
         self.assertEqual(rc, 0)
         self.assertIn("## authorship", out)
         self.assertIn("declined (unknown)", out)
@@ -551,28 +716,56 @@ class ScoreCliAuthorshipTests(LabelCorpusFixture):
 
     def test_score_refuses_when_authorship_labels_exist_but_module_is_unavailable(self):
         store = self.d / "labels.json"
-        with _WithStub(_make_stub()), \
-             mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: "y"):
-            _run(["label", str(self.d), "--adapter", "claude-code",
-                 "--sample-size", "10", "--store", str(store)])
+        with (
+            _WithStub(_make_stub()),
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: "y"),
+        ):
+            _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "10",
+                    "--store",
+                    str(store),
+                ]
+            )
         _block_authorship_for_test(self)
-        rc, out, err = _run(["score", str(self.d), "--adapter", "claude-code", "--store", str(store)])
+        rc, out, err = _run(
+            ["score", str(self.d), "--adapter", "claude-code", "--store", str(store)]
+        )
         self.assertEqual(rc, 2)
         self.assertIn("authorship", err)
 
     def test_score_refuses_on_a_mismatched_authorship_version(self):
         store = self.d / "labels.json"
-        with _WithStub(_make_stub()), \
-             mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: "y"):
-            _run(["label", str(self.d), "--adapter", "claude-code",
-                 "--sample-size", "10", "--store", str(store)])
+        with (
+            _WithStub(_make_stub()),
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: "y"),
+        ):
+            _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "10",
+                    "--store",
+                    str(store),
+                ]
+            )
         doc = json.loads(store.read_text())
         doc["authorship_version"] = "authorship/0"
         store.write_text(json.dumps(doc))
         with _WithStub(_make_stub()):
-            rc, out, err = _run(["score", str(self.d), "--adapter", "claude-code", "--store", str(store)])
+            rc, out, err = _run(
+                ["score", str(self.d), "--adapter", "claude-code", "--store", str(store)]
+            )
         self.assertEqual(rc, 2)
         self.assertIn("authorship", err)
 
@@ -584,13 +777,20 @@ class ScoreCliAuthorshipTests(LabelCorpusFixture):
         s = labelmod.empty_store()
         events_dir_store = s
         labelmod.add_authorship_label(events_dir_store, "does-not-matter", "human", "authorship/1")
-        store.write_text(json.dumps({
-            "classifier_version": None, "labels": [],
-            "authorship_version": "authorship/1",
-            "authorship_labels": [{"source_ref": "does-not-matter", "label": "human"}],
-        }))
+        store.write_text(
+            json.dumps(
+                {
+                    "classifier_version": None,
+                    "labels": [],
+                    "authorship_version": "authorship/1",
+                    "authorship_labels": [{"source_ref": "does-not-matter", "label": "human"}],
+                }
+            )
+        )
         with _WithStub(_make_stub()):
-            rc, out, err = _run(["score", str(self.d), "--adapter", "claude-code", "--store", str(store)])
+            rc, out, err = _run(
+                ["score", str(self.d), "--adapter", "claude-code", "--store", str(store)]
+            )
         self.assertEqual(rc, 0)
 
 

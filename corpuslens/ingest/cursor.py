@@ -12,6 +12,7 @@ unreadable file degrades to a counted drop, never a crash. Session identity is
 the path relative to the root, so same-named files in different directories
 stay distinct.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -22,13 +23,28 @@ from ..model import AuthorClass, CoarseTime, DataType, Event, Quarantine, Surfac
 from . import register
 from ..classifiers import _features, _hash
 from .claude_code import _iter_lines
-from .drops import (DropCounts, EMPTY_TURN, MISSING_TIMESTAMP,
-                    NOT_A_TURN_RECORD, UNPARSEABLE_LINE)
+from .drops import DropCounts, EMPTY_TURN, MISSING_TIMESTAMP, NOT_A_TURN_RECORD, UNPARSEABLE_LINE
 from .injection import authored_text
 
-MON = {m: i + 1 for i, m in enumerate((
-    "January", "February", "March", "April", "May", "June", "July",
-    "August", "September", "October", "November", "December"))}
+MON = {
+    m: i + 1
+    for i, m in enumerate(
+        (
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        )
+    )
+}
 TAG = re.compile(r"^\s*<timestamp>\w+,\s+(\w+)\s+(\d{1,2}),\s+(\d{4})")
 
 
@@ -36,8 +52,10 @@ TAG = re.compile(r"^\s*<timestamp>\w+,\s+(\w+)\s+(\d{1,2}),\s+(\d{4})")
 def ingest(path: str, corpus_id: str = "corpus"):
     root = Path(path)
     if root.exists() and not root.is_dir():
-        raise NotADirectoryError(f"corpuslens adapters take a directory of *.jsonl, not a file: {path}")
-    raw = []          # (date, session_key, text, real_ref, stripped)
+        raise NotADirectoryError(
+            f"corpuslens adapters take a directory of *.jsonl, not a file: {path}"
+        )
+    raw = []  # (date, session_key, text, real_ref, stripped)
     drops = DropCounts()
     for f in sorted(root.rglob("*.jsonl")):
         rel = f.relative_to(root).as_posix()
@@ -55,8 +73,11 @@ def ingest(path: str, corpus_id: str = "corpus"):
             msg = o.get("message")
             if not isinstance(msg, dict):
                 msg = {}
-            blocks = [b for b in msg.get("content") or []
-                      if isinstance(b, dict) and b.get("type") == "text"]
+            blocks = [
+                b
+                for b in msg.get("content") or []
+                if isinstance(b, dict) and b.get("type") == "text"
+            ]
             if not blocks:
                 drops.add(NOT_A_TURN_RECORD)
                 continue
@@ -64,7 +85,7 @@ def ingest(path: str, corpus_id: str = "corpus"):
                 txt = blk.get("text") or ""
                 m = TAG.match(txt)
                 if not m or m[1] not in MON:
-                    drops.add(MISSING_TIMESTAMP)    # every non-dated block counted
+                    drops.add(MISSING_TIMESTAMP)  # every non-dated block counted
                     continue
                 try:
                     d = datetime.date(int(m[3]), MON[m[1]], int(m[2]))
@@ -75,7 +96,7 @@ def ingest(path: str, corpus_id: str = "corpus"):
                 if not text:
                     drops.add(EMPTY_TURN)
                     continue
-                raw.append((d, rel, text, f"{rel}:{i+1}:{bi}", stripped))
+                raw.append((d, rel, text, f"{rel}:{i + 1}:{bi}", stripped))
     if not raw:
         return [], Quarantine(), drops
     base = min(r[0] for r in raw)
@@ -88,10 +109,18 @@ def ingest(path: str, corpus_id: str = "corpus"):
         sid = _hash(corpus_id, session)
         opaque = _hash(sid, real_ref)
         ref_map[opaque] = real_ref
-        events.append(Event(
-            event_id=opaque, corpus_id=corpus_id, adapter_id="cursor/1",
-            source_ref=opaque, thread_id=sid, surface=Surface.IDE,
-            author_class=AuthorClass.OPERATOR, data_type=DataType.PROMPT,
-            time=CoarseTime(day_offset=(d - base).days),
-            features=_features(text, stripped)))
+        events.append(
+            Event(
+                event_id=opaque,
+                corpus_id=corpus_id,
+                adapter_id="cursor/1",
+                source_ref=opaque,
+                thread_id=sid,
+                surface=Surface.IDE,
+                author_class=AuthorClass.OPERATOR,
+                data_type=DataType.PROMPT,
+                time=CoarseTime(day_offset=(d - base).days),
+                features=_features(text, stripped),
+            )
+        )
     return events, Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map), drops

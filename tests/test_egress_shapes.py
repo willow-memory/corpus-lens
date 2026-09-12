@@ -9,6 +9,7 @@ quarantined**, so the literal scan is structurally blind to it
 Hostile fixtures throughout: each report below is one a correct run would never
 produce, asserting the emit is refused rather than silently allowed.
 """
+
 import unittest
 
 from corpuslens.egress_shapes import STRUCTURAL_SHAPES, find_structural_leaks
@@ -99,8 +100,9 @@ class GrantAwarenessTests(unittest.TestCase):
 
     def test_grants_are_per_capability_not_a_blanket_unlock(self):
         # calendar_time released, local_tz NOT — the timezone is still refused
-        self.assertEqual(find_structural_leaks("2026-01-05 America/Denver", {"calendar_time"}),
-                         ["IANA timezone"])
+        self.assertEqual(
+            find_structural_leaks("2026-01-05 America/Denver", {"calendar_time"}), ["IANA timezone"]
+        )
 
     def test_no_capability_ever_permits_a_home_path_or_an_email(self):
         every_cap = {cap for _, cap, _ in STRUCTURAL_SHAPES if cap} | {"person_inference"}

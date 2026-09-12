@@ -62,6 +62,7 @@ opaque hashed refs, the quarantined base date) is NOT re-implemented here — it
 is delegated to `ingest/_rows.py::assemble`, the same shared assembler the
 database adapters use, so this adapter cannot quietly weaken it.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -70,8 +71,14 @@ from ..model import Surface
 from . import register, register_default_path
 from ._rows import assemble
 from .claude_code import _iter_lines, _parse_ts
-from .drops import (DropCounts, HARNESS_BOOKKEEPING, MISSING_TIMESTAMP,
-                    SUBAGENT, UNPARSEABLE_LINE, UNRECOGNIZED_ROLE)
+from .drops import (
+    DropCounts,
+    HARNESS_BOOKKEEPING,
+    MISSING_TIMESTAMP,
+    SUBAGENT,
+    UNPARSEABLE_LINE,
+    UNRECOGNIZED_ROLE,
+)
 
 #: Message types the recording service writes (`ConversationRecordExtra`).
 #: Only `user` / `gemini` are turns; `info` / `error` / `warning` are CLI UI
@@ -110,8 +117,11 @@ def _session_kind(lines) -> str | None:
     (a truncated or otherwise malformed file) reads as unknown, not
     'subagent' — we do not guess a classification the file never stated."""
     for _, o in lines:
-        if (isinstance(o, dict) and isinstance(o.get("sessionId"), str)
-                and isinstance(o.get("projectHash"), str)):
+        if (
+            isinstance(o, dict)
+            and isinstance(o.get("sessionId"), str)
+            and isinstance(o.get("projectHash"), str)
+        ):
             return o.get("kind")
     return None
 
@@ -122,8 +132,9 @@ def ingest(path: str, corpus_id: str = "corpus"):
     root = Path(path)
     if root.exists() and not root.is_dir():
         raise NotADirectoryError(
-            f"corpuslens adapters take a directory of *.jsonl, not a file: {path}")
-    raw = []           # (date, epoch|None, session_key, role, text, real_ref)
+            f"corpuslens adapters take a directory of *.jsonl, not a file: {path}"
+        )
+    raw = []  # (date, epoch|None, session_key, role, text, real_ref)
     drops = DropCounts()
     for f in sorted(root.rglob("*.jsonl")):
         rel = f.relative_to(root).as_posix()
@@ -139,13 +150,13 @@ def ingest(path: str, corpus_id: str = "corpus"):
                 drops.add(UNPARSEABLE_LINE)
                 continue
             if isinstance(o.get("$rewindTo"), str) or isinstance(o.get("$set"), dict):
-                drops.add(HARNESS_BOOKKEEPING)      # bookkeeping, not a turn
+                drops.add(HARNESS_BOOKKEEPING)  # bookkeeping, not a turn
                 continue
             if isinstance(o.get("sessionId"), str) and isinstance(o.get("projectHash"), str):
-                drops.add(HARNESS_BOOKKEEPING)      # the metadata record itself
+                drops.add(HARNESS_BOOKKEEPING)  # the metadata record itself
                 continue
             if not isinstance(o.get("id"), str):
-                drops.add(UNPARSEABLE_LINE)         # not a recognizable message record
+                drops.add(UNPARSEABLE_LINE)  # not a recognizable message record
                 continue
             t = o.get("type")
             role = _ROLE.get(t)
@@ -153,8 +164,9 @@ def ingest(path: str, corpus_id: str = "corpus"):
                 # info/error/warning is UI-only bookkeeping, not a turn either
                 # party authored; anything else is a `type` this adapter's
                 # closed role vocabulary does not recognize.
-                drops.add(HARNESS_BOOKKEEPING if t in ("info", "error", "warning")
-                         else UNRECOGNIZED_ROLE)
+                drops.add(
+                    HARNESS_BOOKKEEPING if t in ("info", "error", "warning") else UNRECOGNIZED_ROLE
+                )
                 continue
             d, epoch = _parse_ts(o.get("timestamp"))
             if d is None:
@@ -164,7 +176,7 @@ def ingest(path: str, corpus_id: str = "corpus"):
             # injection stripping and the empty-after-strip drop both happen
             # inside `assemble` (it calls the same `authored_text` the other
             # adapters use for role=="operator") — not duplicated here.
-            raw.append((d, epoch, rel, role, text, f"{rel}:{i+1}"))
+            raw.append((d, epoch, rel, role, text, f"{rel}:{i + 1}"))
 
     events, q, drops2 = assemble(raw, corpus_id, "gemini-cli/1", Surface.CLI)
     return events, q, drops.merge(drops2)

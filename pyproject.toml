@@ -77,3 +77,21 @@ source = "vcs"
 # script is `corpuslens` too. Only the distribution name carries the fleet
 # prefix, the same split forge-play/forge uses.
 packages = ["corpuslens"]
+
+[tool.ruff]
+# The fleet CI floor (docs/ideas.md, item 44) runs `ruff check` and
+# `ruff format --check` at a release pinned in tests.yml. Two files are
+# vendored copies whose bodies are hash-pinned to their upstream
+# (tests/test_vendor_pins.py, tests/test_consent.py); they are formatted where
+# they are maintained, never here.
+extend-exclude = ["tools/changelog_dedup.py", "corpuslens/consent"]
+line-length = 100
+
+[tool.ruff.lint]
+# Pyflakes plus pycodestyle's error classes — ruff's long-standing default
+# set, named explicitly because ruff 0.16 widened its out-of-the-box set
+# (YTT, S, RUF, PERF, SIM, UP, …). Adopting the wider set is a decision about
+# the code, not about the CI floor, and is left for a bite of its own: at
+# 0.16.7 it reports 200 findings on this tree, 31 of them in this set, all of
+# which are fixed.
+select = ["E4", "E7", "E9", "F"]

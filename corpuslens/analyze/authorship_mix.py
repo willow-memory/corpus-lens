@@ -15,11 +15,20 @@ for the full account of what `classify_turn` does and does not do, the
 evidence its two thresholds rest on, and why that evidence is this feature's
 weakest part.
 """
+
 from __future__ import annotations
 
-from ..authorship import AGENT, AUTHORSHIP_VERSION, AGENT_MIN_WORDS, HUMAN, HUMAN_MAX_WORDS, UNKNOWN, classify_turn
+from ..authorship import (
+    AGENT,
+    AUTHORSHIP_VERSION,
+    AGENT_MIN_WORDS,
+    HUMAN,
+    HUMAN_MAX_WORDS,
+    UNKNOWN,
+    classify_turn,
+)
 from ..model import AuthorClass, DataType
-from . import register, semantic_hash
+from . import register
 
 # What this analyzer's number MEANS depends on `classify_turn`'s two
 # thresholds (`corpuslens/authorship.py`) and on the marked-machine
@@ -32,15 +41,20 @@ _AUTHORSHIP_MIX_INPUTS = (str(HUMAN_MAX_WORDS), str(AGENT_MIN_WORDS), AUTHORSHIP
 _AUTHORSHIP_MIX_HASH = "1224e305b904fed4"
 
 
-@register("authorship_mix", claims=("authorship_mix",),
-          denominator="operator-role turns (AuthorClass.OPERATOR prompt events)",
-          version=1,
-          grading_question=("none of GRADING.md's numbered questions directly — question 1 "
-                             "('where does your intent arrive') presupposes the operator role is "
-                             "a person; this analyzer checks that precondition rather than "
-                             "answering a numbered question of its own"),
-          semantic_hash=_AUTHORSHIP_MIX_HASH,
-          semantic_inputs=_AUTHORSHIP_MIX_INPUTS)
+@register(
+    "authorship_mix",
+    claims=("authorship_mix",),
+    denominator="operator-role turns (AuthorClass.OPERATOR prompt events)",
+    version=1,
+    grading_question=(
+        "none of GRADING.md's numbered questions directly — question 1 "
+        "('where does your intent arrive') presupposes the operator role is "
+        "a person; this analyzer checks that precondition rather than "
+        "answering a numbered question of its own"
+    ),
+    semantic_hash=_AUTHORSHIP_MIX_HASH,
+    semantic_inputs=_AUTHORSHIP_MIX_INPUTS,
+)
 def authorship_mix(events):
     """Share of operator-role turns `classify_turn` puts in each of HUMAN,
     AGENT and UNKNOWN. No adapter in this registry currently sets
@@ -57,8 +71,11 @@ def authorship_mix(events):
     not its failure mode. A LOW `unknown_pct` alongside a high `agent_pct` is
     the finding worth reading twice, not the reverse.
     """
-    turns = [e.features for e in events
-             if e.author_class is AuthorClass.OPERATOR and e.data_type is DataType.PROMPT]
+    turns = [
+        e.features
+        for e in events
+        if e.author_class is AuthorClass.OPERATOR and e.data_type is DataType.PROMPT
+    ]
     n = len(turns)
     if not n:
         return {"error": "no operator-role turns found"}
@@ -70,11 +87,16 @@ def authorship_mix(events):
         # (rather than drops) a marked record should pass its own signal
         # through instead of silently inheriting this False.
         counts[classify_turn(f, marked_machine=False)] += 1
-    pct = lambda k: round(100 * counts[k] / n, 1)
+
+    def pct(k):
+        return round(100 * counts[k] / n, 1)
+
     human_pct, agent_pct, unknown_pct = pct(HUMAN), pct(AGENT), pct(UNKNOWN)
     return {
-        "headline": (f"Of your operator-role turns, {human_pct}% look human-authored, "
-                     f"{agent_pct}% look agent-authored, and {unknown_pct}% are unresolved."),
+        "headline": (
+            f"Of your operator-role turns, {human_pct}% look human-authored, "
+            f"{agent_pct}% look agent-authored, and {unknown_pct}% are unresolved."
+        ),
         "n": n,
         "human_pct": human_pct,
         "agent_pct": agent_pct,
@@ -82,11 +104,13 @@ def authorship_mix(events):
         "human_n": counts[HUMAN],
         "agent_n": counts[AGENT],
         "unknown_n": counts[UNKNOWN],
-        "reading": ("a high agent_pct on a corpus you believed was one person means the operator "
-                    "role is not consistently you — an automated dispatch loop, a benchmark "
-                    "harness, or a session mixing your own turns with agent prompts you "
-                    "dispatched. A high unknown_pct is the expected default, not a warning sign: "
-                    "this classifier is built to undercount rather than assert a label it cannot "
-                    "support (see corpuslens/authorship.py). This is not, and cannot become, "
-                    "a claim about WHICH person authored a turn."),
+        "reading": (
+            "a high agent_pct on a corpus you believed was one person means the operator "
+            "role is not consistently you — an automated dispatch loop, a benchmark "
+            "harness, or a session mixing your own turns with agent prompts you "
+            "dispatched. A high unknown_pct is the expected default, not a warning sign: "
+            "this classifier is built to undercount rather than assert a label it cannot "
+            "support (see corpuslens/authorship.py). This is not, and cannot become, "
+            "a claim about WHICH person authored a turn."
+        ),
     }

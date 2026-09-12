@@ -70,6 +70,7 @@ ever asked to read something that ISN'T a `corpuslens run` JSON document — a
 different tool's export, a hand-edited file, garbage — it fails with a clear
 message, never a traceback and never a guess.
 """
+
 from __future__ import annotations
 
 import json
@@ -105,19 +106,27 @@ def load_report(path: str) -> dict:
     try:
         doc = json.loads(text)
     except json.JSONDecodeError as e:
-        raise DiffError(f"{path} is not valid JSON ({e}) — is this a "
-                        f"`corpuslens run --format json` output file?") from e
+        raise DiffError(
+            f"{path} is not valid JSON ({e}) — is this a "
+            f"`corpuslens run --format json` output file?"
+        ) from e
     if not isinstance(doc, dict):
-        raise DiffError(f"{path} is not a corpuslens JSON report: expected a JSON object at the "
-                        f"top level, got {type(doc).__name__}")
+        raise DiffError(
+            f"{path} is not a corpuslens JSON report: expected a JSON object at the "
+            f"top level, got {type(doc).__name__}"
+        )
     missing = [k for k in _REQUIRED_KEYS if k not in doc]
     if missing:
-        raise DiffError(f"{path} is not a corpuslens JSON report (missing "
-                        f"{', '.join(missing)}) — produce it with `corpuslens run "
-                        f"--format json`, not a different tool or format")
+        raise DiffError(
+            f"{path} is not a corpuslens JSON report (missing "
+            f"{', '.join(missing)}) — produce it with `corpuslens run "
+            f"--format json`, not a different tool or format"
+        )
     if not isinstance(doc["audit"], dict) or "sentence" not in doc["audit"]:
-        raise DiffError(f"{path} has a malformed 'audit' field (no audit sentence) — "
-                        f"is this really a corpuslens report?")
+        raise DiffError(
+            f"{path} has a malformed 'audit' field (no audit sentence) — "
+            f"is this really a corpuslens report?"
+        )
     if not isinstance(doc["results"], dict):
         raise DiffError(f"{path} has a malformed 'results' field (expected an object)")
     return doc
@@ -137,11 +146,15 @@ def _numeric_fields(res: dict) -> dict:
 
 def _analyzer_diff(name: str, res_a: Optional[dict], res_b: Optional[dict]) -> dict:
     if res_a is None:
-        return {"status": "b_only",
-                "note": f"'{name}' has a result only in the second report — not diffed."}
+        return {
+            "status": "b_only",
+            "note": f"'{name}' has a result only in the second report — not diffed.",
+        }
     if res_b is None:
-        return {"status": "a_only",
-                "note": f"'{name}' has a result only in the first report — not diffed."}
+        return {
+            "status": "a_only",
+            "note": f"'{name}' has a result only in the first report — not diffed.",
+        }
     ver_a, ver_b = res_a.get("analyzer_version"), res_b.get("analyzer_version")
     if ver_a is None or ver_b is None:
         # Per-analyzer versions did not exist before they were introduced, so a
@@ -150,31 +163,52 @@ def _analyzer_diff(name: str, res_a: Optional[dict], res_b: Optional[dict]) -> d
         # — nothing changed, the field simply was not written. The comparison is
         # still withheld, because absence of a version is absence of evidence
         # that the semantics match, and this project reads absence as denial.
-        which = ("Both reports predate" if (ver_a is None and ver_b is None)
-                 else ("The first report predates" if ver_a is None
-                       else "The second report predates"))
-        return {"status": "unversioned", "a_version": ver_a, "b_version": ver_b,
-                "note": (f"{which} per-analyzer versioning, so '{name}' carries no version to "
-                         f"check. That is not evidence the two runs mean the same thing, and it "
-                         f"is not evidence they differ — the tool cannot tell. NOT DIFFED. Re-run "
-                         f"the older corpus with this version of corpuslens to get a comparison "
-                         f"it can stand behind.")}
+        which = (
+            "Both reports predate"
+            if (ver_a is None and ver_b is None)
+            else ("The first report predates" if ver_a is None else "The second report predates")
+        )
+        return {
+            "status": "unversioned",
+            "a_version": ver_a,
+            "b_version": ver_b,
+            "note": (
+                f"{which} per-analyzer versioning, so '{name}' carries no version to "
+                f"check. That is not evidence the two runs mean the same thing, and it "
+                f"is not evidence they differ — the tool cannot tell. NOT DIFFED. Re-run "
+                f"the older corpus with this version of corpuslens to get a comparison "
+                f"it can stand behind."
+            ),
+        }
     if ver_a != ver_b:
-        return {"status": "version_mismatch", "a_version": ver_a, "b_version": ver_b,
-                "note": (f"'{name}' ran as analyzer_version {ver_a} in the first report and "
-                        f"{ver_b} in the second: the classifier or threshold behind this number "
-                        f"changed between the two runs, so a delta here could report a software "
-                        f"change as if it were a change in your process. NOT DIFFED. Which "
-                        f"direction that change moved the number, and by how much, is not "
-                        f"derivable from the two documents — read the changelog between "
-                        f"analyzer_version {ver_a} and {ver_b} for what actually changed. See "
-                        f"IDEAS.md, \"Metrics that stay comparable across tool versions\".")}
+        return {
+            "status": "version_mismatch",
+            "a_version": ver_a,
+            "b_version": ver_b,
+            "note": (
+                f"'{name}' ran as analyzer_version {ver_a} in the first report and "
+                f"{ver_b} in the second: the classifier or threshold behind this number "
+                f"changed between the two runs, so a delta here could report a software "
+                f"change as if it were a change in your process. NOT DIFFED. Which "
+                f"direction that change moved the number, and by how much, is not "
+                f"derivable from the two documents — read the changelog between "
+                f"analyzer_version {ver_a} and {ver_b} for what actually changed. See "
+                f'IDEAS.md, "Metrics that stay comparable across tool versions".'
+            ),
+        }
     err_a, err_b = res_a.get("error"), res_b.get("error")
     if err_a or err_b:
-        which = "both reports" if (err_a and err_b) else ("the first report" if err_a else
-                                                           "the second report")
-        return {"status": "not_computable", "a_version": ver_a, "b_version": ver_b,
-                "note": f"'{name}' was not computable on {which} ({err_a or err_b}). NOT DIFFED."}
+        which = (
+            "both reports"
+            if (err_a and err_b)
+            else ("the first report" if err_a else "the second report")
+        )
+        return {
+            "status": "not_computable",
+            "a_version": ver_a,
+            "b_version": ver_b,
+            "note": f"'{name}' was not computable on {which} ({err_a or err_b}). NOT DIFFED.",
+        }
     fields_a, fields_b = _numeric_fields(res_a), _numeric_fields(res_b)
     shared = sorted(set(fields_a) & set(fields_b))
     deltas = {}
@@ -186,12 +220,14 @@ def _analyzer_diff(name: str, res_a: Optional[dict], res_b: Optional[dict]) -> d
         elif vb == 0:
             pct = 0.0
         else:
-            pct = None      # started at zero: a percent change is undefined, not zero
+            pct = None  # started at zero: a percent change is undefined, not zero
         deltas[k] = {"a": va, "b": vb, "delta": delta, "pct_change": pct}
     entry = {
         "status": "compared",
-        "a_version": ver_a, "b_version": ver_b,
-        "headline_a": res_a.get("headline"), "headline_b": res_b.get("headline"),
+        "a_version": ver_a,
+        "b_version": ver_b,
+        "headline_a": res_a.get("headline"),
+        "headline_b": res_b.get("headline"),
         "deltas": deltas,
     }
     only_a = sorted(set(fields_a) - set(fields_b))
@@ -235,12 +271,14 @@ def compare(doc_a: dict, doc_b: dict) -> dict:
         refusals.append(
             f"schema_version differs ({schema_a!r} vs {schema_b!r}): the two JSON documents may "
             f"not be shaped the same way — refusing rather than assuming a field in one means "
-            f"what the same-named field means in the other.")
+            f"what the same-named field means in the other."
+        )
     if adapter_a != adapter_b:
         refusals.append(
             f"adapter differs ({adapter_a!r} vs {adapter_b!r}): these are two different "
             f"instruments run over two different kinds of corpus, not one instrument run twice — "
-            f"a delta between them would not be a trend in your process.")
+            f"a delta between them would not be a trend in your process."
+        )
     if refusals:
         out["refused"] = True
         out["refusal_reasons"] = refusals
@@ -256,7 +294,8 @@ def compare(doc_a: dict, doc_b: dict) -> dict:
         out["comparability_warnings"].append(
             "SUBSET COMPARISON: " + "; ".join(pieces) + ". These are subset numbers on at least "
             "one side, not whole-corpus numbers — a delta below may reflect the window, not a "
-            "change in your process.")
+            "change in your process."
+        )
 
     results_a, results_b = doc_a["results"], doc_b["results"]
     names = sorted(set(results_a) | set(results_b))
@@ -273,7 +312,8 @@ def compare(doc_a: dict, doc_b: dict) -> dict:
         out["comparability_warnings"].append(
             "ANALYZER VERSION MISMATCH for " + ", ".join(version_mismatches) + ": not diffed "
             "(see each analyzer's own note below). Every other shared analyzer ran the same "
-            "version on both sides and IS diffed normally.")
+            "version on both sides and IS diffed normally."
+        )
     if unversioned:
         # Two reports that BOTH predate versioning used to compare as equal in
         # silence — the most misleading outcome available, because the reader
@@ -283,7 +323,8 @@ def compare(doc_a: dict, doc_b: dict) -> dict:
             "These results carry no analyzer_version, which happens when a report was produced "
             "before per-analyzer versions existed. Nothing here says the analyzers changed — it "
             "says the tool has no way to check, which is not the same thing and is not treated "
-            "as the same thing.")
+            "as the same thing."
+        )
     return out
 
 
@@ -300,8 +341,11 @@ def render_markdown(d: dict) -> str:
         out += ["## REFUSED — these two runs are not comparable", ""]
         for r in d["refusal_reasons"]:
             out.append(f"- {r}")
-        out += ["", "*No deltas were computed. Diff two runs that share an adapter and a "
-               "schema_version, or accept that this comparison cannot be made honestly.*"]
+        out += [
+            "",
+            "*No deltas were computed. Diff two runs that share an adapter and a "
+            "schema_version, or accept that this comparison cannot be made honestly.*",
+        ]
         return "\n".join(out)
 
     if d["comparability_warnings"]:
@@ -314,8 +358,7 @@ def render_markdown(d: dict) -> str:
     for name, entry in d["analyzers"].items():
         out.append(f"### {name}")
         status = entry["status"]
-        if status in ("a_only", "b_only", "not_computable", "version_mismatch",
-                      "unversioned"):
+        if status in ("a_only", "b_only", "not_computable", "version_mismatch", "unversioned"):
             out += [f"*{entry['note']}*", ""]
             continue
         if entry.get("headline_a") or entry.get("headline_b"):

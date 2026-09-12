@@ -14,6 +14,7 @@ field a future analyzer invented — each must be caught. A correctly
 coarsened payload must pass unchanged, with zero violations, so this module
 does not become a source of false refusals on honest share output.
 """
+
 import io
 import json
 import unittest
@@ -43,17 +44,32 @@ def _clean_payload():
     """A correctly coarsened payload: every result field on the allowlist,
     every denominator a band, the audit record coarsened too. This is the
     baseline every hostile fixture below is a single mutation away from."""
-    results = coarsen({
-        "steering_density": {"denominator": "operator turns", "n": 42,
-                              "mid_task_share_pct": 61.9},
-        "composition_mix": {"denominator": "turns", "n": 500,
-                            "authored_code_pct": 12.0, "code_ref_pct": 30.0,
-                            "delib_pct": 58.0},
-        "thread_shape": {"denominator": "threads", "n": 5,
-                         "single_day_threads_pct": 40.0},  # a SHAPE field, excluded
-    })
-    audit = coarsen_audit(AuditRecord(profile="default", n_events=21, n_dropped=7,
-                                       adapter="claude-code", n_filtered=0)).as_dict()
+    results = coarsen(
+        {
+            "steering_density": {
+                "denominator": "operator turns",
+                "n": 42,
+                "mid_task_share_pct": 61.9,
+            },
+            "composition_mix": {
+                "denominator": "turns",
+                "n": 500,
+                "authored_code_pct": 12.0,
+                "code_ref_pct": 30.0,
+                "delib_pct": 58.0,
+            },
+            "thread_shape": {
+                "denominator": "threads",
+                "n": 5,
+                "single_day_threads_pct": 40.0,
+            },  # a SHAPE field, excluded
+        }
+    )
+    audit = coarsen_audit(
+        AuditRecord(
+            profile="default", n_events=21, n_dropped=7, adapter="claude-code", n_filtered=0
+        )
+    ).as_dict()
     return results, audit
 
 
@@ -67,12 +83,15 @@ class CleanPayloadPassesTests(unittest.TestCase):
         # coarsened result is just {denominator, n_band, headline} — no rate
         # survives, and that must not itself be a violation.
         results, audit = _clean_payload()
-        self.assertEqual(find_shape_violations({"thread_shape": results["thread_shape"]}, audit), [])
+        self.assertEqual(
+            find_shape_violations({"thread_shape": results["thread_shape"]}, audit), []
+        )
 
     def test_an_error_result_still_passes(self):
         results, audit = _clean_payload()
-        error_result = coarsen({"x": {"error": "no operator prompts found",
-                                       "denominator": "turns"}})["x"]
+        error_result = coarsen(
+            {"x": {"error": "no operator prompts found", "denominator": "turns"}}
+        )["x"]
         self.assertEqual(find_shape_violations({"x": error_result}, audit), [])
 
 
@@ -82,13 +101,13 @@ class ForgotToBandTests(unittest.TestCase):
 
     def test_a_bare_n_that_skipped_banding_is_caught(self):
         results, audit = _clean_payload()
-        results["steering_density"]["n"] = 42   # coarsen() would never do this; a bug would
+        results["steering_density"]["n"] = 42  # coarsen() would never do this; a bug would
         violations = find_shape_violations(results, audit)
         self.assertTrue(any("'n'" in v for v in violations), violations)
 
     def test_an_n_band_holding_an_exact_int_is_caught(self):
         results, audit = _clean_payload()
-        results["steering_density"]["n_band"] = 42   # band field, wrong TYPE
+        results["steering_density"]["n_band"] = 42  # band field, wrong TYPE
         violations = find_shape_violations(results, audit)
         self.assertTrue(any("n_band" in v for v in violations), violations)
 
@@ -135,8 +154,9 @@ class DroppedByReasonTests(unittest.TestCase):
         results, audit = _clean_payload()
         audit["dropped_by_reason"] = {"tool_traffic": 272}
         violations = find_shape_violations(results, audit)
-        self.assertTrue(any("tool_traffic" in v and "not a coarsened band" in v
-                            for v in violations), violations)
+        self.assertTrue(
+            any("tool_traffic" in v and "not a coarsened band" in v for v in violations), violations
+        )
 
     def test_an_unrecognized_drop_reason_is_caught(self):
         # A reason string outside ingest/drops.py's closed vocabulary — an
@@ -151,8 +171,9 @@ class DroppedByReasonTests(unittest.TestCase):
         results, audit = _clean_payload()
         audit["dropped_by_reason"] = "tool_traffic: 272"
         violations = find_shape_violations(results, audit)
-        self.assertTrue(any("dropped_by_reason" in v and "not a mapping" in v
-                            for v in violations), violations)
+        self.assertTrue(
+            any("dropped_by_reason" in v and "not a mapping" in v for v in violations), violations
+        )
 
     def test_scan_share_shape_refuses_an_unbanded_breakdown(self):
         """The enforcing caller, not just the pure checker: an un-banded
@@ -173,8 +194,12 @@ class StrayShapeFieldTests(unittest.TestCase):
 
     def test_a_stray_tempo_quantile_is_caught(self):
         results, audit = _clean_payload()
-        results["tempo"] = {"denominator": "inter-turn gaps", "n_band": "100-1000",
-                            "headline": "h", "p50_gap_seconds": 42.0}
+        results["tempo"] = {
+            "denominator": "inter-turn gaps",
+            "n_band": "100-1000",
+            "headline": "h",
+            "p50_gap_seconds": 42.0,
+        }
         violations = find_shape_violations(results, audit)
         self.assertTrue(any("p50_gap_seconds" in v for v in violations), violations)
 
@@ -230,11 +255,12 @@ class GuardEnforcementTests(unittest.TestCase):
 
     def _guard(self):
         from corpuslens.model import Quarantine
+
         return Guard(Quarantine(base_date_iso="", local_tz="", ref_map={}), Profile())
 
     def test_a_clean_payload_does_not_raise(self):
         results, audit = _clean_payload()
-        self._guard().scan_share_shape(results, audit)   # must not raise
+        self._guard().scan_share_shape(results, audit)  # must not raise
 
     def test_a_violation_raises_wallerror(self):
         results, audit = _clean_payload()
@@ -268,20 +294,27 @@ class CliWiringTests(unittest.TestCase):
 
     def setUp(self):
         import tempfile
+
         self._tmp = tempfile.TemporaryDirectory()
         self.d = Path(self._tmp.name) / "proj"
         self.d.mkdir()
-        lines = [_cc_line("user" if i % 2 == 0 else "assistant", f"turn {i}",
-                           f"2026-02-{1 + i // 24:02d}T{i % 24:02d}:00:00Z")
-                 for i in range(40)]
+        lines = [
+            _cc_line(
+                "user" if i % 2 == 0 else "assistant",
+                f"turn {i}",
+                f"2026-02-{1 + i // 24:02d}T{i % 24:02d}:00:00Z",
+            )
+            for i in range(40)
+        ]
         _write(self.d / "session.jsonl", lines)
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def test_real_share_run_passes_the_shape_scan_and_exits_zero(self):
-        rc, out, err = _run(["run", str(self.d), "--adapter", "claude-code",
-                             "--format", "json", "--share"])
+        rc, out, err = _run(
+            ["run", str(self.d), "--adapter", "claude-code", "--format", "json", "--share"]
+        )
         self.assertEqual(rc, 0, err)
         doc = json.loads(out)
         self.assertIn("share_caveat", doc)
@@ -294,12 +327,15 @@ class CliWiringTests(unittest.TestCase):
         def _broken_coarsen_audit(audit):
             coarsened = real_coarsen_audit(audit)
             import dataclasses
+
             return dataclasses.replace(coarsened, n_events=audit.n_events)  # "forgot" to band
 
         from unittest import mock
+
         with mock.patch.object(cli.share_mod, "coarsen_audit", side_effect=_broken_coarsen_audit):
-            rc, out, err = _run(["run", str(self.d), "--adapter", "claude-code",
-                                 "--format", "json", "--share"])
+            rc, out, err = _run(
+                ["run", str(self.d), "--adapter", "claude-code", "--format", "json", "--share"]
+            )
         self.assertEqual(rc, 3)
         self.assertEqual(out, "")
         self.assertIn("n_events", err)
@@ -319,13 +355,31 @@ class AllowlistsAreReviewedSetsTests(unittest.TestCase):
         self.assertTrue({"denominator", "n_band", "headline", "error"} <= ALLOWED_RESULT_FIELDS)
 
     def test_audit_fields_are_exactly_the_reviewed_set(self):
-        self.assertEqual(ALLOWED_AUDIT_FIELDS, frozenset({
-            "profile", "adapter", "discovered_path", "granted", "denied",
-            "analyzers_run", "analyzers_refused", "n_events", "n_dropped",
-            "n_dropped_structural", "n_dropped_malformed", "dropped_by_reason",
-            "filters", "n_filtered", "subject", "subject_reason", "subject_consent",
-            "sentence",
-        }))
+        self.assertEqual(
+            ALLOWED_AUDIT_FIELDS,
+            frozenset(
+                {
+                    "profile",
+                    "adapter",
+                    "discovered_path",
+                    "granted",
+                    "denied",
+                    "analyzers_run",
+                    "analyzers_refused",
+                    "n_events",
+                    "n_dropped",
+                    "n_dropped_structural",
+                    "n_dropped_malformed",
+                    "dropped_by_reason",
+                    "filters",
+                    "n_filtered",
+                    "subject",
+                    "subject_reason",
+                    "subject_consent",
+                    "sentence",
+                }
+            ),
+        )
 
 
 if __name__ == "__main__":
@@ -340,8 +394,13 @@ class ErrorMessageLegibilityTests(unittest.TestCase):
     def test_many_violations_are_summarized_not_all_listed(self):
         # an uncoarsened payload across several analyzers: dozens of violations
         raw = {
-            f"analyzer_{i}": {"n": 21, "median_gap_s": 90.0, "reading": "x",
-                              "reference": "y", "analyzer_version": 1}
+            f"analyzer_{i}": {
+                "n": 21,
+                "median_gap_s": 90.0,
+                "reading": "x",
+                "reference": "y",
+                "analyzer_version": 1,
+            }
             for i in range(6)
         }
         with self.assertRaises(WallError) as cm:
@@ -355,7 +414,7 @@ class ErrorMessageLegibilityTests(unittest.TestCase):
 
     def test_a_single_violation_is_named_in_full_with_no_summary(self):
         results, audit = _clean_payload()
-        audit["n_events"] = 21            # exactly one thing wrong
+        audit["n_events"] = 21  # exactly one thing wrong
         with self.assertRaises(WallError) as cm:
             Guard(_quarantine()).scan_share_shape(results, audit)
         msg = str(cm.exception)

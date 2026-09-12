@@ -124,6 +124,7 @@ both `AUTHORSHIP_VERSION` and the analyzer's own `version`/`semantic_hash`, on
 purpose, so a quiet threshold edit cannot silently move every downstream
 number the way an un-versioned regex edit could.
 """
+
 from __future__ import annotations
 
 HUMAN = "human"

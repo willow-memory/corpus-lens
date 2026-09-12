@@ -60,6 +60,7 @@ fix for a failing test is a decision, not a keystroke: bump `version`,
 recompute the hash, and paste the new value in — the test cannot make that
 decision for you, it only refuses to let the decision go unmade.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -102,17 +103,24 @@ def semantic_hash(*parts: str) -> str:
 @dataclass(frozen=True)
 class Analyzer:
     name: str
-    claims: tuple                     # claim types this analyzer emits
-    denominator: str                  # what every rate is out of — named, always
-    run: Callable                     # (events) -> dict of results
-    version: int = 1                  # ANALYZER SEMANTICS version — see module docstring
-    grading_question: str = ""        # which GRADING.md question this answers — see below
-    semantic_hash: str = ""           # pinned hash of this version's classifiers/thresholds
-    semantic_inputs: tuple = field(default_factory=tuple)   # the live inputs the hash covers
+    claims: tuple  # claim types this analyzer emits
+    denominator: str  # what every rate is out of — named, always
+    run: Callable  # (events) -> dict of results
+    version: int = 1  # ANALYZER SEMANTICS version — see module docstring
+    grading_question: str = ""  # which GRADING.md question this answers — see below
+    semantic_hash: str = ""  # pinned hash of this version's classifiers/thresholds
+    semantic_inputs: tuple = field(default_factory=tuple)  # the live inputs the hash covers
 
 
-def register(name: str, claims: tuple, denominator: str, version: int,
-             grading_question: str = "", semantic_hash: str = "", semantic_inputs: tuple = ()):
+def register(
+    name: str,
+    claims: tuple,
+    denominator: str,
+    version: int,
+    grading_question: str = "",
+    semantic_hash: str = "",
+    semantic_inputs: tuple = (),
+):
     """`version` is required, on purpose — an analyzer's author has to make a
     deliberate choice rather than inherit a silent default. `semantic_hash` and
     `semantic_inputs` are optional (an analyzer with no classifier/threshold
@@ -135,14 +143,26 @@ def register(name: str, claims: tuple, denominator: str, version: int,
     if not denominator or not denominator.strip():
         raise ValueError(f"analyzer {name!r} names no denominator — raw counts are rejected")
     if not grading_question or not grading_question.strip():
-        raise ValueError(f"analyzer {name!r} names no grading_question — say which GRADING.md "
-                          "question it answers (or partly answers), or say plainly it answers none")
+        raise ValueError(
+            f"analyzer {name!r} names no grading_question — say which GRADING.md "
+            "question it answers (or partly answers), or say plainly it answers none"
+        )
+
     def deco(fn):
-        _REGISTRY.append(Analyzer(name=name, claims=claims, denominator=denominator, run=fn,
-                                  version=version, grading_question=grading_question,
-                                  semantic_hash=semantic_hash,
-                                  semantic_inputs=tuple(semantic_inputs)))
+        _REGISTRY.append(
+            Analyzer(
+                name=name,
+                claims=claims,
+                denominator=denominator,
+                run=fn,
+                version=version,
+                grading_question=grading_question,
+                semantic_hash=semantic_hash,
+                semantic_inputs=tuple(semantic_inputs),
+            )
+        )
         return fn
+
     return deco
 
 

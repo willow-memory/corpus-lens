@@ -37,6 +37,7 @@ accident as the classifiers, one layer down and far less harmful, since it
 crosses no layer boundary. Worth a shared `ingest/_jsonl.py` the next time
 someone is in there; not worth the churn on its own.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -60,17 +61,17 @@ CODE_REF = re.compile(
     # ("change(s)", "see you(soon)", "kind of(ish)") and inflated code_ref_pct to
     # 100% on a code-free corpus; it is also broader than the reference the number
     # is compared against. Empty/dotted calls do not occur in ordinary prose.
-    r"\b[A-Za-z_]\w*\(\s*\)"                    # empty call: foo()
-    r"|\b[A-Za-z_]\w*\.[A-Za-z_]\w*\("          # method call: obj.method(
-    r"|`[^`]+`|```"                              # inline / fenced code
+    r"\b[A-Za-z_]\w*\(\s*\)"  # empty call: foo()
+    r"|\b[A-Za-z_]\w*\.[A-Za-z_]\w*\("  # method call: obj.method(
+    r"|`[^`]+`|```"  # inline / fenced code
     r"|\b\w+\.(py|js|ts|rs|go|rb|java|sql|sh)\b"  # source file
     r"|Traceback \(most recent call last\)"
-    r"|\bline\s+\d+,\s+in\b"                     # python traceback frame
-    r"|\b\w+(Error|Exception)\b"                # ValueError, KeyError (needs prefix)
-    r"|\breturn\s+\w+\("                         # return a call
-    r"|\b(def|class|async def)\s+\w+\s*\("     # def/class with a param list
-    r"|\bfrom\s+[\w.]+\s+import\b"              # from x import y
-    r"|\bimport\s+[a-z]\w*\.\w",                # import a.b (dotted module)
+    r"|\bline\s+\d+,\s+in\b"  # python traceback frame
+    r"|\b\w+(Error|Exception)\b"  # ValueError, KeyError (needs prefix)
+    r"|\breturn\s+\w+\("  # return a call
+    r"|\b(def|class|async def)\s+\w+\s*\("  # def/class with a param list
+    r"|\bfrom\s+[\w.]+\s+import\b"  # from x import y
+    r"|\bimport\s+[a-z]\w*\.\w",  # import a.b (dotted module)
 )
 # AUTHORED: pasted code. Every branch requires a CODE SHAPE, not a bare keyword
 # — prose openers like "let me know", "static electricity", "var was short for"
@@ -85,20 +86,20 @@ CODE_REF = re.compile(
 # scores identically to no pasted code at all.
 AUTHORED = re.compile(
     r"```"
-    r"|^\s*(def|class|async\s+def)\s+\w+\s*\("        # def foo( / class Bar(
-    r"|^\s*for\s+\w+\s+in\s+[^\n]*:\s*$"               # for x in ...:
-    r"|^\s*(while|if|elif)\b[^\n]*[<>=!(][^\n]*:\s*$" # while/if with an operator/paren, ending ':'
-    r"|^\s*(try|except|finally|else)\s*:\s*$"          # bare block keyword line
+    r"|^\s*(def|class|async\s+def)\s+\w+\s*\("  # def foo( / class Bar(
+    r"|^\s*for\s+\w+\s+in\s+[^\n]*:\s*$"  # for x in ...:
+    r"|^\s*(while|if|elif)\b[^\n]*[<>=!(][^\n]*:\s*$"  # while/if with an operator/paren, ending ':'
+    r"|^\s*(try|except|finally|else)\s*:\s*$"  # bare block keyword line
     r"|^\s*(public|private|protected|static)(\s+(public|private|protected|static|final|abstract|synchronized))*\s+[\w<>\[\].]+\s+\w+\s*[({=;]"  # java/c# decl (1+ modifiers)
-    r"|^\s*(func|fn)\s+\w+\s*\("                        # func name(
-    r"|^\s*(const|let|var)\s+\w+\s*[:=]"                # const/let/var x = | x:
+    r"|^\s*(func|fn)\s+\w+\s*\("  # func name(
+    r"|^\s*(const|let|var)\s+\w+\s*[:=]"  # const/let/var x = | x:
     # imports anchored to a code shape: a bare module path (optionally `as x`) to
     # end of line, or a full `from x import y` list — so prose "import export
     # business is booming" / "import duty" do NOT match
     r"|^\s*import\s+[\w.]+(\s+as\s+\w+)?\s*$"
     r"|^\s*from\s+[\w.]+\s+import\s+(\*|[\w.]+(\s*,\s*[\w.]+)*)\s*$"
-    r"|^\s*[A-Za-z_]\w*\([^)]*\)\s*$"                   # a line that is just a call: print(x)
-    r"|^\s*#!\s*/|^\s*export\s+\w+="                    # shell: shebang / export VAR=
+    r"|^\s*[A-Za-z_]\w*\([^)]*\)\s*$"  # a line that is just a call: print(x)
+    r"|^\s*#!\s*/|^\s*export\s+\w+="  # shell: shebang / export VAR=
     r"|\|\s*(grep|awk|sed|sort|uniq|head|tail|xargs|wc|jq)\b"  # shell pipe chain
     r"|\b(SELECT|INSERT|UPDATE|DELETE)\b[^\n]*\b(FROM|INTO|SET|WHERE|VALUES)\b"
     r"|console\.log\(|println!\(|System\.out\.",
@@ -119,10 +120,14 @@ DELIB = re.compile(
     r"|\byour thoughts\b|\bany thoughts\b|thoughts on\b|thoughts\?"
     r"|help me (think|understand|decide|figure|weigh)|walk me through"
     r"|weigh (the |our |my )?options\b|what (are|were) (the |my |our )?options|\b(the|my|our) options\b"
-    r"|brainstorm|i'?m (thinking|wondering|considering)|convince me|push back", re.I)
+    r"|brainstorm|i'?m (thinking|wondering|considering)|convince me|push back",
+    re.I,
+)
 CLARIFY = re.compile(
     r"do you (mean|want)|would you like|should i\b|which (one|of|do|would|approach)"
-    r"|to clarify|can you confirm|just to confirm|one question|quick question", re.I)
+    r"|to clarify|can you confirm|just to confirm|one question|quick question",
+    re.I,
+)
 
 #: Version of the four regex classifiers directly above (CODE_REF, AUTHORED,
 #: DELIB, CLARIFY) as a set. `corpuslens label` records this in every label

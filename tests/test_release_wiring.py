@@ -34,6 +34,7 @@ has no `tomllib`, so the wheel `packages` line is read by a narrow regex
 scoped to its own `[tool.hatch.build.targets.wheel]` section rather than by a
 TOML parser.
 """
+
 from __future__ import annotations
 
 import ast
@@ -91,7 +92,8 @@ def _toml_section(text: str, header: str) -> str:
     narrow stand-in for a TOML parser, which 3.10 does not ship."""
     match = re.search(
         r"^\[" + re.escape(header) + r"\]\n(.*?)(?=^\[|\Z)",
-        text, re.MULTILINE | re.DOTALL,
+        text,
+        re.MULTILINE | re.DOTALL,
     )
     return match.group(1) if match else ""
 
@@ -148,8 +150,7 @@ class TitleGuardIsWiredWhereAutoMergeIsArmed(unittest.TestCase):
 
     def test_this_repo_arms_auto_merge_and_carries_the_guard(self):
         self.assertTrue(
-            _ARMS_AUTO_MERGE.search(
-                (WORKFLOWS / "release-please.yml").read_text(encoding="utf-8")),
+            _ARMS_AUTO_MERGE.search((WORKFLOWS / "release-please.yml").read_text(encoding="utf-8")),
             "release-please.yml is expected to arm auto-merge; if that changed, "
             "this whole module's premise changed with it",
         )
@@ -167,8 +168,7 @@ class TitleGuardIsWiredWhereAutoMergeIsArmed(unittest.TestCase):
                 encoding="utf-8",
             )
             (workflows / "tests.yml").write_text("run: python -m unittest\n", encoding="utf-8")
-            self.assertEqual(_auto_merge_without_title_guard(workflows),
-                             ["release-please.yml"])
+            self.assertEqual(_auto_merge_without_title_guard(workflows), ["release-please.yml"])
 
             (workflows / TITLE_GUARD).write_text("name: PR title\n", encoding="utf-8")
             self.assertEqual(_auto_merge_without_title_guard(workflows), [])
@@ -186,7 +186,9 @@ class EveryWorkflowDeclaresItsTokenScope(unittest.TestCase):
     """No workflow inherits the repository's default `GITHUB_TOKEN` scope."""
 
     def test_every_workflow_declares_a_permissions_block(self):
-        self.assertTrue(list(WORKFLOWS.glob("*.yml")), "the workflows directory is expected to be non-empty")
+        self.assertTrue(
+            list(WORKFLOWS.glob("*.yml")), "the workflows directory is expected to be non-empty"
+        )
         self.assertEqual(_workflows_without_permissions(WORKFLOWS), [])
 
     def test_planted_workflow_without_a_permissions_block_is_reported(self):
@@ -196,15 +198,21 @@ class EveryWorkflowDeclaresItsTokenScope(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workflows = Path(tmp)
             (workflows / "scoped.yml").write_text(
-                "name: a\non: push\npermissions:\n  contents: read\njobs: {}\n", encoding="utf-8")
+                "name: a\non: push\npermissions:\n  contents: read\njobs: {}\n", encoding="utf-8"
+            )
             (workflows / "job-only.yml").write_text(
                 "name: b\non: push\njobs:\n  x:\n    permissions:\n      contents: read\n",
-                encoding="utf-8")
+                encoding="utf-8",
+            )
             (workflows / "commented.yml").write_text(
-                "name: c\non: push\n# permissions:\n#   contents: read\njobs: {}\n", encoding="utf-8")
+                "name: c\non: push\n# permissions:\n#   contents: read\njobs: {}\n",
+                encoding="utf-8",
+            )
             (workflows / "bare.yml").write_text("name: d\non: push\njobs: {}\n", encoding="utf-8")
-            self.assertEqual(_workflows_without_permissions(workflows),
-                             ["bare.yml", "commented.yml", "job-only.yml"])
+            self.assertEqual(
+                _workflows_without_permissions(workflows),
+                ["bare.yml", "commented.yml", "job-only.yml"],
+            )
 
 
 class PackagedConstantAgreesWithPyproject(unittest.TestCase):
@@ -213,7 +221,7 @@ class PackagedConstantAgreesWithPyproject(unittest.TestCase):
     def test_packaged_matches_the_wheel_packages(self):
         packaged = _packaged_constant((WORKFLOWS / TITLE_GUARD).read_text(encoding="utf-8"))
         wheel = _wheel_packages((REPO / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertEqual(wheel, ["corpuslens"])   # the import package, per pyproject
+        self.assertEqual(wheel, ["corpuslens"])  # the import package, per pyproject
         self.assertIn("pyproject.toml", packaged)  # a packaging change is a release
         self.assertEqual(_packaged_disagreements(packaged, wheel), [])
 
@@ -222,14 +230,15 @@ class PackagedConstantAgreesWithPyproject(unittest.TestCase):
         unchanged — the one line the fleet's copy of this workflow must not
         share. Against this pyproject it disagrees both ways."""
         pasted = _packaged_constant(
-            'run: |\n  python - <<\'PY\'\n'
-            '  PACKAGED = ("src/kartikeya/", "pyproject.toml")\n  PY\n'
+            'run: |\n  python - <<\'PY\'\n  PACKAGED = ("src/kartikeya/", "pyproject.toml")\n  PY\n'
         )
         self.assertEqual(pasted, ("src/kartikeya/", "pyproject.toml"))
         self.assertEqual(
             _packaged_disagreements(pasted, ["corpuslens"]),
-            ["PACKAGED names 'src/kartikeya/', pyproject does not package it",
-             "pyproject packages 'corpuslens/', PACKAGED omits it"],
+            [
+                "PACKAGED names 'src/kartikeya/', pyproject does not package it",
+                "pyproject packages 'corpuslens/', PACKAGED omits it",
+            ],
         )
 
     def test_planted_wheel_section_read_stays_inside_its_own_table(self):
@@ -243,7 +252,7 @@ class PackagedConstantAgreesWithPyproject(unittest.TestCase):
         with self.assertRaises(AssertionError):
             _wheel_packages(elsewhere)
         here = (
-            '[tool.hatch.build.targets.wheel]\n# the import name\n'
+            "[tool.hatch.build.targets.wheel]\n# the import name\n"
             'packages = ["corpuslens"]\n\n[tool.other]\npackages = ["nope"]\n'
         )
         self.assertEqual(_wheel_packages(here), ["corpuslens"])

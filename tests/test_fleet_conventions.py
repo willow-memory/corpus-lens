@@ -38,6 +38,7 @@ Every scan is planted in this same file: a helper that reads a tree and
 reports on it is shown to report on a tree built to violate it (the house
 rule: a scan that has never fired has not been shown to check anything).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -85,8 +86,7 @@ TEST_COMMAND = "python -m unittest discover -s tests"
 #: shape written out (`willow-ideas-005`). Narrow on purpose: IDEAS.md names
 #: versions like 0.2.0 in prose, and a nested `   1.` is not a top-level
 #: item to the parser either, so neither may count.
-_PILE_ID = re.compile(
-    r"^\d+\.\s+\S|\b[a-z][a-z0-9]*(?:-[a-z0-9]+)*-ideas-\d{3}\b", re.MULTILINE)
+_PILE_ID = re.compile(r"^\d+\.\s+\S|\b[a-z][a-z0-9]*(?:-[a-z0-9]+)*-ideas-\d{3}\b", re.MULTILINE)
 
 
 def _sha256(path: Path) -> str:
@@ -135,17 +135,22 @@ def _names_test_command(contributing_text: str) -> bool:
 
 # ── the vendored document ───────────────────────────────────────────────────
 
-class TheVendoredDocumentIsThePublishedOne(unittest.TestCase):
 
+class TheVendoredDocumentIsThePublishedOne(unittest.TestCase):
     def test_the_vendored_copy_hashes_to_the_published_document(self):
         self.assertEqual(_sha256(CONVENTIONS_JSON), CONVENTIONS_SHA256, RESYNC)
 
     def test_the_document_is_the_schema_this_file_reads(self):
         self.assertEqual(RULES["schema"], "willow-fleet-conventions/1")
-        for key in ("hidden_types", "release_cutting_types",
-                    "required_when_release_please_arms_automerge",
-                    "required_config_comments", "required_when_pile_exists",
-                    "contributing_must_name_test_command", "idea_id_trailer"):
+        for key in (
+            "hidden_types",
+            "release_cutting_types",
+            "required_when_release_please_arms_automerge",
+            "required_config_comments",
+            "required_when_pile_exists",
+            "contributing_must_name_test_command",
+            "idea_id_trailer",
+        ):
             self.assertIn(key, RULES)
             self.assertIn(key, RULES["sources"], "every rule names where it came from")
 
@@ -158,26 +163,33 @@ class TheVendoredDocumentIsThePublishedOne(unittest.TestCase):
             copy.write_bytes(data[:-1] + (b"x" if data[-1:] != b"x" else b"y"))
             self.assertEqual(len(copy.read_bytes()), len(data))
             self.assertNotEqual(_sha256(copy), CONVENTIONS_SHA256)
-            with self.assertRaisesRegex(AssertionError, "re-sync from `reconciler conventions --json`"):
+            with self.assertRaisesRegex(
+                AssertionError, "re-sync from `reconciler conventions --json`"
+            ):
                 self.assertEqual(_sha256(copy), CONVENTIONS_SHA256, RESYNC)
 
-    @unittest.skipIf(importlib.util.find_spec("reconciler") is None,
-                     "willow-reconciler is not installed here (stdlib-only repo); "
-                     "the hash pin above is the whole guarantee")
+    @unittest.skipIf(
+        importlib.util.find_spec("reconciler") is None,
+        "willow-reconciler is not installed here (stdlib-only repo); "
+        "the hash pin above is the whole guarantee",
+    )
     def test_the_vendored_copy_equals_what_the_reconciler_publishes(self):
         from reconciler.conventions import conventions
+
         self.assertEqual(RULES, conventions())
 
 
 # ── the real tree ───────────────────────────────────────────────────────────
 
-class ThisTreeMeetsThePublishedConventions(unittest.TestCase):
 
+class ThisTreeMeetsThePublishedConventions(unittest.TestCase):
     def test_pr_title_guard_is_present_wherever_automerge_is_armed(self):
-        self.assertTrue(_arms_automerge(REPO_ROOT),
-                        "release-please.yml is expected to arm auto-merge here")
+        self.assertTrue(
+            _arms_automerge(REPO_ROOT), "release-please.yml is expected to arm auto-merge here"
+        )
         self.assertEqual(
-            _missing_when_armed(REPO_ROOT, RULES["required_when_release_please_arms_automerge"]), [])
+            _missing_when_armed(REPO_ROOT, RULES["required_when_release_please_arms_automerge"]), []
+        )
 
     def test_the_configs_hidden_set_equals_the_published_set(self):
         text = (REPO_ROOT / RELEASE_CONFIG).read_text(encoding="utf-8")
@@ -196,16 +208,19 @@ class ThisTreeMeetsThePublishedConventions(unittest.TestCase):
         rule requires for one — `trailers.yml`, which runs `reconciler
         verify` — must be present."""
         self.assertTrue((REPO_ROOT / PILE).exists())
-        self.assertTrue(_pile_is_numbered((REPO_ROOT / PILE).read_text(encoding="utf-8")),
-                        "the pile the rule binds on must carry ids of the fleet's shape")
+        self.assertTrue(
+            _pile_is_numbered((REPO_ROOT / PILE).read_text(encoding="utf-8")),
+            "the pile the rule binds on must carry ids of the fleet's shape",
+        )
         self.assertEqual(
-            _missing_when_pile_exists(REPO_ROOT, RULES["required_when_pile_exists"], pile=PILE), [])
+            _missing_when_pile_exists(REPO_ROOT, RULES["required_when_pile_exists"], pile=PILE), []
+        )
 
 
 # ── the plants ──────────────────────────────────────────────────────────────
 
-class ThePlants(unittest.TestCase):
 
+class ThePlants(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(__import__("shutil").rmtree, self.tmp, ignore_errors=True)
@@ -214,7 +229,7 @@ class ThePlants(unittest.TestCase):
         root = self.tmp / label
         (root / ".github" / "workflows").mkdir(parents=True)
         body = "jobs:\n  release-please:\n    steps:\n      - run: |\n"
-        body += f"          {ARMS_AUTOMERGE} \"$pr\"\n" if arms else "          gh pr list\n"
+        body += f'          {ARMS_AUTOMERGE} "$pr"\n' if arms else "          gh pr list\n"
         (root / RELEASE_PLEASE).write_text(body, encoding="utf-8")
         for f in files:
             (root / f).parent.mkdir(parents=True, exist_ok=True)
@@ -225,21 +240,34 @@ class ThePlants(unittest.TestCase):
         required = RULES["required_when_release_please_arms_automerge"]
         self.assertEqual(_missing_when_armed(self._tree("bare", arms=True), required), required)
         self.assertEqual(
-            _missing_when_armed(self._tree("guarded", arms=True, files=tuple(required)), required), [])
+            _missing_when_armed(self._tree("guarded", arms=True, files=tuple(required)), required),
+            [],
+        )
         self.assertEqual(_missing_when_armed(self._tree("manual", arms=False), required), [])
 
     def test_the_hidden_set_check_catches_a_planted_config_that_unhides_ci(self):
-        planted = json.dumps({"packages": {".": {"changelog-sections": [
-            {"type": "feat", "section": "Added"},
-            {"type": "docs", "section": "Docs", "hidden": True},
-            {"type": "test", "section": "Tests", "hidden": True},
-            {"type": "ci", "section": "CI"},
-            {"type": "chore", "section": "Chores", "hidden": True},
-        ], "$comment-what-cuts-a-release": "kept"}}})
+        planted = json.dumps(
+            {
+                "packages": {
+                    ".": {
+                        "changelog-sections": [
+                            {"type": "feat", "section": "Added"},
+                            {"type": "docs", "section": "Docs", "hidden": True},
+                            {"type": "test", "section": "Tests", "hidden": True},
+                            {"type": "ci", "section": "CI"},
+                            {"type": "chore", "section": "Chores", "hidden": True},
+                        ],
+                        "$comment-what-cuts-a-release": "kept",
+                    }
+                }
+            }
+        )
         self.assertEqual(_config_hidden_types(planted), {"chore", "docs", "test"})
         self.assertNotEqual(_config_hidden_types(planted), set(RULES["hidden_types"]))
-        self.assertEqual(_config_missing_comments(planted, RULES["required_config_comments"]),
-                         ["$comment-hidden-rule"])
+        self.assertEqual(
+            _config_missing_comments(planted, RULES["required_config_comments"]),
+            ["$comment-hidden-rule"],
+        )
 
     def test_the_pile_check_fires_on_a_planted_tree_with_a_pile_and_no_verify_gate(self):
         required = RULES["required_when_pile_exists"]
@@ -248,14 +276,19 @@ class ThePlants(unittest.TestCase):
         self.assertEqual(_missing_when_pile_exists(with_pile, required, pile=pile), required)
         gated = self._tree("gated", arms=False, files=(pile, *required))
         self.assertEqual(_missing_when_pile_exists(gated, required, pile=pile), [])
-        self.assertEqual(_missing_when_pile_exists(with_pile, required, pile=None), [],
-                         "a repo with no numbered pile is not held to the rule")
+        self.assertEqual(
+            _missing_when_pile_exists(with_pile, required, pile=None),
+            [],
+            "a repo with no numbered pile is not held to the rule",
+        )
 
     def test_the_numbered_pile_read_fires_on_a_planted_item_and_not_on_a_version(self):
         """Planted: a top-level `N. ` item (the parser's own rule) or a
         written-out fleet id is read as numbering; a version number in prose
         — which IDEAS.md is full of — and a nested item are not."""
-        self.assertTrue(_pile_is_numbered("## A. Near\n\n12. A prose renderer — never more than the numbers.\n"))
+        self.assertTrue(
+            _pile_is_numbered("## A. Near\n\n12. A prose renderer — never more than the numbers.\n")
+        )
         self.assertTrue(_pile_is_numbered("Some prose, see willow-ideas-005 for the source.\n"))
         self.assertFalse(_pile_is_numbered("### `corpuslens diff two runs`\n\n*Shipped 0.2.0*.\n"))
         self.assertFalse(_pile_is_numbered("at 0.2.1 it was an unchecked one; 100 events\n"))

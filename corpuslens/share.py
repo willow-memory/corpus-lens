@@ -45,6 +45,7 @@ analyzer's `n` is a band, and a per-reason drop breakdown left at exact
 counts is the same leak sliced finer (see `band_dropped_by_reason` below) —
 all of it is the same class of quantity the banding exists to blur.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -68,17 +69,19 @@ import dataclasses
 # CONTRIBUTING.md ("classifiers undercount, never overclaim") and the
 # instruction in IDEAS.md that under-sharing is the correct direction of
 # error here.
-RATE_FIELDS = frozenset({
-    "mid_task_share_pct",       # steering_density's own headline rate
-    "authored_code_pct",        # composition_mix
-    "code_ref_pct",              # composition_mix
-    "delib_pct",                 # composition_mix
-    "clarification_forks_pct",  # clarification_pull
-    "delta_coverage_pct",       # tempo — measurability, not the gap shape
-    "human_pct",                 # authorship_mix — plain share of its own
-    "agent_pct",                 # denominator (operator-role turns), same
-    "unknown_pct",                # shape as composition_mix's three _pct fields
-})
+RATE_FIELDS = frozenset(
+    {
+        "mid_task_share_pct",  # steering_density's own headline rate
+        "authored_code_pct",  # composition_mix
+        "code_ref_pct",  # composition_mix
+        "delib_pct",  # composition_mix
+        "clarification_forks_pct",  # clarification_pull
+        "delta_coverage_pct",  # tempo — measurability, not the gap shape
+        "human_pct",  # authorship_mix — plain share of its own
+        "agent_pct",  # denominator (operator-role turns), same
+        "unknown_pct",  # shape as composition_mix's three _pct fields
+    }
+)
 
 # Wide bands for a denominator's size. Never an exact count.
 _N_BANDS = (30, 100, 1000, 10000, 100000)
@@ -105,9 +108,11 @@ def _headline(safe_fields: dict) -> str:
     peak straight into prose in the full report. A name and a number cannot
     smuggle a sentence's worth of shape the way a paragraph can."""
     if not safe_fields:
-        return ("No share-safe rate for this analyzer: every value it returned "
-                "is a shape rather than a plain rate, and share mode omits it "
-                "by default, not just rounds it.")
+        return (
+            "No share-safe rate for this analyzer: every value it returned "
+            "is a shape rather than a plain rate, and share mode omits it "
+            "by default, not just rounds it."
+        )
     parts = ", ".join(f"{k} {v}%" for k, v in sorted(safe_fields.items()))
     return f"Share-safe rate(s): {parts}."
 
@@ -131,8 +136,11 @@ def coarsen_result(res: dict) -> dict:
     n = res.get("n")
     if isinstance(n, int) and not isinstance(n, bool):
         out["n_band"] = band_n(n)
-    safe = {k: v for k, v in res.items()
-            if k in RATE_FIELDS and isinstance(v, (int, float)) and not isinstance(v, bool)}
+    safe = {
+        k: v
+        for k, v in res.items()
+        if k in RATE_FIELDS and isinstance(v, (int, float)) and not isinstance(v, bool)
+    }
     out.update(safe)
     out["headline"] = _headline(safe)
     return out

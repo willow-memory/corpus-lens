@@ -40,6 +40,7 @@ WHAT IT DOES NOT DO, ALSO STATED HONESTLY:
 If a *plugin analyzer running the supported path* can recover the absolute
 anchor, that is a bug of the highest class: report it like one.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -57,9 +58,10 @@ class WallError(Exception):
 @dataclass(frozen=True)
 class Profile:
     """Capabilities granted for a run. Default: nothing."""
+
     name: str = "default"
     capabilities: frozenset = frozenset()
-    owner_token: Optional[str] = None   # required for any person-class release
+    owner_token: Optional[str] = None  # required for any person-class release
 
     def grants(self, cap: str) -> bool:
         return cap in self.capabilities
@@ -68,11 +70,13 @@ class Profile:
 DEFAULT_PROFILE = Profile()
 
 # Capabilities that exist in the spine. Adding one is a design act.
-KNOWN_CAPABILITIES = frozenset({
-    "calendar_time",     # release the base date (turns day_offset into dates)
-    "local_tz",          # release the timezone
-    "person_inference",  # allow PERSON_CLAIM_TYPES analyzers to register
-})
+KNOWN_CAPABILITIES = frozenset(
+    {
+        "calendar_time",  # release the base date (turns day_offset into dates)
+        "local_tz",  # release the timezone
+        "person_inference",  # allow PERSON_CLAIM_TYPES analyzers to register
+    }
+)
 
 
 @dataclass
@@ -131,8 +135,8 @@ class AuditRecord:
     # (`guard.audit.discovered_path = path`) that a docstring alone would not
     # have stopped.
     discovered_path: Optional[str] = None
-    filters: list = field(default_factory=list)   # human-readable filter clauses
-    n_filtered: int = 0                            # events excluded BY those filters
+    filters: list = field(default_factory=list)  # human-readable filter clauses
+    n_filtered: int = 0  # events excluded BY those filters
     # Set by `cli.run()` from `subject.infer_subject()` — one of
     # `subject.SUBJECTS` ("human"/"agent"/"mixed"/"unknown"), or `None` when
     # nothing set it (every direct construction of an AuditRecord outside the
@@ -219,32 +223,41 @@ class AuditRecord:
             # the guess belongs in the same sentence the adapter name already
             # lives in, not just in a terminal message the reader of a saved
             # report will never see.
-            disco = (f"No path or --adapter was given: corpuslens discovered this corpus "
-                     f"itself at {self.discovered_path}, using the '{self.adapter}' adapter. ")
+            disco = (
+                f"No path or --adapter was given: corpuslens discovered this corpus "
+                f"itself at {self.discovered_path}, using the '{self.adapter}' adapter. "
+            )
         f = ""
         if self.filters:
             # a filtered run analyzes a SUBSET — say so, and say how big the cut was,
             # so no number below is mistaken for a whole-corpus number.
-            f = (f"This run was filtered ({'; '.join(self.filters)}): {self.n_filtered} further "
-                 f"event(s) fell outside the window and are excluded from every number below, "
-                 f"so these are subset numbers, not corpus numbers. ")
-        base = (disco + f
-                + f"This run read {self.n_events} events (dropped {self.n_dropped}: "
-                f"{self.n_dropped_structural} not a turn by design, {self.n_dropped_malformed} "
-                f"that should have been a turn and failed; counted not hidden), "
-                f"ran {len(self.analyzers_run)} process analyzers under profile '{self.profile}', "
-                f"and was granted {g}{r}. ")
+            f = (
+                f"This run was filtered ({'; '.join(self.filters)}): {self.n_filtered} further "
+                f"event(s) fell outside the window and are excluded from every number below, "
+                f"so these are subset numbers, not corpus numbers. "
+            )
+        base = (
+            disco + f + f"This run read {self.n_events} events (dropped {self.n_dropped}: "
+            f"{self.n_dropped_structural} not a turn by design, {self.n_dropped_malformed} "
+            f"that should have been a turn and failed; counted not hidden), "
+            f"ran {len(self.analyzers_run)} process analyzers under profile '{self.profile}', "
+            f"and was granted {g}{r}. "
+        )
         if self.granted:
             # a capability was released this run — do NOT claim nothing left the wall
-            tail = ("Because the capability(ies) named above were granted, the corresponding "
-                    "quarantined value(s) — calendar anchor, timezone, and/or filename — WERE "
-                    "released under owner grant: this run is not anchor-free. Relative day and "
-                    "within-day tempo also left the wall.")
+            tail = (
+                "Because the capability(ies) named above were granted, the corresponding "
+                "quarantined value(s) — calendar anchor, timezone, and/or filename — WERE "
+                "released under owner grant: this run is not anchor-free. Relative day and "
+                "within-day tempo also left the wall."
+            )
         else:
-            tail = ("No absolute calendar date, timezone, or filename left the wall; relative day "
-                    "and within-day tempo did — these preserve weekly cadence, and on a day a single "
-                    "thread spans for many hours they loosely bound the local time-of-day (never the "
-                    "timezone or the date).")
+            tail = (
+                "No absolute calendar date, timezone, or filename left the wall; relative day "
+                "and within-day tempo did — these preserve weekly cadence, and on a day a single "
+                "thread spans for many hours they loosely bound the local time-of-day (never the "
+                "timezone or the date)."
+            )
         subj = ""
         if self.subject is not None:
             # WHAT LEFT THE WALL is not the only thing worth disclosing: every
@@ -258,21 +271,25 @@ class AuditRecord:
             # never a claim about who actually typed a turn.
             label = self._SUBJECT_LABELS.get(self.subject, self.subject)
             reason = self.subject_reason or "no reason recorded"
-            subj = (f" This run's authorship classifier reads the operator-role turns as "
-                    f"{label} ({reason}) — an inferred belief, not a verified fact, and it can "
-                    f"be wrong; nothing in this report proves who actually typed a turn, and "
-                    f"every 'you'/'your' below should be read as shorthand for that belief.")
+            subj = (
+                f" This run's authorship classifier reads the operator-role turns as "
+                f"{label} ({reason}) — an inferred belief, not a verified fact, and it can "
+                f"be wrong; nothing in this report proves who actually typed a turn, and "
+                f"every 'you'/'your' below should be read as shorthand for that belief."
+            )
         consent = ""
         if self.subject_consent:
             # owner != subject: say that the corpus is someone else's, that
             # their grant was verified before it was opened, and that the run
             # is on their record — without naming them. The default (owner ==
             # subject) adds nothing, so every existing sentence is unchanged.
-            consent = (f" This corpus was analyzed as another person's, not the operator's: a "
-                       f"verified consent grant for the '{self.subject_consent}' scope was "
-                       f"found for that subject before anything was read, and this run was "
-                       f"appended to the subject's own disclosure record. The subject's "
-                       f"identifier is not in this report.")
+            consent = (
+                f" This corpus was analyzed as another person's, not the operator's: a "
+                f"verified consent grant for the '{self.subject_consent}' scope was "
+                f"found for that subject before anything was read, and this run was "
+                f"appended to the subject's own disclosure record. The subject's "
+                f"identifier is not in this report."
+            )
         return base + tail + subj + consent
 
 
@@ -288,10 +305,10 @@ class Guard:
     it is not, and does not claim to be, unbypassable by the owner."""
 
     def __init__(self, quarantine: Quarantine, profile: Profile = DEFAULT_PROFILE):
-        self.__q = quarantine          # name-mangled: not a casual public field
+        self.__q = quarantine  # name-mangled: not a casual public field
         self.profile = profile
         self.audit = AuditRecord(profile=profile.name)
-        self._released_caps: set = set()   # caps actually released this run (egress scan)
+        self._released_caps: set = set()  # caps actually released this run (egress scan)
 
     # ── quarantine custody ───────────────────────────────────────────────
     def release(self, cap: str, justification: str) -> object:
@@ -309,7 +326,9 @@ class Guard:
             raise WallError(f"capability {cap!r} not granted by profile {self.profile.name!r}")
         if cap in ("calendar_time", "local_tz") and self.profile.owner_token is None:
             self.audit.denied.append(cap)
-            raise WallError(f"capability {cap!r} requires an owner token — a name is not an identity")
+            raise WallError(
+                f"capability {cap!r} requires an owner token — a name is not an identity"
+            )
         self.audit.granted.append(f"{cap} ({justification.strip()})")
         self._released_caps.add(cap)
         if cap == "calendar_time":
@@ -356,7 +375,8 @@ class Guard:
                     f"egress scan: a quarantined {label} appears in the outbound "
                     "report but its capability was not released this run — refusing "
                     "to emit. The upstream wall was bypassed; this is a highest-class "
-                    "bug, report it like one.")
+                    "bug, report it like one."
+                )
         # Second phase: shapes, not literals. The loop above can only see values
         # that were quarantined; a value that was never quarantined is invisible
         # to it by construction, which is precisely how the `discovered_path`
@@ -369,7 +389,8 @@ class Guard:
                 "a shape the wall promises is not there, and no capability "
                 "released this run accounts for it. Refusing to emit. This value "
                 "was never quarantined, so the literal scan could not see it; "
-                "that is a highest-class bug, report it like one.")
+                "that is a highest-class bug, report it like one."
+            )
         return text
 
     def scan_share_shape(self, results: dict, audit_dict: dict) -> None:
@@ -417,7 +438,8 @@ class Guard:
                 f"coarsened share payload — {detail} — refusing to emit. This means the "
                 "coarsening step in share.py did not run, or a field/denominator "
                 "was added without being reviewed onto its allowlist; that is a "
-                "highest-class bug, report it like one.")
+                "highest-class bug, report it like one."
+            )
 
     def n_events(self) -> int:
         return self.audit.n_events

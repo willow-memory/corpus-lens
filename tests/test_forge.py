@@ -11,6 +11,7 @@ The synthetic ledgers exercise the paths the demo does not reach: an ask that
 was never answered, a non-turn ledger kind, a malformed line, and two
 builders whose names must not be distinguishable from the events.
 """
+
 import io
 import json
 import re
@@ -38,15 +39,30 @@ def _run(argv):
 
 
 def _ask(ts, domain, sha, sealed=False, canonical=None):
-    return {"ts": ts, "prev": "x", "kind": "entity_resolve", "domain": domain,
-            "surface_sha": sha, "canonical": canonical, "sealed": sealed,
-            "confidence": 1.0 if sealed else 0.0}
+    return {
+        "ts": ts,
+        "prev": "x",
+        "kind": "entity_resolve",
+        "domain": domain,
+        "surface_sha": sha,
+        "canonical": canonical,
+        "sealed": sealed,
+        "confidence": 1.0 if sealed else 0.0,
+    }
 
 
 def _answer(ts, domain, sha, surface, canonical, verifier="someone"):
-    return {"ts": ts, "prev": "x", "kind": "entity_seal", "domain": domain,
-            "surface": surface, "canonical": canonical, "verifier": verifier,
-            "pair_id": "p-" + sha, "surface_sha": sha}
+    return {
+        "ts": ts,
+        "prev": "x",
+        "kind": "entity_seal",
+        "domain": domain,
+        "surface": surface,
+        "canonical": canonical,
+        "verifier": verifier,
+        "pair_id": "p-" + sha,
+        "surface_sha": sha,
+    }
 
 
 def _write(root: Path, rel: str, records):
@@ -70,8 +86,13 @@ class RealLedgerTests(unittest.TestCase):
 
     def test_the_ask_carries_the_question_it_asked(self):
         events, _, _ = ingest.get("forge")(str(FIXTURE))
-        asks = [e for e in events if e.author_class == AuthorClass.MACHINE
-                and e.data_type == DataType.RESPONSE and e.features["question"]]
+        asks = [
+            e
+            for e in events
+            if e.author_class == AuthorClass.MACHINE
+            and e.data_type == DataType.RESPONSE
+            and e.features["question"]
+        ]
         self.assertGreaterEqual(len(asks), 2, "both real asks were joined to their question")
 
     def test_names_and_dates_never_reach_an_event(self):
@@ -84,8 +105,10 @@ class RealLedgerTests(unittest.TestCase):
         # `projects/rally/` is kept and its path never enters the map either —
         # a dropped record leaves no locator behind.
         self.assertEqual(len(q.ref_map), len(events))
-        self.assertTrue(all(re.match(r"checkpoints/ledger\.jsonl:\d+$", ref)
-                            for ref in q.ref_map.values()), sorted(q.ref_map.values()))
+        self.assertTrue(
+            all(re.match(r"checkpoints/ledger\.jsonl:\d+$", ref) for ref in q.ref_map.values()),
+            sorted(q.ref_map.values()),
+        )
 
     def test_run_refuses_the_three_by_name_and_emits_no_anchor(self):
         rc, out, err = _run(["run", str(FIXTURE), "--adapter", "forge", "--format", "json"])
@@ -123,27 +146,55 @@ class SyntheticLedgerTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_unanswered_ask_is_dropped_not_given_a_placeholder(self):
-        _write(self.d, "checkpoints/ledger.jsonl", [
-            _ask("2026-03-01T10:00:00+00:00", "builder:bob:decision:major", "aaa"),
-        ])
+        _write(
+            self.d,
+            "checkpoints/ledger.jsonl",
+            [
+                _ask("2026-03-01T10:00:00+00:00", "builder:bob:decision:major", "aaa"),
+            ],
+        )
         events, _, dropped = ingest.get("forge")(str(self.d))
         self.assertEqual((len(events), dropped.total), (0, 1))
 
     def test_ask_answer_confirm_become_three_turns_in_one_thread(self):
         dom = "builder:bob:decision:major"
-        _write(self.d, "checkpoints/ledger.jsonl", [
-            _ask("2026-03-01T10:00:00+00:00", dom, "aaa"),
-            {"ts": "2026-03-01T10:00:01+00:00", "prev": "x", "kind": "seal",
-             "pair_id": "p-aaa", "verifier": "bob", "source_lang": dom, "target_lang": dom},
-            _answer("2026-03-01T10:04:00+00:00", dom, "aaa",
-                    "could be web, mobile, desktop — which major?", "web: has a site already",
-                    verifier="bob"),
-            _ask("2026-03-03T09:00:00+00:00", dom, "aaa", sealed=True, canonical="web: has a site already"),
-        ])
+        _write(
+            self.d,
+            "checkpoints/ledger.jsonl",
+            [
+                _ask("2026-03-01T10:00:00+00:00", dom, "aaa"),
+                {
+                    "ts": "2026-03-01T10:00:01+00:00",
+                    "prev": "x",
+                    "kind": "seal",
+                    "pair_id": "p-aaa",
+                    "verifier": "bob",
+                    "source_lang": dom,
+                    "target_lang": dom,
+                },
+                _answer(
+                    "2026-03-01T10:04:00+00:00",
+                    dom,
+                    "aaa",
+                    "could be web, mobile, desktop — which major?",
+                    "web: has a site already",
+                    verifier="bob",
+                ),
+                _ask(
+                    "2026-03-03T09:00:00+00:00",
+                    dom,
+                    "aaa",
+                    sealed=True,
+                    canonical="web: has a site already",
+                ),
+            ],
+        )
         events, q, dropped = ingest.get("forge")(str(self.d))
-        self.assertEqual(dropped.total, 1)                       # the `seal` line
-        self.assertEqual([e.author_class for e in events],
-                         [AuthorClass.MACHINE, AuthorClass.OPERATOR, AuthorClass.MACHINE])
+        self.assertEqual(dropped.total, 1)  # the `seal` line
+        self.assertEqual(
+            [e.author_class for e in events],
+            [AuthorClass.MACHINE, AuthorClass.OPERATOR, AuthorClass.MACHINE],
+        )
         self.assertEqual(len({e.thread_id for e in events}), 1)
         self.assertEqual([e.time.day_offset for e in events], [0, 0, 2])
         # the answer's delta is the time the maker took: 4 minutes, same day
@@ -154,15 +205,19 @@ class SyntheticLedgerTests(unittest.TestCase):
 
     def test_non_turn_kinds_and_bad_lines_are_dropped_and_counted(self):
         dom = "builder:bob:decision:major"
-        _write(self.d, "checkpoints/ledger.jsonl", [
-            "this is not json",
-            "[1, 2, 3]",
-            {"ts": "2026-03-01T10:00:00+00:00", "kind": "reject_pair", "domain": dom},
-            {"ts": "2026-03-01T10:00:00+00:00", "kind": "attach_evidence", "domain": dom},
-            _answer("2026-03-01T10:04:00+00:00", dom, "aaa", "which major?", "web"),
-            _answer("not a timestamp", dom, "bbb", "which major?", "web"),
-            _answer("2026-03-01T10:05:00+00:00", "", "ccc", "which major?", "web"),
-        ])
+        _write(
+            self.d,
+            "checkpoints/ledger.jsonl",
+            [
+                "this is not json",
+                "[1, 2, 3]",
+                {"ts": "2026-03-01T10:00:00+00:00", "kind": "reject_pair", "domain": dom},
+                {"ts": "2026-03-01T10:00:00+00:00", "kind": "attach_evidence", "domain": dom},
+                _answer("2026-03-01T10:04:00+00:00", dom, "aaa", "which major?", "web"),
+                _answer("not a timestamp", dom, "bbb", "which major?", "web"),
+                _answer("2026-03-01T10:05:00+00:00", "", "ccc", "which major?", "web"),
+            ],
+        )
         events, _, dropped = ingest.get("forge")(str(self.d))
         self.assertEqual(len(events), 1)
         self.assertEqual(dropped.total, 6)
@@ -170,9 +225,15 @@ class SyntheticLedgerTests(unittest.TestCase):
     def test_two_builders_are_two_threads_and_neither_name_survives(self):
         for who in ("alice", "bob"):
             dom = f"builder:{who}:decision:major"
-            _write(self.d, f"{who}/ledger.jsonl", [
-                _answer("2026-03-01T10:04:00+00:00", dom, "aaa", "which major?", "web", verifier=who),
-            ])
+            _write(
+                self.d,
+                f"{who}/ledger.jsonl",
+                [
+                    _answer(
+                        "2026-03-01T10:04:00+00:00", dom, "aaa", "which major?", "web", verifier=who
+                    ),
+                ],
+            )
         events, q, _ = ingest.get("forge")(str(self.d))
         self.assertEqual(len({e.thread_id for e in events}), 2)
         blob = json.dumps([e.__dict__ for e in events], default=str)
@@ -204,6 +265,7 @@ class RegistryTests(unittest.TestCase):
 
     def test_every_declared_name_is_a_real_analyzer(self):
         from corpuslens.analyze import all_analyzers
+
         names = {a.name for a in all_analyzers()}
         for declared in forge.UNMEASURABLE:
             self.assertIn(declared, names)
@@ -211,6 +273,7 @@ class RegistryTests(unittest.TestCase):
     def test_there_is_no_flag_to_run_a_refused_analyzer(self):
         # The `run` sub-parser slice is test_consent's scan, planted there.
         from test_consent import _run_parser_mentions
+
         cli = Path(__file__).resolve().parent.parent / "corpuslens" / "cli.py"
         self.assertFalse(_run_parser_mentions(cli, "unmeasurable"))
 

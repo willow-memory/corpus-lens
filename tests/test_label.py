@@ -11,6 +11,7 @@ labelling mode"). The load-bearing rules under test:
   * a non-tty stdin is refused rather than hung on;
   * the human is the only labeller — nothing here ever infers a label.
 """
+
 import io
 import itertools
 import json
@@ -47,9 +48,18 @@ def _ev(ref, author, dtype, chars=40, features=None):
     f = {"char_count": chars, "word_count": 8}
     if features:
         f.update(features)
-    return Event(event_id=ref, corpus_id="c", adapter_id="a", source_ref=ref,
-                 thread_id="t", surface=Surface.CLI, author_class=author,
-                 data_type=dtype, time=CoarseTime(day_offset=0), features=f)
+    return Event(
+        event_id=ref,
+        corpus_id="c",
+        adapter_id="a",
+        source_ref=ref,
+        thread_id="t",
+        surface=Surface.CLI,
+        author_class=author,
+        data_type=dtype,
+        time=CoarseTime(day_offset=0),
+        features=f,
+    )
 
 
 class CorpusFixture(unittest.TestCase):
@@ -59,23 +69,38 @@ class CorpusFixture(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.d = Path(self.tmp.name)
-        _write(self.d / "s1.jsonl", [
-            _cc_line("user", "build the parser for the config file please", "2026-02-01T10:00:00Z"),
-            _cc_line("assistant", "Done. Should I add validation, or keep it minimal?", "2026-02-01T10:05:00Z"),
-            _cc_line("user", "it still fails on empty input, fix that", "2026-02-01T10:20:00Z"),
-            _cc_line("user", "lets talk about options for the cache layer", "2026-02-03T09:00:00Z"),
-            _cc_line("assistant", "All 12 tests pass.", "2026-02-03T09:05:00Z"),
-        ])
-        _write(self.d / "s2.jsonl", [
-            _cc_line("user", "what does mastery.py return on line 40?", "2026-02-02T08:00:00Z"),
-            _cc_line("assistant", "It returns the posterior.", "2026-02-02T08:01:00Z"),
-        ])
+        _write(
+            self.d / "s1.jsonl",
+            [
+                _cc_line(
+                    "user", "build the parser for the config file please", "2026-02-01T10:00:00Z"
+                ),
+                _cc_line(
+                    "assistant",
+                    "Done. Should I add validation, or keep it minimal?",
+                    "2026-02-01T10:05:00Z",
+                ),
+                _cc_line("user", "it still fails on empty input, fix that", "2026-02-01T10:20:00Z"),
+                _cc_line(
+                    "user", "lets talk about options for the cache layer", "2026-02-03T09:00:00Z"
+                ),
+                _cc_line("assistant", "All 12 tests pass.", "2026-02-03T09:05:00Z"),
+            ],
+        )
+        _write(
+            self.d / "s2.jsonl",
+            [
+                _cc_line("user", "what does mastery.py return on line 40?", "2026-02-02T08:00:00Z"),
+                _cc_line("assistant", "It returns the posterior.", "2026-02-02T08:01:00Z"),
+            ],
+        )
 
     def tearDown(self):
         self.tmp.cleanup()
 
 
 # ── pure logic (label.py) ────────────────────────────────────────────────────
+
 
 class EligiblePoolTests(unittest.TestCase):
     def test_pool_is_operator_prompts_and_machine_responses_over_the_char_threshold(self):
@@ -89,8 +114,9 @@ class EligiblePoolTests(unittest.TestCase):
         self.assertEqual(pool, {"op-long", "machine-long"})
 
     def test_classifiers_for_author_class(self):
-        self.assertEqual(labelmod.classifiers_for(AuthorClass.OPERATOR),
-                         ("code_authored", "code_ref", "delib"))
+        self.assertEqual(
+            labelmod.classifiers_for(AuthorClass.OPERATOR), ("code_authored", "code_ref", "delib")
+        )
         self.assertEqual(labelmod.classifiers_for(AuthorClass.MACHINE), ("clarify",))
         self.assertEqual(labelmod.classifiers_for(AuthorClass.AGENT), ())
 
@@ -175,8 +201,8 @@ class ScoringTests(unittest.TestCase):
         r = result["classifiers"]["code_ref"]
         self.assertEqual((r["tp"], r["fp"], r["fn"], r["tn"]), (1, 1, 1, 1))
         self.assertEqual(r["n"], 4)
-        self.assertEqual(r["precision_pct"], 50.0)   # tp / (tp+fp)
-        self.assertEqual(r["recall_pct"], 50.0)      # tp / (tp+fn)
+        self.assertEqual(r["precision_pct"], 50.0)  # tp / (tp+fp)
+        self.assertEqual(r["recall_pct"], 50.0)  # tp / (tp+fn)
         self.assertEqual(result["missing"], 0)
         self.assertEqual(result["total_labels"], 4)
 
@@ -187,7 +213,7 @@ class ScoringTests(unittest.TestCase):
         r = labelmod.score(events, store)["classifiers"]["delib"]
         self.assertIsNone(r["precision_pct"])
         self.assertIn("precision_note", r)
-        self.assertIsNone(r["recall_pct"])            # no positive label either
+        self.assertIsNone(r["recall_pct"])  # no positive label either
         self.assertIn("recall_note", r)
 
     def test_a_labelled_turn_no_longer_in_the_corpus_is_counted_as_missing(self):
@@ -209,23 +235,24 @@ class ScoringTests(unittest.TestCase):
 # ── the text seam: fixed arity, and the three conditions that keep the
 #    ungated hash->content map in `label_text` honest (see its docstring) ───
 
+
 class LabelTextSeamTests(CorpusFixture):
     """Pins the two structural requirements from the 2026-09-11 audit:
 
-      1. `ingest.get(name)(path, ...)` always returns the same 3-tuple —
-         no keyword changes its shape. Turn text comes from a SEPARATE
-         function (`ingest.get_label_text`), not a flag on this one.
-      2. The three conditions named in `label_text`'s docstring that keep its
-         ungated hash->content map honest: text never reaches an `Event`,
-         never reaches a renderer/report, and never reaches a label store.
-         (The third is also pinned in `LabelCliTests` below, from the other
-         direction — via the interactive CLI path.)
+    1. `ingest.get(name)(path, ...)` always returns the same 3-tuple —
+       no keyword changes its shape. Turn text comes from a SEPARATE
+       function (`ingest.get_label_text`), not a flag on this one.
+    2. The three conditions named in `label_text`'s docstring that keep its
+       ungated hash->content map honest: text never reaches an `Event`,
+       never reaches a renderer/report, and never reaches a label store.
+       (The third is also pinned in `LabelCliTests` below, from the other
+       direction — via the interactive CLI path.)
     """
 
     def test_ingest_always_returns_a_plain_three_tuple(self):
         result = ingest.get("claude-code")(str(self.d))
         self.assertEqual(len(result), 3)
-        events, quarantine, dropped = result   # must unpack cleanly, unconditionally
+        events, quarantine, dropped = result  # must unpack cleanly, unconditionally
         self.assertTrue(events)
 
     def test_ingest_has_no_flag_that_changes_its_return_shape(self):
@@ -240,7 +267,7 @@ class LabelTextSeamTests(CorpusFixture):
         self.assertTrue(hasattr(lc, "quarantine"))
         self.assertTrue(hasattr(lc, "drops"))
         self.assertTrue(hasattr(lc, "text_by_ref"))
-        self.assertTrue(lc.text_by_ref)   # this corpus has kept events
+        self.assertTrue(lc.text_by_ref)  # this corpus has kept events
 
     def test_get_label_text_refuses_an_adapter_that_never_registered_one(self):
         with self.assertRaises(KeyError):
@@ -264,12 +291,19 @@ class LabelTextSeamTests(CorpusFixture):
         # label_text is a SEPARATE seam from the one run/doctor use
         # (`_ingest`, which calls `ingest.get`, never `get_label_text`) — this
         # asserts that separation holds at the observable-output level too.
-        distinctive = ("build the parser", "cache layer", "mastery.py",
-                       "posterior", "All 12 tests pass")
-        for argv in (["run", str(self.d), "--adapter", "claude-code"],
-                    ["run", str(self.d), "--adapter", "claude-code", "--format", "json"],
-                    ["doctor", str(self.d), "--adapter", "claude-code"],
-                    ["doctor", str(self.d), "--adapter", "claude-code", "--format", "json"]):
+        distinctive = (
+            "build the parser",
+            "cache layer",
+            "mastery.py",
+            "posterior",
+            "All 12 tests pass",
+        )
+        for argv in (
+            ["run", str(self.d), "--adapter", "claude-code"],
+            ["run", str(self.d), "--adapter", "claude-code", "--format", "json"],
+            ["doctor", str(self.d), "--adapter", "claude-code"],
+            ["doctor", str(self.d), "--adapter", "claude-code", "--format", "json"],
+        ):
             _, out, _ = _run(argv)
             for leak in distinctive:
                 self.assertNotIn(leak, out, f"{leak!r} leaked via {argv}")
@@ -278,10 +312,22 @@ class LabelTextSeamTests(CorpusFixture):
         # the CLI-level version of this lives in LabelCliTests; this version
         # checks it straight from the source text, not just a few substrings.
         store = self.d / "labels.json"
-        with mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: "y"):
-            _run(["label", str(self.d), "--adapter", "claude-code",
-                 "--sample-size", "50", "--store", str(store)])
+        with (
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: "y"),
+        ):
+            _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "50",
+                    "--store",
+                    str(store),
+                ]
+            )
         lc = ingest.get_label_text("claude-code")(str(self.d))
         raw = store.read_text()
         texts = [text.strip() for text in lc.text_by_ref.values() if text.strip()]
@@ -291,12 +337,23 @@ class LabelTextSeamTests(CorpusFixture):
 
 # ── CLI: `corpuslens label` ─────────────────────────────────────────────────
 
+
 class LabelCliTests(CorpusFixture):
     def test_non_tty_is_refused_not_hung_on(self):
         store = self.d / "labels.json"
         with mock.patch("sys.stdin.isatty", return_value=False):
-            rc, out, err = _run(["label", str(self.d), "--adapter", "claude-code",
-                                 "--sample-size", "3", "--store", str(store)])
+            rc, out, err = _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "3",
+                    "--store",
+                    str(store),
+                ]
+            )
         self.assertEqual(rc, 2)
         self.assertIn("not one", err)
         self.assertFalse(store.exists())
@@ -304,10 +361,22 @@ class LabelCliTests(CorpusFixture):
     def test_interactive_session_writes_only_permitted_fields(self):
         store = self.d / "labels.json"
         answers = itertools.cycle(["y", "n"])
-        with mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: next(answers)):
-            rc, out, _ = _run(["label", str(self.d), "--adapter", "claude-code",
-                              "--sample-size", "6", "--store", str(store)])
+        with (
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: next(answers)),
+        ):
+            rc, out, _ = _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "6",
+                    "--store",
+                    str(store),
+                ]
+            )
         self.assertEqual(rc, 0)
         self.assertTrue(store.exists())
         raw = store.read_text()
@@ -318,8 +387,13 @@ class LabelCliTests(CorpusFixture):
             self.assertEqual(set(rec.keys()), {"source_ref", "classifier", "label"})
             self.assertIsInstance(rec["label"], bool)
         # no calendar date, filename, or corpus text ever reaches the store
-        self.assertEqual(_leaks_in(raw, ("2026-02-01", "s1.jsonl", "s2.jsonl",
-                                         "mastery.py", "config file", "cache layer")), [])
+        self.assertEqual(
+            _leaks_in(
+                raw,
+                ("2026-02-01", "s1.jsonl", "s2.jsonl", "mastery.py", "config file", "cache layer"),
+            ),
+            [],
+        )
         # but the terminal transcript DID show the turn text (that's the point)
         self.assertIn("build the parser", out)
 
@@ -334,39 +408,89 @@ class LabelCliTests(CorpusFixture):
 
     def test_rerunning_resumes_rather_than_re_asking(self):
         store = self.d / "labels.json"
-        with mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: "y"):
-            _run(["label", str(self.d), "--adapter", "claude-code",
-                 "--sample-size", "6", "--store", str(store)])
+        with (
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: "y"),
+        ):
+            _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "6",
+                    "--store",
+                    str(store),
+                ]
+            )
         before = json.loads(store.read_text())["labels"]
-        with mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: "y"):
-            rc, out, _ = _run(["label", str(self.d), "--adapter", "claude-code",
-                              "--sample-size", "6", "--store", str(store)])
+        with (
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: "y"),
+        ):
+            rc, out, _ = _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "6",
+                    "--store",
+                    str(store),
+                ]
+            )
         self.assertEqual(rc, 0)
         self.assertIn("nothing new to label", out)
         after = json.loads(store.read_text())["labels"]
-        self.assertEqual(before, after)   # nothing re-asked, nothing duplicated
+        self.assertEqual(before, after)  # nothing re-asked, nothing duplicated
 
     def test_quitting_early_saves_partial_progress(self):
         store = self.d / "labels.json"
         answers = iter(["y", "q"])
-        with mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: next(answers)):
-            rc, out, _ = _run(["label", str(self.d), "--adapter", "claude-code",
-                              "--sample-size", "6", "--store", str(store)])
+        with (
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: next(answers)),
+        ):
+            rc, out, _ = _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "6",
+                    "--store",
+                    str(store),
+                ]
+            )
         self.assertEqual(rc, 0)
         doc = json.loads(store.read_text())
         self.assertEqual(len(doc["labels"]), 1)
 
     def test_eof_mid_session_is_treated_like_quit_not_a_crash(self):
         store = self.d / "labels.json"
+
         def raise_eof(prompt):
             raise EOFError
-        with mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", raise_eof):
-            rc, out, err = _run(["label", str(self.d), "--adapter", "claude-code",
-                                 "--sample-size", "6", "--store", str(store)])
+
+        with (
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", raise_eof),
+        ):
+            rc, out, err = _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "6",
+                    "--store",
+                    str(store),
+                ]
+            )
         self.assertEqual(rc, 0)
         self.assertEqual(err, "")
 
@@ -376,17 +500,28 @@ class LabelCliTests(CorpusFixture):
         seen = []
         for name in ("a.json", "b.json"):
             store = self.d / name
-            with mock.patch("sys.stdin.isatty", return_value=True), \
-                 mock.patch("builtins.input", lambda prompt: "y"):
-                _run(["label", str(self.d), "--adapter", "claude-code",
-                     "--sample-size", "3", "--store", str(store)])
+            with (
+                mock.patch("sys.stdin.isatty", return_value=True),
+                mock.patch("builtins.input", lambda prompt: "y"),
+            ):
+                _run(
+                    [
+                        "label",
+                        str(self.d),
+                        "--adapter",
+                        "claude-code",
+                        "--sample-size",
+                        "3",
+                        "--store",
+                        str(store),
+                    ]
+                )
             seen.append(sorted(r["source_ref"] for r in json.loads(store.read_text())["labels"]))
         self.assertEqual(seen[0], seen[1])
 
     def test_refuses_an_adapter_that_cannot_show_turn_text(self):
         store = self.d / "labels.json"
-        rc, out, err = _run(["label", str(self.d), "--adapter", "cursor",
-                             "--store", str(store)])
+        rc, out, err = _run(["label", str(self.d), "--adapter", "cursor", "--store", str(store)])
         self.assertEqual(rc, 2)
         self.assertIn("cursor", err)
         self.assertFalse(store.exists())
@@ -394,46 +529,80 @@ class LabelCliTests(CorpusFixture):
     def test_refuses_to_extend_a_store_graded_under_a_different_version(self):
         store = self.d / "labels.json"
         store.write_text(json.dumps({"classifier_version": "regex-classifiers/0", "labels": []}))
-        rc, out, err = _run(["label", str(self.d), "--adapter", "claude-code",
-                             "--store", str(store)])
+        rc, out, err = _run(
+            ["label", str(self.d), "--adapter", "claude-code", "--store", str(store)]
+        )
         self.assertEqual(rc, 2)
         self.assertIn("classifier version", err)
 
     def test_empty_corpus_is_an_error_not_a_hang(self):
         empty = self.d / "empty"
         empty.mkdir()
-        rc, out, err = _run(["label", str(empty), "--adapter", "claude-code",
-                             "--store", str(self.d / "labels.json")])
+        rc, out, err = _run(
+            [
+                "label",
+                str(empty),
+                "--adapter",
+                "claude-code",
+                "--store",
+                str(self.d / "labels.json"),
+            ]
+        )
         self.assertEqual(rc, 1)
 
 
 # ── CLI: `corpuslens score` ──────────────────────────────────────────────────
 
+
 class ScoreCliTests(CorpusFixture):
     def _label_everything(self, store_path, answer="y"):
-        with mock.patch("sys.stdin.isatty", return_value=True), \
-             mock.patch("builtins.input", lambda prompt: answer):
-            _run(["label", str(self.d), "--adapter", "claude-code",
-                 "--sample-size", "50", "--store", str(store_path)])
+        with (
+            mock.patch("sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", lambda prompt: answer),
+        ):
+            _run(
+                [
+                    "label",
+                    str(self.d),
+                    "--adapter",
+                    "claude-code",
+                    "--sample-size",
+                    "50",
+                    "--store",
+                    str(store_path),
+                ]
+            )
 
     def test_no_store_file_is_a_clear_error(self):
-        rc, out, err = _run(["score", str(self.d), "--adapter", "claude-code",
-                             "--store", str(self.d / "nope.json")])
+        rc, out, err = _run(
+            ["score", str(self.d), "--adapter", "claude-code", "--store", str(self.d / "nope.json")]
+        )
         self.assertEqual(rc, 1)
         self.assertIn("corpuslens label", err)
 
     def test_empty_store_is_a_clear_error(self):
         store = self.d / "labels.json"
         store.write_text(json.dumps(labelmod.empty_store()))
-        rc, out, err = _run(["score", str(self.d), "--adapter", "claude-code",
-                             "--store", str(store)])
+        rc, out, err = _run(
+            ["score", str(self.d), "--adapter", "claude-code", "--store", str(store)]
+        )
         self.assertEqual(rc, 1)
 
     def test_score_reports_n_precision_recall_per_classifier(self):
         store = self.d / "labels.json"
         self._label_everything(store)
-        rc, out, _ = _run(["score", str(self.d), "--adapter", "claude-code",
-                           "--store", str(store), "--format", "json"])
+        rc, out, _ = _run(
+            [
+                "score",
+                str(self.d),
+                "--adapter",
+                "claude-code",
+                "--store",
+                str(store),
+                "--format",
+                "json",
+            ]
+        )
         self.assertEqual(rc, 0)
         doc = json.loads(out)
         for name, r in doc["classifiers"].items():
@@ -456,7 +625,9 @@ class ScoreCliTests(CorpusFixture):
         doc = json.loads(store.read_text())
         doc["classifier_version"] = "regex-classifiers/0"
         store.write_text(json.dumps(doc))
-        rc, out, err = _run(["score", str(self.d), "--adapter", "claude-code", "--store", str(store)])
+        rc, out, err = _run(
+            ["score", str(self.d), "--adapter", "claude-code", "--store", str(store)]
+        )
         self.assertEqual(rc, 2)
         self.assertIn("classifier version", err)
 
@@ -465,8 +636,18 @@ class ScoreCliTests(CorpusFixture):
         s = labelmod.empty_store()
         labelmod.add_label(s, "not-a-real-source-ref", "delib", True)
         store.write_text(json.dumps(s))
-        rc, out, _ = _run(["score", str(self.d), "--adapter", "claude-code",
-                           "--store", str(store), "--format", "json"])
+        rc, out, _ = _run(
+            [
+                "score",
+                str(self.d),
+                "--adapter",
+                "claude-code",
+                "--store",
+                str(store),
+                "--format",
+                "json",
+            ]
+        )
         self.assertEqual(rc, 0)
         self.assertEqual(json.loads(out)["missing"], 1)
 

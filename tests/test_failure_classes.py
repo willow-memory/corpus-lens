@@ -9,10 +9,10 @@ database password in plaintext.
 These tests hold the closed vocabulary to the one property that makes it worth
 its cost: **no substring of the input can reach the output.**
 """
+
 import unittest
 
-from corpuslens.failure_classes import (FAILURE_CLASSES, UNKNOWN, classify,
-                                        describe)
+from corpuslens.failure_classes import FAILURE_CLASSES, UNKNOWN, classify, describe
 
 # The exact psql stderr that leaked, captured by running:
 #   corpuslens run --adapter postgres "postgres://seanuser:hunter2@[bad/corpus"
@@ -73,15 +73,22 @@ class NoInputReachesTheOutputTests(unittest.TestCase):
             "secrettoken-xxx-EXAMPLE-xxx /home/sean-campbell/.pgpass"
         )
         out = describe("postgres query", hostile)
-        for token in ("db.internal.example.com", "10.1.2.3", "5432", "seanuser",
-                      "secrettoken", "/home/sean-campbell", ".pgpass"):
+        for token in (
+            "db.internal.example.com",
+            "10.1.2.3",
+            "5432",
+            "seanuser",
+            "secrettoken",
+            "/home/sean-campbell",
+            ".pgpass",
+        ):
             self.assertNotIn(token, out)
 
     def test_output_is_exactly_operation_plus_one_class(self):
         for sample in (LEAKY_PSQL_STDERR, "connection refused", "anything at all"):
             out = describe("psql", sample)
             self.assertTrue(out.startswith("psql failed: "))
-            self.assertIn(out[len("psql failed: "):], FAILURE_CLASSES)
+            self.assertIn(out[len("psql failed: ") :], FAILURE_CLASSES)
 
 
 class ClassificationAccuracyTests(unittest.TestCase):
@@ -92,12 +99,16 @@ class ClassificationAccuracyTests(unittest.TestCase):
     def test_real_psql_failures_classify(self):
         cases = [
             (LEAKY_PSQL_STDERR, "the connection string is malformed"),
-            ('psql: error: could not translate host name "h" to address: '
-             "No address associated with hostname", "could not resolve the host name"),
-            ('connection to server at "127.0.0.1", port 1 failed: Connection refused',
-             "connection refused"),
-            ('FATAL: password authentication failed for user "seanuser"',
-             "authentication failed"),
+            (
+                'psql: error: could not translate host name "h" to address: '
+                "No address associated with hostname",
+                "could not resolve the host name",
+            ),
+            (
+                'connection to server at "127.0.0.1", port 1 failed: Connection refused',
+                "connection refused",
+            ),
+            ('FATAL: password authentication failed for user "seanuser"', "authentication failed"),
             ("ERROR: permission denied for table turns", "permission denied by the server"),
             ('ERROR: syntax error at or near "SELEC"', "the query was rejected"),
         ]
@@ -130,27 +141,24 @@ class MarkerOrderingTests(unittest.TestCase):
 
     def test_missing_relation_is_a_rejected_query_not_a_missing_database(self):
         self.assertEqual(
-            classify('ERROR:  relation "turns" does not exist'),
-            "the query was rejected")
+            classify('ERROR:  relation "turns" does not exist'), "the query was rejected"
+        )
 
     def test_missing_column_is_a_rejected_query_not_a_missing_database(self):
-        self.assertEqual(
-            classify('ERROR:  column "foo" does not exist'),
-            "the query was rejected")
+        self.assertEqual(classify('ERROR:  column "foo" does not exist'), "the query was rejected")
 
     def test_missing_database_is_still_classified_correctly(self):
         # the fix must not overcorrect: a genuine missing-database error
         # (no "relation "/"column " in it) still gets its own class
         self.assertEqual(
             classify('FATAL:  database "corpus" does not exist'),
-            "the named database does not exist")
+            "the named database does not exist",
+        )
 
     def test_missing_role_is_still_authentication_failed(self):
         # unaffected by the reorder: "role \"" is checked well before
         # "does not exist" already
-        self.assertEqual(
-            classify('FATAL:  role "bob" does not exist'),
-            "authentication failed")
+        self.assertEqual(classify('FATAL:  role "bob" does not exist'), "authentication failed")
 
 
 class AdapterWiringTests(unittest.TestCase):
@@ -159,6 +167,7 @@ class AdapterWiringTests(unittest.TestCase):
 
     def test_postgres_adapter_reports_a_closed_class(self):
         from corpuslens.ingest import postgres
+
         with self.assertRaises(ValueError) as cm:
             postgres._psql("postgres://seanuser:hunter2@[bad/corpus", "SELECT 1")
         msg = str(cm.exception)
@@ -167,8 +176,10 @@ class AdapterWiringTests(unittest.TestCase):
         self.assertIn("the connection string is malformed", msg)
 
     def test_sqlite_adapter_reports_a_closed_class(self):
-        import tempfile, os
+        import tempfile
+        import os
         from corpuslens.ingest import sqlite as sqlite_adapter
+
         fd, path = tempfile.mkstemp(suffix=".db")
         try:
             os.write(fd, b"definitely not a database")

@@ -14,6 +14,7 @@ Four concerns, matching the module's own contract:
   4. It is not wired into the analyzer registry that `corpuslens run` uses
      under the default profile.
 """
+
 import datetime as dt
 import math
 import random
@@ -21,7 +22,6 @@ import unittest
 
 from corpuslens.analyze.fingerprint import (
     HOURS_PER_WEEK,
-    NULL_UNRELIABLE_FRACTION,
     timing_fingerprint,
 )
 
@@ -33,11 +33,18 @@ WEEK_S = 7 * DAY_S
 # small for the hour-of-week estimator to have any signal (see
 # RELIABLE_KEYS / UNRELIABLE_KEYS below and BiasCorrectionTests).
 BASE_KEYS = {
-    "n", "n_days_spanned", "hour_of_week_bins", "hour_of_week_entropy_bits",
-    "hour_of_week_max_entropy_bits", "hour_of_week_bits_below_uniform",
-    "hour_of_week_null_mean_bits_below_uniform", "hour_of_week_null_trials",
+    "n",
+    "n_days_spanned",
+    "hour_of_week_bins",
+    "hour_of_week_entropy_bits",
+    "hour_of_week_max_entropy_bits",
+    "hour_of_week_bits_below_uniform",
+    "hour_of_week_null_mean_bits_below_uniform",
+    "hour_of_week_null_trials",
     "hour_of_week_bits_below_uniform_excess",
-    "weekly_autocorr_lag7", "weekly_autocorr_rank_pct", "reading",
+    "weekly_autocorr_lag7",
+    "weekly_autocorr_rank_pct",
+    "reading",
 }
 RELIABLE_KEYS = BASE_KEYS
 UNRELIABLE_KEYS = BASE_KEYS | {"error"}
@@ -46,8 +53,20 @@ UNRELIABLE_KEYS = BASE_KEYS | {"error"}
 # concentration/periodicity — real weekday names, clock-hour phrasing, calendar
 # fields. "reading" is guidance prose and is exempt (checked separately below).
 FORBIDDEN_SUBSTRINGS = (
-    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
-    "AM", "PM", "o'clock", "weekday=", "hour=", "peak_hour", "peak_bin",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+    "AM",
+    "PM",
+    "o'clock",
+    "weekday=",
+    "hour=",
+    "peak_hour",
+    "peak_bin",
 )
 
 
@@ -57,6 +76,7 @@ def _package_source_names(module, needle):
     submodule anywhere in the process binds it onto its package as a side
     effect and proves nothing about what the package itself imports."""
     import inspect
+
     return needle in inspect.getsource(module)
 
 
@@ -80,21 +100,27 @@ class ConcentrationTests(unittest.TestCase):
         ts = _weekly_pattern(10)
         r = timing_fingerprint(ts)
         self.assertEqual(r["hour_of_week_entropy_bits"], 0.0)
-        self.assertAlmostEqual(r["hour_of_week_bits_below_uniform"],
-                                r["hour_of_week_max_entropy_bits"], places=3)
+        self.assertAlmostEqual(
+            r["hour_of_week_bits_below_uniform"], r["hour_of_week_max_entropy_bits"], places=3
+        )
 
     def test_max_entropy_bits_matches_log2_168(self):
         ts = _weekly_pattern(5)
         r = timing_fingerprint(ts)
-        self.assertAlmostEqual(r["hour_of_week_max_entropy_bits"], math.log2(HOURS_PER_WEEK), places=3)
+        self.assertAlmostEqual(
+            r["hour_of_week_max_entropy_bits"], math.log2(HOURS_PER_WEEK), places=3
+        )
 
     def test_spread_across_many_slots_has_higher_entropy_than_concentrated(self):
         concentrated = timing_fingerprint(_weekly_pattern(20))
         spread = timing_fingerprint(_spread_pattern(60))
-        self.assertGreater(spread["hour_of_week_entropy_bits"],
-                            concentrated["hour_of_week_entropy_bits"])
-        self.assertLess(spread["hour_of_week_bits_below_uniform"],
-                         concentrated["hour_of_week_bits_below_uniform"])
+        self.assertGreater(
+            spread["hour_of_week_entropy_bits"], concentrated["hour_of_week_entropy_bits"]
+        )
+        self.assertLess(
+            spread["hour_of_week_bits_below_uniform"],
+            concentrated["hour_of_week_bits_below_uniform"],
+        )
 
     def test_n_reflects_input_count(self):
         ts = _spread_pattern(37)
@@ -156,11 +182,13 @@ class BiasCorrectionTests(unittest.TestCase):
                 r = timing_fingerprint(ts)
                 excess = r["hour_of_week_bits_below_uniform_excess"]
                 if excess is None:
-                    self.assertIn("error", r,
-                                  f"n={n}: excess is None but no error explains why")
+                    self.assertIn("error", r, f"n={n}: excess is None but no error explains why")
                 else:
-                    self.assertLess(abs(excess), self.NOISE_TOLERANCE_BITS,
-                                     f"n={n}: excess {excess} reads as a schedule that isn't there")
+                    self.assertLess(
+                        abs(excess),
+                        self.NOISE_TOLERANCE_BITS,
+                        f"n={n}: excess {excess} reads as a schedule that isn't there",
+                    )
 
     def test_large_n_uniform_random_excess_is_near_zero_not_gated(self):
         """At n=4000 (the audit's second case) there is plenty of signal for
@@ -200,8 +228,10 @@ class BiasCorrectionTests(unittest.TestCase):
         ts = _spread_pattern(40)
         r1 = timing_fingerprint(ts)
         r2 = timing_fingerprint(ts)
-        self.assertEqual(r1["hour_of_week_null_mean_bits_below_uniform"],
-                          r2["hour_of_week_null_mean_bits_below_uniform"])
+        self.assertEqual(
+            r1["hour_of_week_null_mean_bits_below_uniform"],
+            r2["hour_of_week_null_mean_bits_below_uniform"],
+        )
         self.assertEqual(r1, r2)
 
     def test_null_baseline_does_not_perturb_global_random_state(self):
@@ -226,8 +256,7 @@ class PeriodicityTests(unittest.TestCase):
         aperiodic = timing_fingerprint(_spread_pattern(200))
         self.assertIsNotNone(periodic["weekly_autocorr_lag7"])
         if aperiodic["weekly_autocorr_lag7"] is not None:
-            self.assertGreater(periodic["weekly_autocorr_lag7"],
-                                aperiodic["weekly_autocorr_lag7"])
+            self.assertGreater(periodic["weekly_autocorr_lag7"], aperiodic["weekly_autocorr_lag7"])
 
     def test_too_short_a_span_reports_none_rather_than_a_guess(self):
         # under 8 distinct days -> max_lag < 7 -> cannot estimate lag-7 autocorr
@@ -325,7 +354,7 @@ class NeverRevealsTheScheduleTests(unittest.TestCase):
         file with the same relative cadence must produce the identical
         verdict — the point of the whole module is that it describes the
         FILE's shape, not which real hour/day it was."""
-        tuesday_morning = dt.datetime(2026, 1, 6, 9, 0, 0)   # a Tuesday
+        tuesday_morning = dt.datetime(2026, 1, 6, 9, 0, 0)  # a Tuesday
         saturday_night = dt.datetime(2026, 1, 10, 23, 0, 0)  # a Saturday
         a = [tuesday_morning + dt.timedelta(weeks=i) for i in range(12)]
         b = [saturday_night + dt.timedelta(weeks=i) for i in range(12)]
@@ -354,6 +383,7 @@ class NotWiredIntoTheDefaultRegistryTests(unittest.TestCase):
 
     def test_leakage_demonstration_is_not_in_the_analyzer_registry(self):
         from corpuslens.analyze import all_analyzers
+
         names = {a.name for a in all_analyzers()}
         claims = {c for a in all_analyzers() for c in a.claims}
         self.assertNotIn("leakage_demonstration", claims)
@@ -370,6 +400,7 @@ class NotWiredIntoTheDefaultRegistryTests(unittest.TestCase):
         # `@register` decorator, if it had one, as a side effect of package
         # import) — so check that source directly.
         import corpuslens.analyze as analyze_pkg
+
         self.assertFalse(_package_source_names(analyze_pkg, "fingerprint"))
 
     def test_planted_package_source_naming_the_module_is_caught(self):
@@ -377,6 +408,7 @@ class NotWiredIntoTheDefaultRegistryTests(unittest.TestCase):
         # does not. The scan reads source, not the attribute the import
         # machinery bound.
         import sys
+
         self.assertTrue(_package_source_names(sys.modules[__name__], "fingerprint"))
         self.assertFalse(_package_source_names(random, "fingerprint"))
 
@@ -391,11 +423,18 @@ class NotWiredIntoTheDefaultRegistryTests(unittest.TestCase):
         from corpuslens.model import AuthorClass, CoarseTime, DataType, Event, Quarantine, Surface
 
         events = [
-            Event(event_id=f"e{i}", corpus_id="c", adapter_id="test/1",
-                  source_ref=f"e{i}", thread_id="t1", surface=Surface.CLI,
-                  author_class=AuthorClass.OPERATOR, data_type=DataType.PROMPT,
-                  time=CoarseTime(day_offset=i, delta_prev_s=None),
-                  features={"char_count": 20, "word_count": 4})
+            Event(
+                event_id=f"e{i}",
+                corpus_id="c",
+                adapter_id="test/1",
+                source_ref=f"e{i}",
+                thread_id="t1",
+                surface=Surface.CLI,
+                author_class=AuthorClass.OPERATOR,
+                data_type=DataType.PROMPT,
+                time=CoarseTime(day_offset=i, delta_prev_s=None),
+                features={"char_count": 20, "word_count": 4},
+            )
             for i in range(5)
         ]
         guard = Guard(Quarantine(), DEFAULT_PROFILE)

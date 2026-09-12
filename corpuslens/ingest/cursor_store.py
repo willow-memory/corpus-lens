@@ -45,6 +45,7 @@ different workspaces stay distinct. `meta.json`'s `title` and `cwd` are read but
 never emitted — a chat title is content and a cwd is a filesystem identity;
 neither belongs on an Event.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -55,21 +56,29 @@ from pathlib import Path
 from ..model import AuthorClass, CoarseTime, DataType, Event, Quarantine, Surface
 from . import register, register_default_path
 from ..classifiers import _features, _hash
-from .drops import (DropCounts, EMPTY_TURN, MISSING_TIMESTAMP,
-                    NOT_A_TURN_RECORD, TOOL_TRAFFIC, UNKNOWN_REASON,
-                    UNPARSEABLE_LINE, UNREADABLE_FILE, UNRECOGNIZED_ROLE)
+from .drops import (
+    DropCounts,
+    EMPTY_TURN,
+    MISSING_TIMESTAMP,
+    NOT_A_TURN_RECORD,
+    TOOL_TRAFFIC,
+    UNKNOWN_REASON,
+    UNPARSEABLE_LINE,
+    UNREADABLE_FILE,
+    UNRECOGNIZED_ROLE,
+)
 from .injection import authored_text
 
 #: Plausible ms-epoch window. A varint outside it is not a clock — it is a
 #: length, an enum, or a token count that happens to be large.
-_MS_LO = 1_500_000_000_000   # 2017-07
-_MS_HI = 2_000_000_000_000   # 2033-05
+_MS_LO = 1_500_000_000_000  # 2017-07
+_MS_HI = 2_000_000_000_000  # 2033-05
 
 #: Protobuf field numbers, named from what the bytes actually hold.
-_F_STEPS = 2       # outer: repeated step record
-_F_CALL_ID = 57    # step: provider call id
-_F_START_MS = 59   # step: start, ms epoch
-_F_END_MS = 60     # step: end, ms epoch
+_F_STEPS = 2  # outer: repeated step record
+_F_CALL_ID = 57  # step: provider call id
+_F_START_MS = 59  # step: start, ms epoch
+_F_END_MS = 60  # step: end, ms epoch
 
 _ROLES = {
     "user": (AuthorClass.OPERATOR, DataType.PROMPT),
@@ -78,6 +87,7 @@ _ROLES = {
 
 
 # ── protobuf wire format (stdlib only; no schema, no dependency) ─────────────
+
 
 def _varint(b: bytes, i: int) -> tuple[int, int]:
     r = s = 0
@@ -109,14 +119,14 @@ def _fields(b: bytes):
         if wt == 0:
             v, i = _varint(b, i)
         elif wt == 1:
-            v, i = b[i:i + 8], i + 8
+            v, i = b[i : i + 8], i + 8
         elif wt == 2:
             n, i = _varint(b, i)
             if i + n > end:
                 raise ValueError("length overruns message")
-            v, i = b[i:i + n], i + n
+            v, i = b[i : i + n], i + n
         elif wt == 5:
-            v, i = b[i:i + 4], i + 4
+            v, i = b[i : i + 4], i + 4
         else:
             raise ValueError(f"unsupported wiretype {wt}")
         if wt in (1, 5) and len(v) < (8 if wt == 1 else 4):
@@ -152,6 +162,7 @@ def _step_clocks(data: bytes) -> list[int]:
 
 
 # ── the store ────────────────────────────────────────────────────────────────
+
 
 def _thread_start_ms(db: Path, con) -> int | None:
     """The thread's own start, from a log field. `meta.json` first (it is the
@@ -220,7 +231,7 @@ def _read_store(db: Path, rel: str):
         try:
             rows = con.execute("SELECT data FROM blobs ORDER BY rowid").fetchall()
         except sqlite3.DatabaseError:
-            drops.add(UNREADABLE_FILE)    # not a readable store: one counted drop
+            drops.add(UNREADABLE_FILE)  # not a readable store: one counted drop
             return [], drops
         start_ms = _thread_start_ms(db, con)
         if start_ms is None:
@@ -272,7 +283,8 @@ def ingest(path: str, corpus_id: str = "corpus"):
     root = Path(path)
     if root.exists() and not root.is_dir():
         raise NotADirectoryError(
-            f"the cursor-store adapter takes a directory of **/store.db, not a file: {path}")
+            f"the cursor-store adapter takes a directory of **/store.db, not a file: {path}"
+        )
 
     by_thread: dict[str, list] = {}
     drops = DropCounts()
@@ -281,7 +293,7 @@ def ingest(path: str, corpus_id: str = "corpus"):
         try:
             turns, d = _read_store(db, rel)
         except Exception:
-            drops.add(UNREADABLE_FILE)                # never abort the walk
+            drops.add(UNREADABLE_FILE)  # never abort the walk
             continue
         drops.merge(d)
         if turns:
@@ -307,8 +319,11 @@ def ingest(path: str, corpus_id: str = "corpus"):
                 author, dtype, stripped = AuthorClass.MACHINE, DataType.TOOL_EVENT, False
                 # A tool step has a real clock, so it earns a real delta —
                 # censored across a day boundary, which would pin the hour.
-                delta = ((ms - prev_ms) / 1000.0
-                         if prev_ms is not None and prev_day == day_offset else None)
+                delta = (
+                    (ms - prev_ms) / 1000.0
+                    if prev_ms is not None and prev_day == day_offset
+                    else None
+                )
                 prev_ms, prev_day = ms, day_offset
                 feats = _features("", False)
             else:
@@ -327,10 +342,18 @@ def ingest(path: str, corpus_id: str = "corpus"):
                 feats = _features(text, stripped)
             opaque = _hash(sid, real_ref)
             ref_map[opaque] = real_ref
-            events.append(Event(
-                event_id=opaque, corpus_id=corpus_id, adapter_id="cursor-store/1",
-                source_ref=opaque, thread_id=sid, surface=Surface.IDE,
-                author_class=author, data_type=dtype,
-                time=CoarseTime(day_offset=day_offset, delta_prev_s=delta),
-                features=feats))
+            events.append(
+                Event(
+                    event_id=opaque,
+                    corpus_id=corpus_id,
+                    adapter_id="cursor-store/1",
+                    source_ref=opaque,
+                    thread_id=sid,
+                    surface=Surface.IDE,
+                    author_class=author,
+                    data_type=dtype,
+                    time=CoarseTime(day_offset=day_offset, delta_prev_s=delta),
+                    features=feats,
+                )
+            )
     return events, Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map), drops

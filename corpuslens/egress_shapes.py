@@ -45,6 +45,7 @@ under `local_tz` a timezone may. A home path and an email address are gated by
 NOTHING — no capability in `KNOWN_CAPABILITIES` grants them, so they are
 refused on every path, in every profile.
 """
+
 from __future__ import annotations
 
 import re
