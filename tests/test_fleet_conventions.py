@@ -25,14 +25,14 @@ repo read rather than assumed:
   `python -m unittest discover -s tests` (with `-v` in its own listing);
   the PR template's checklist quotes exactly that string, which is what the
   rule is for.
-* This repo keeps `IDEAS.md`, a pile of ideas under prose headings — and
-  **not a numbered one**: no entry carries an id of the fleet's shape, and
-  no commit carries the `Idea-Id` trailer the ids would join to. The rule
-  `required_when_pile_exists` is about a *numbered* pile (its source names
-  rule 2a and `reconciler verify`, which resolve ids), so here it is vacuous,
-  and the test below says so instead of pretending a `trailers.yml` is due:
-  it asserts that IDEAS.md is still un-numbered, so the day ids appear the
-  vacuity claim fails and E3-trailers is owed.
+* This repo keeps a **numbered** pile at `docs/ideas.md` (the index; the
+  long-form reasoning stays in `IDEAS.md`), so `required_when_pile_exists`
+  binds: `.github/workflows/trailers.yml` must run `reconciler verify`. Until
+  E3-piles this repo had only the prose pile and the rule was vacuous; the
+  test that asserted that vacuity is replaced by the real check, and
+  `_pile_is_numbered` now guards the other direction — that the pile the
+  rule binds on really is numbered, so the check cannot pass on a renamed
+  prose file.
 
 Every scan is planted in this same file: a helper that reads a tree and
 reports on it is shown to report on a tree built to violate it (the house
@@ -67,10 +67,9 @@ RELEASE_PLEASE = ".github/workflows/release-please.yml"
 RELEASE_CONFIG = "release-please-config.json"
 CONTRIBUTING = "CONTRIBUTING.md"
 
-#: This repo's idea pile. It is NOT numbered (see the module docstring), so
-#: the pile rule does not bind here; `_pile_is_numbered` is the check that
-#: keeps that claim honest.
-IDEAS = "IDEAS.md"
+#: This repo's numbered idea pile — the join target for `Idea-Id` trailers.
+#: `IDEAS.md` beside it is the long-form reasoning and is not numbered.
+PILE = "docs/ideas.md"
 
 #: The `gh` invocation that arms auto-merge on the release PR — matched as
 #: text; the arming is one line and this is its spelling.
@@ -80,11 +79,14 @@ ARMS_AUTOMERGE = "gh pr merge --auto"
 #: string the PR template's checklist quotes.
 TEST_COMMAND = "python -m unittest discover -s tests"
 
-#: An id of the fleet's pile shape — `<repo>-ideas-NNN` (the reconciler's
-#: own `willow-ideas-005`), or a heading that opens with a bare NNN. Narrow
-#: on purpose: IDEAS.md names versions like 0.2.0 in prose, and a rule that
-#: read those as ids would call every pile numbered.
-_PILE_ID = re.compile(r"\b[a-z][a-z0-9]*(?:-[a-z0-9]+)*-ideas-\d{3}\b|^#{1,6}\s+\d{3}\b", re.MULTILINE)
+#: What makes a pile numbered, in the reconciler's own terms: a top-level
+#: item — a line at column 0 opening with `<digits>.` and whitespace, which
+#: is exactly `reconciler/parse.py`'s `_ITEM_RE` — or an id of the fleet's
+#: shape written out (`willow-ideas-005`). Narrow on purpose: IDEAS.md names
+#: versions like 0.2.0 in prose, and a nested `   1.` is not a top-level
+#: item to the parser either, so neither may count.
+_PILE_ID = re.compile(
+    r"^\d+\.\s+\S|\b[a-z][a-z0-9]*(?:-[a-z0-9]+)*-ideas-\d{3}\b", re.MULTILINE)
 
 
 def _sha256(path: Path) -> str:
@@ -189,16 +191,15 @@ class ThisTreeMeetsThePublishedConventions(unittest.TestCase):
         self.assertIs(RULES["contributing_must_name_test_command"], True)
         self.assertTrue(_names_test_command((REPO_ROOT / CONTRIBUTING).read_text(encoding="utf-8")))
 
-    def test_the_pile_rule_is_vacuous_here_because_the_pile_is_not_numbered(self):
-        """IDEAS.md exists and is not a numbered pile, so
-        `required_when_pile_exists` does not bind. The day an id of the
-        fleet's shape appears in it, this fails — and then E3-trailers
-        (`.github/workflows/trailers.yml`) is owed, not an edit to this test."""
-        self.assertTrue((REPO_ROOT / IDEAS).exists())
-        self.assertFalse(_pile_is_numbered((REPO_ROOT / IDEAS).read_text(encoding="utf-8")),
-                         "IDEAS.md now carries an id: the pile rule binds; add trailers.yml")
+    def test_trailers_workflow_is_present_because_a_pile_exists(self):
+        """`docs/ideas.md` is a numbered pile, so every file the published
+        rule requires for one — `trailers.yml`, which runs `reconciler
+        verify` — must be present."""
+        self.assertTrue((REPO_ROOT / PILE).exists())
+        self.assertTrue(_pile_is_numbered((REPO_ROOT / PILE).read_text(encoding="utf-8")),
+                        "the pile the rule binds on must carry ids of the fleet's shape")
         self.assertEqual(
-            _missing_when_pile_exists(REPO_ROOT, RULES["required_when_pile_exists"], pile=None), [])
+            _missing_when_pile_exists(REPO_ROOT, RULES["required_when_pile_exists"], pile=PILE), [])
 
 
 # ── the plants ──────────────────────────────────────────────────────────────
@@ -250,15 +251,18 @@ class ThePlants(unittest.TestCase):
         self.assertEqual(_missing_when_pile_exists(with_pile, required, pile=None), [],
                          "a repo with no numbered pile is not held to the rule")
 
-    def test_the_numbered_pile_read_fires_on_a_planted_id_and_not_on_a_version(self):
-        """Planted: an id of the fleet's shape, in either spelling, is read as
-        numbering; a version number in prose — which IDEAS.md is full of —
-        is not."""
-        self.assertTrue(_pile_is_numbered("### corpus-lens-ideas-001 — a share mode\n"))
+    def test_the_numbered_pile_read_fires_on_a_planted_item_and_not_on_a_version(self):
+        """Planted: a top-level `N. ` item (the parser's own rule) or a
+        written-out fleet id is read as numbering; a version number in prose
+        — which IDEAS.md is full of — and a nested item are not."""
+        self.assertTrue(_pile_is_numbered("## A. Near\n\n12. A prose renderer — never more than the numbers.\n"))
         self.assertTrue(_pile_is_numbered("Some prose, see willow-ideas-005 for the source.\n"))
-        self.assertTrue(_pile_is_numbered("## 012 A prose renderer\n"))
         self.assertFalse(_pile_is_numbered("### `corpuslens diff two runs`\n\n*Shipped 0.2.0*.\n"))
         self.assertFalse(_pile_is_numbered("at 0.2.1 it was an unchecked one; 100 events\n"))
+        self.assertFalse(_pile_is_numbered("- a bullet\n   1. nested under it\n"))
+        self.assertFalse(_pile_is_numbered("12.nospace is a near-miss to the parser too\n"))
+        # and the long-form file beside the pile is still not a numbered one
+        self.assertFalse(_pile_is_numbered((REPO_ROOT / "IDEAS.md").read_text(encoding="utf-8")))
 
     def test_the_contributing_check_catches_a_planted_contributing_without_the_command(self):
         self.assertFalse(_names_test_command("# Contributing\n\nRun the tests before pushing.\n"))
