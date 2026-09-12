@@ -8,6 +8,7 @@ user's home directory or follows a symlink out of it, and an unreadable
 location is reported rather than crashed on. The explicit two-argument form
 must be entirely unaffected.
 """
+
 import io
 import json
 import os
@@ -20,7 +21,7 @@ from unittest import mock
 from corpuslens import ingest
 from corpuslens.cli import main as cli_main
 
-from test_pipeline import _cc_line, _write   # the same fixtures the spine uses
+from test_pipeline import _cc_line, _write  # the same fixtures the spine uses
 
 
 def _run(argv):
@@ -38,7 +39,10 @@ class FakeHomeTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = Path(self.tmp.name)
-        patch = mock.patch.dict(os.environ, {"HOME": str(self.home)})
+        # Both spellings: `Path.home()` reads HOME on POSIX and USERPROFILE on
+        # Windows, and a patch of only the first leaves the Windows leg of the
+        # CI matrix discovering the runner's real home.
+        patch = mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)})
         patch.start()
         self.addCleanup(patch.stop)
         self.addCleanup(self.tmp.cleanup)
@@ -46,11 +50,17 @@ class FakeHomeTests(unittest.TestCase):
     def _write_claude_code(self, root, n=1):
         root.mkdir(parents=True, exist_ok=True)
         for i in range(n):
-            _write(root / f"s{i}.jsonl", [
-                _cc_line("user", "build the parser for the config file please",
-                         "2026-02-01T10:00:00Z"),
-                _cc_line("assistant", "Done. Should I add validation?", "2026-02-01T10:05:00Z"),
-            ])
+            _write(
+                root / f"s{i}.jsonl",
+                [
+                    _cc_line(
+                        "user",
+                        "build the parser for the config file please",
+                        "2026-02-01T10:00:00Z",
+                    ),
+                    _cc_line("assistant", "Done. Should I add validation?", "2026-02-01T10:05:00Z"),
+                ],
+            )
 
 
 class RegistrySeamTests(unittest.TestCase):
@@ -82,14 +92,16 @@ class NothingFoundTests(FakeHomeTests):
     def test_reports_every_location_checked_and_refuses_gracefully(self):
         rc, out, err = _run(["run"])
         self.assertEqual(rc, 1)
-        self.assertEqual(out, "")   # nothing ran -- no report to print on stdout
-        for adapter, path in (("claude-code", ".claude/projects"),
-                               ("cursor-store", ".cursor/chats"),
-                               ("gemini-cli", ".gemini/tmp")):
+        self.assertEqual(out, "")  # nothing ran -- no report to print on stdout
+        for adapter, path in (
+            ("claude-code", ".claude/projects"),
+            ("cursor-store", ".cursor/chats"),
+            ("gemini-cli", ".gemini/tmp"),
+        ):
             self.assertIn(adapter, err)
             self.assertIn(path, err)
         self.assertIn("no corpus found", err.lower())
-        self.assertIn("--adapter", err)   # points at the explicit form
+        self.assertIn("--adapter", err)  # points at the explicit form
         self.assertNotIn("Traceback", err)
 
     def test_a_present_but_empty_directory_is_named_present_not_missing(self):
@@ -110,7 +122,7 @@ class DiscoveryAndRunTests(FakeHomeTests):
         preamble, _, body = out.partition("{")
         self.assertIn("claude-code", preamble)
         self.assertIn("~/.claude/projects", preamble)
-        self.assertNotIn(str(self.home), preamble)   # the declared form only, never resolved
+        self.assertNotIn(str(self.home), preamble)  # the declared form only, never resolved
         doc = json.loads("{" + body)
         self.assertEqual(doc["audit"]["adapter"], "claude-code")
 
@@ -123,7 +135,7 @@ class DiscoveryAndRunTests(FakeHomeTests):
         d = self.home / ".claude" / "projects"
         self._write_claude_code(d)
         rc, out, _ = _run(["run", "--format", "json"])
-        doc = json.loads(out[out.index("{"):])
+        doc = json.loads(out[out.index("{") :])
         self.assertEqual(doc["audit"]["discovered_path"], "~/.claude/projects")
         self.assertIn("~/.claude/projects", doc["audit"]["sentence"])
         self.assertIn("claude-code", doc["audit"]["sentence"])
@@ -156,7 +168,7 @@ class DiscoveryAndRunTests(FakeHomeTests):
         self._write_claude_code(d)
         rc, out, _ = _run(["run", "--format", "json", "--share"])
         self.assertEqual(rc, 0)
-        doc = json.loads(out[out.index("{"):])
+        doc = json.loads(out[out.index("{") :])
         self.assertEqual(doc["audit"]["discovered_path"], "~/.claude/projects")
         self.assertNotIn(str(self.home), doc["audit"]["sentence"])
         self.assertNotIn(str(self.home), json.dumps(doc))
@@ -186,12 +198,12 @@ class DiscoveryAndRunTests(FakeHomeTests):
         # the point of this test is WHICH adapter was picked and that the
         # choice was announced, not that the run succeeds.
         self.assertIn("cursor-store", out)
-        self.assertIn("claude-code", out)   # the runner-up is still named
+        self.assertIn("claude-code", out)  # the runner-up is still named
         self.assertIn("LARGEST", out)
-        self.assertIn("~/.cursor/chats", out)   # the declared form, not a resolved path
+        self.assertIn("~/.cursor/chats", out)  # the declared form, not a resolved path
         self.assertNotIn(str(self.home), out)
         self.assertEqual(rc, 1)
-        self.assertIn("cursor-store", err)   # the actual run that followed
+        self.assertIn("cursor-store", err)  # the actual run that followed
 
     def test_only_one_of_path_or_adapter_is_rejected(self):
         d = self.home / ".claude" / "projects"
@@ -229,7 +241,7 @@ class ContainmentTests(FakeHomeTests):
         rc, out, err = _run(["run"])
         self.assertEqual(rc, 1)
         self.assertIn("outside the home directory", err)
-        self.assertNotIn(str(real), err)   # the refused path is named, not walked
+        self.assertNotIn(str(real), err)  # the refused path is named, not walked
 
     def test_an_unreadable_directory_is_reported_not_crashed_on(self):
         # Simulated rather than a real chmod: the test suite may run as root,
@@ -240,8 +252,8 @@ class ContainmentTests(FakeHomeTests):
         d = self.home / ".claude" / "projects"
         self._write_claude_code(d)
         from corpuslens import cli
-        with mock.patch.object(cli.os, "walk",
-                                side_effect=PermissionError("denied")):
+
+        with mock.patch.object(cli.os, "walk", side_effect=PermissionError("denied")):
             rc, out, err = _run(["run"])
         self.assertEqual(rc, 1)
         self.assertIn("unreadable", err)
@@ -276,9 +288,12 @@ class DiscoveredFailurePathTests(unittest.TestCase):
     def _run_discovered(self):
         out, err = io.StringIO(), io.StringIO()
         home = self.home
-        with mock.patch.dict(os.environ, {"HOME": str(home)}), \
-                mock.patch.object(Path, "home", staticmethod(lambda: home)), \
-                redirect_stdout(out), redirect_stderr(err):
+        with (
+            mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}),
+            mock.patch.object(Path, "home", staticmethod(lambda: home)),
+            redirect_stdout(out),
+            redirect_stderr(err),
+        ):
             code = cli_main(["run"])
         return code, out.getvalue() + err.getvalue()
 

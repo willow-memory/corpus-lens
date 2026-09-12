@@ -1,5 +1,18 @@
 name: tests
 
+# The fleet CI floor (fleet plan decision 5; docs/ideas.md item 44). Four legs
+# and one gate, and `tests/test_ci_floor.py` holds each part in place:
+#
+#   test-matrix   Linux, every Python minor pyproject's classifiers declare
+#   test-windows  Windows, the floor and ceiling of that same list
+#   lint          ruff at an exact pinned release: `check` and `format --check`
+#   test          the aggregate gate branch protection requires — green only
+#                 when every leg's result is exactly `success`
+#
+# CodeQL (python + actions) runs under the repository's default setup, not a
+# workflow file here; it appears on every PR as `Analyze (python)` and
+# `Analyze (actions)`.
+
 on:
   push:
     branches: [ main ]
@@ -7,7 +20,7 @@ on:
     branches: [ main ]
 
 concurrency:
-  # A four-version matrix restarted on every push to a PR branch, with nothing
+  # A five-version matrix restarted on every push to a PR branch, with nothing
   # cancelling the superseded run. Scoped to workflow AND ref so a PR cancelling
   # its own older run can never reach main's.
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,6 +36,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Derived from pyproject.toml's `Programming Language :: Python :: 3.X`
+        # classifiers — every listed minor, no more and no fewer. A test
+        # asserts the two lists are equal, so adding a classifier without a
+        # matrix entry (or the reverse) fails the suite, not a reader's memory.
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
@@ -51,12 +68,66 @@ jobs:
           corpuslens run examples/sample-corpus --adapter claude-code > /tmp/report.md
           grep -q "No absolute calendar date, timezone, or filename left the wall" /tmp/report.md
 
+  test-windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor and the ceiling of the classifier list, not the whole of
+        # it: the Windows leg exists to catch path separators, line endings,
+        # temp-file cleanup and `Path.home()`'s USERPROFILE reading, none of
+        # which vary between adjacent minors. A test asserts these are the
+        # min and max of the Linux matrix.
+        python-version: ["3.10", "3.14"]
+    defaults:
+      run:
+        # bash on Windows too, so the smoke test's glob and `grep` are the
+        # same commands as on Linux rather than a second copy in PowerShell.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run the test suite (warnings are errors)
+        run: python -m unittest discover -s tests -v
+      - name: Fail on leaked file handles
+        run: python -W error::ResourceWarning -m unittest discover -s tests
+      - name: Packaging + console-script smoke test
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+          pip install dist/*.whl
+          corpuslens --help
+          corpuslens run examples/sample-corpus --adapter claude-code > report.md
+          grep -q "No absolute calendar date, timezone, or filename left the wall" report.md
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install ruff at the pinned release
+        # Pinned exactly, never `>=`: a lint floor that moves on its own is a
+        # floor that fails a PR for a rule nobody added. Bump it on purpose,
+        # in a commit that says so; `tests/test_ci_floor.py` asserts the pin.
+        run: pip install ruff==0.16.7
+      - name: ruff check
+        run: ruff check .
+      - name: ruff format --check
+        run: ruff format --check .
+
   # Aggregate gate: branch protection requires a single check named exactly
   # "test" across the whole fleet, so the ruleset never has to name a matrix
   # cell. Pinning a cell name means the required check silently stops
   # reporting the moment the matrix is re-shaped. Green only when every leg is.
   test:
-    needs: [test-matrix]
+    needs: [test-matrix, test-windows, lint]
     # `if: always()` is load-bearing, not boilerplate. Without it a failing
     # dependency does not fail this job — it SKIPS it, because that is what
     # `needs:` means. GitHub does not treat a skipped required check as a
@@ -66,15 +137,15 @@ jobs:
     # failed, `test` reported `skipping`, and the PR read MERGEABLE.
     #
     # So the result is asserted explicitly rather than inferred from this job
-    # having run at all. Same shape as homestead/ci.yml and willow-mcp.
+    # having run at all, and it is asserted per leg: `skipped` and `cancelled`
+    # are not `success` and so are failures here. A leg that did not run has
+    # told us nothing, and this gate speaks for all of them.
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Assert every matrix leg actually succeeded
-        # skipped and cancelled count as failures: a leg that did not run has
-        # told us nothing, and this gate speaks for all of them.
-        if: ${{ needs.test-matrix.result != 'success' }}
+      - name: Assert every leg actually succeeded
+        if: ${{ needs.test-matrix.result != 'success' || needs.test-windows.result != 'success' || needs.lint.result != 'success' }}
         run: |
-          echo "::error::test-matrix did not succeed (result: ${{ needs.test-matrix.result }})"
+          echo "::error::a leg did not succeed — test-matrix=${{ needs.test-matrix.result }} test-windows=${{ needs.test-windows.result }} lint=${{ needs.lint.result }}"
           exit 1
-      - run: echo "all matrix legs green"
+      - run: echo "all legs green"

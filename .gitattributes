@@ -1,0 +1,7 @@
+# Every text file is checked out with LF on every platform. Three files in this
+# tree are hash-pinned byte for byte (tools/changelog_dedup.py to Forge's,
+# corpuslens/consent/core.py to willow-mcp's, tests/fleet_conventions.json to
+# the reconciler's), and the JSONL fixtures are read line by line; a Windows
+# checkout with autocrlf on would rewrite all of them with CRLF and fail every
+# pin and every fixture-shape assertion for a reason that is not in the code.
+* text=auto eol=lf
