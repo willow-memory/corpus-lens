@@ -150,6 +150,43 @@ def _is_compaction_summary(o: dict) -> bool:
     return o.get("isCompactSummary") is True
 
 
+#: A user-role record the HARNESS wrote, not the operator. Two fields, both
+#: first-class on the record, both observed 2026-09-12 by walking this
+#: project's owner's own 18-hour session log (the same log the
+#: `<task-notification>` fix below measured):
+#:
+#:   * `isMeta: true` — the runtime re-issuing "Continue from where you left
+#:     off." after a context reset. Eight of them in that log, every one
+#:     counted as an operator prompt before this check; the owner never typed
+#:     one. They carry no wrapper tag, so `injection.py` cannot see them, and
+#:     the text is exactly what a person might type, so a prose match would
+#:     be wrong in both directions.
+#:   * `origin: {"kind": ...}` — the runtime naming who authored the turn.
+#:     Every turn the owner typed carried `origin.kind == "human"` (23 of 23,
+#:     each also `promptSource: "sdk"`); every finished background task
+#:     carried `origin.kind == "task-notification"` (122 of 122), and NO human
+#:     turn carried `isMeta`. Perfect separation on the producer's own marking,
+#:     the same lesson as `isSidechain` above.
+#:
+#: The `origin` half also corrects a mis-bucketing: a `<task-notification>`
+#: turn was stripped to nothing by the tag filter and then counted as an
+#: EMPTY_TURN — "should have been a turn and failed" — which put 122 correct
+#: drops on the malformed side of the doctor's warning (36.8% malformed on a
+#: corpus with nothing malformed in it). Keyed on the field, it is structural.
+#:
+#: Fail-open on absence, by design: a record with neither field (an older
+#: harness, or another producer) is exactly as much a turn as it was before.
+#: Only a PRESENT `origin.kind` that is not "human" excludes a record — the
+#: field is read, never inferred.
+def _is_harness_authored(o: dict) -> bool:
+    if o.get("isMeta") is True:
+        return True
+    origin = o.get("origin")
+    if isinstance(origin, dict) and "kind" in origin:
+        return origin.get("kind") != "human"
+    return False
+
+
 #: Top-level `type` values, besides "user"/"assistant", this harness is known
 #: to write — observed directly by walking THIS PROJECT'S OWN session log
 #: (2026-09-11, the same log BUGS.md's Open #1 measured): "attachment" (an
@@ -255,6 +292,11 @@ def _ingest_impl(path: str, corpus_id: str, want_text: bool):
                 # the runtime's own précis of the thread, handed back in the
                 # user role. Not a prompt, whatever it opens with. Counted.
                 drops.add(COMPACTION_SUMMARY)
+                continue
+            if o.get("type") == "user" and _is_harness_authored(o):
+                # the harness's own resume prompt, or a turn whose `origin`
+                # names a non-human author — nobody typed it. Counted.
+                drops.add(HARNESS_BOOKKEEPING)
                 continue
             d, epoch = _parse_ts(o.get("timestamp"))
             if d is None:

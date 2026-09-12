@@ -27,9 +27,9 @@ from corpuslens.ingest.drops import (ATTACHMENT, DropCounts, EMPTY_TURN,
                                      STRUCTURAL, MALFORMED, SUBAGENT,
                                      THINKING, TOOL_TRAFFIC, UNPARSEABLE_LINE,
                                      reason_class)
-from corpuslens.model import Quarantine
+from corpuslens.model import DataType, Quarantine
 
-from test_pipeline import _cc_line, _write
+from test_pipeline import _cc_line, _cc_line_with, _write
 
 
 def _run(argv):
@@ -228,6 +228,72 @@ class DoctorWarningTests(unittest.TestCase):
         finally:
             import shutil
             shutil.rmtree(d)
+
+
+class HarnessAuthoredUserTurnTests(unittest.TestCase):
+    """A user-role record the harness wrote is not the operator typing. Keyed
+    on the record's own fields (`isMeta`, `origin.kind`), never on the text —
+    the resume prompt reads exactly like something a person would type."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _ingest(self, lines):
+        _write(self.d / "s1.jsonl", lines)
+        return ingest.get("claude-code")(str(self.d))
+
+    def test_a_meta_resume_prompt_is_harness_bookkeeping_not_a_prompt(self):
+        events, _, drops = self._ingest([
+            _cc_line("user", "build the parser for the config file please", "2026-02-01T10:00:00Z"),
+            _cc_line("assistant", "Done.", "2026-02-01T10:05:00Z"),
+            _cc_line_with("user", "Continue from where you left off.", "2026-02-01T11:00:00Z",
+                          isMeta=True),
+        ])
+        self.assertEqual(drops.as_dict().get(HARNESS_BOOKKEEPING), 1)
+        self.assertEqual(drops.malformed, 0)
+        self.assertEqual(sum(1 for e in events if e.data_type is DataType.PROMPT), 1)
+
+    def test_a_task_notification_origin_is_structural_not_an_empty_turn(self):
+        # Before: the tag filter stripped the wrapper to nothing and the record
+        # was counted as EMPTY_TURN — a *malformed* drop for a correct one.
+        events, _, drops = self._ingest([
+            _cc_line("user", "build the parser for the config file please", "2026-02-01T10:00:00Z"),
+            _cc_line_with("user", "<task-notification><result>done</result></task-notification>",
+                          "2026-02-01T10:30:00Z", origin={"kind": "task-notification"}),
+        ])
+        self.assertEqual(drops.as_dict().get(HARNESS_BOOKKEEPING), 1)
+        self.assertIsNone(drops.as_dict().get(EMPTY_TURN))
+        self.assertEqual(drops.malformed, 0)
+        self.assertEqual(len(events), 1)
+
+    def test_a_human_origin_turn_is_kept(self):
+        events, _, drops = self._ingest([
+            _cc_line_with("user", "build the parser for the config file please",
+                          "2026-02-01T10:00:00Z", origin={"kind": "human"}, promptSource="sdk"),
+        ])
+        self.assertEqual(len(events), 1)
+        self.assertEqual(drops.total, 0)
+
+    def test_a_record_with_neither_field_is_as_much_a_turn_as_before(self):
+        # fail-open on absence: an older harness, or another producer
+        events, _, drops = self._ingest([
+            _cc_line("user", "Continue from where you left off.", "2026-02-01T10:00:00Z"),
+        ])
+        self.assertEqual(len(events), 1)
+        self.assertEqual(drops.total, 0)
+
+    def test_the_check_reads_the_field_not_the_text(self):
+        # the same resume wording typed by a person (origin says human) stays
+        events, _, drops = self._ingest([
+            _cc_line_with("user", "Continue from where you left off.", "2026-02-01T10:00:00Z",
+                          origin={"kind": "human"}),
+        ])
+        self.assertEqual(len(events), 1)
+        self.assertEqual(drops.total, 0)
 
 
 if __name__ == "__main__":

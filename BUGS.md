@@ -284,6 +284,44 @@ where a path filter finds nothing at all, so it keys on the record's own
 
 The same commit gives compaction summaries the same treatment: they were caught only by the prose a summary happens to open with, and are now skipped on the runtime's own `isCompactSummary` flag, with the prose branch kept as the fallback. That field name is unverified on this side and the check is inert if it is wrong — see the provenance note in `claude_code.py`, and open bug 3 for the half that is not fixed.
 
+### The harness's own "Continue from where you left off." was counted as the operator typing
+
+Found 2026-09-12 by the owner, reading a report on his own 18-hour session:
+he had never typed "Continue from where you left off." — the harness re-issues
+it in the **user** role after every context reset. Eight of them in that log,
+every one counted as an operator prompt against 23 the owner typed. They carry no
+wrapper tag, so the injection filter could not see them, and the text is
+exactly what a person might type, so a prose match would have been wrong in
+both directions.
+
+The record carries the answer itself. Each one is flagged `isMeta: true`; no
+human turn is. And every turn the owner typed carries `origin: {"kind":
+"human"}` (23 of 23, each also `promptSource: "sdk"`), while every finished
+background task carries `origin: {"kind": "task-notification"}` (122 of 122).
+Perfect separation on the producer's own marking — the `isSidechain` lesson a
+third time.
+
+Fixed by keying on those two fields in `claude_code.py`
+(`_is_harness_authored`): a user-role record with `isMeta`, or with a present
+`origin.kind` that is not `"human"`, is `HARNESS_BOOKKEEPING`. Fail-open on
+absence — a record with neither field is as much a turn as before, so older
+logs and other producers are untouched. The same check corrects a second
+mis-bucketing: a `<task-notification>` turn was stripped to nothing by the tag
+filter and then counted as `EMPTY_TURN`, "should have been a turn and failed",
+which put 122 correct drops on the malformed side of `doctor`'s warning (36.8%
+malformed on a corpus with nothing malformed in it). Keyed on the field they
+are structural, and the corpus reads 0 malformed. Regression tests:
+`tests/test_drop_reasons.py::HarnessAuthoredUserTurnTests`, including one that
+keeps the same resume wording when `origin` says a human typed it — the check
+reads the field, never the text.
+
+**Residual, not fixed here:** `doctor` on that log now reads 24 operator
+turns, not 23. The one left is `[Request interrupted by user]`, which the
+harness writes in the user role with neither field — a text-anchored door of
+the same class as the stop-hook prefix, and it belongs in `MACHINE_TURN`'s
+enumeration in `injection.py`, not in a field check. Recorded so the next
+person does not rediscover it.
+
 ### A peer agent's relayed message was counted as the operator typing
 
 A message relayed from another agent session arrives in the **user** role,
