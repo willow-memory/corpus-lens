@@ -209,8 +209,10 @@ class RegistryTests(unittest.TestCase):
             self.assertIn(declared, names)
 
     def test_there_is_no_flag_to_run_a_refused_analyzer(self):
-        src = (Path(__file__).resolve().parent.parent / "corpuslens" / "cli.py").read_text()
-        self.assertNotIn("unmeasurable", src[src.index('sub.add_parser("run"'):src.index('sub.add_parser("doctor"')])
+        # The `run` sub-parser slice is test_consent's scan, planted there.
+        from test_consent import _run_parser_mentions
+        cli = Path(__file__).resolve().parent.parent / "corpuslens" / "cli.py"
+        self.assertFalse(_run_parser_mentions(cli, "unmeasurable"))
 
 
 if __name__ == "__main__":

@@ -51,6 +51,15 @@ FORBIDDEN_SUBSTRINGS = (
 )
 
 
+def _package_source_names(module, needle):
+    """Whether `module`'s own source text names `needle`. Read with
+    `inspect.getsource` rather than by attribute lookup, because importing a
+    submodule anywhere in the process binds it onto its package as a side
+    effect and proves nothing about what the package itself imports."""
+    import inspect
+    return needle in inspect.getsource(module)
+
+
 def _weekly_pattern(n_weeks: int, base: float = 1_700_000_000.0, jitter=None):
     """Synthetic timestamps: one event at the same hour-of-week, `n_weeks`
     weeks running, optionally jittered by a few minutes so it is not a
@@ -360,10 +369,16 @@ class NotWiredIntoTheDefaultRegistryTests(unittest.TestCase):
         # analyze/__init__.py itself imports it (which is what would run its
         # `@register` decorator, if it had one, as a side effect of package
         # import) — so check that source directly.
-        import inspect
         import corpuslens.analyze as analyze_pkg
-        src = inspect.getsource(analyze_pkg)
-        self.assertNotIn("fingerprint", src)
+        self.assertFalse(_package_source_names(analyze_pkg, "fingerprint"))
+
+    def test_planted_package_source_naming_the_module_is_caught(self):
+        # This module's own source names it, several times over; random.py's
+        # does not. The scan reads source, not the attribute the import
+        # machinery bound.
+        import sys
+        self.assertTrue(_package_source_names(sys.modules[__name__], "fingerprint"))
+        self.assertFalse(_package_source_names(random, "fingerprint"))
 
     def test_a_default_profile_run_over_ordinary_events_never_computes_it(self):
         """Belt-and-suspenders end-to-end check: build a normal small corpus

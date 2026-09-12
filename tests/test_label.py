@@ -28,6 +28,14 @@ from corpuslens.model import AuthorClass, CoarseTime, DataType, Event, Surface
 from test_pipeline import _cc_line, _write
 
 
+def _leaks_in(raw, terms):
+    """Every one of `terms` present in `raw` — the label store's text once
+    it has left the wall, against the dates, filenames and turn text that
+    must never reach it. The caller decides what must be absent; this only
+    reports what got through. Planted in LabelCliTests."""
+    return [term for term in terms if term in raw]
+
+
 def _run(argv):
     out, err = io.StringIO(), io.StringIO()
     with redirect_stdout(out), redirect_stderr(err):
@@ -276,9 +284,9 @@ class LabelTextSeamTests(CorpusFixture):
                  "--sample-size", "50", "--store", str(store)])
         lc = ingest.get_label_text("claude-code")(str(self.d))
         raw = store.read_text()
-        for text in lc.text_by_ref.values():
-            if text.strip():
-                self.assertNotIn(text.strip(), raw)
+        texts = [text.strip() for text in lc.text_by_ref.values() if text.strip()]
+        self.assertTrue(texts, "the corpus is expected to carry turn text to check against")
+        self.assertEqual(_leaks_in(raw, texts), [])
 
 
 # ── CLI: `corpuslens label` ─────────────────────────────────────────────────
@@ -310,11 +318,19 @@ class LabelCliTests(CorpusFixture):
             self.assertEqual(set(rec.keys()), {"source_ref", "classifier", "label"})
             self.assertIsInstance(rec["label"], bool)
         # no calendar date, filename, or corpus text ever reaches the store
-        for leak in ("2026-02-01", "s1.jsonl", "s2.jsonl", "mastery.py",
-                     "config file", "cache layer"):
-            self.assertNotIn(leak, raw)
+        self.assertEqual(_leaks_in(raw, ("2026-02-01", "s1.jsonl", "s2.jsonl",
+                                         "mastery.py", "config file", "cache layer")), [])
         # but the terminal transcript DID show the turn text (that's the point)
         self.assertIn("build the parser", out)
+
+    def test_planted_leak_in_the_store_is_caught(self):
+        # A store that DID carry a filename and a date: both reported, in the
+        # caller's order, and the clean term is not.
+        store_text = '{"labels": [{"source_ref": "s1.jsonl:3 on 2026-02-01"}]}'
+        self.assertEqual(
+            _leaks_in(store_text, ("mastery.py", "2026-02-01", "s1.jsonl")),
+            ["2026-02-01", "s1.jsonl"],
+        )
 
     def test_rerunning_resumes_rather_than_re_asking(self):
         store = self.d / "labels.json"
