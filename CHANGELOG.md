@@ -12,7 +12,6 @@ hand-written history below them predates the release pipeline.
 
 ### Fixed
 
-* **ingest:** a harness-written user turn is bookkeeping, keyed on its own fields ([cb32bf8](https://github.com/willow-memory/corpus-lens/commit/cb32bf8e75add5203b9da5fb69a3b67f115fc6f8))
 * **ingest:** a harness-written user turn is bookkeeping, keyed on its own fields ([1172ea1](https://github.com/willow-memory/corpus-lens/commit/1172ea1a6cfd93b46cb598a498295590c9b2ea12))
 
 ## [0.7.1](https://github.com/willow-memory/corpus-lens/compare/v0.7.0...v0.7.1) (2026-09-11)
