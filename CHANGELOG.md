@@ -7,6 +7,14 @@ amendments — corrections sit beside the record they correct, never overwrite i
 Versioned sections are written by release-please from the commit messages; the
 hand-written history below them predates the release pipeline.
 
+## [0.7.3](https://github.com/willow-memory/corpus-lens/compare/v0.7.2...v0.7.3) (2026-09-12)
+
+
+### Fixed
+
+* **ingest:** the interrupt marker is a machine turn, not a prompt ([70ba258](https://github.com/willow-memory/corpus-lens/commit/70ba2580f330ee169117b6fd41b5d6306362c904))
+* **ingest:** the interrupt marker is a machine turn, not a prompt ([3f2e132](https://github.com/willow-memory/corpus-lens/commit/3f2e132577aa92fb63696a084283b008f17c0ac3))
+
 ## [0.7.2](https://github.com/willow-memory/corpus-lens/compare/v0.7.1...v0.7.2) (2026-09-12)
 
 
