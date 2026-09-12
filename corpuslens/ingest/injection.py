@@ -5,6 +5,7 @@ front-loading finding, 2026-07-16: median 3202w -> 15w once stripped). This
 filter is applied at ingest so nothing downstream ever mistakes tooling for a
 person. Regexes are conservative: strip only wrappers KNOWN to be injected.
 """
+
 from __future__ import annotations
 
 import re
@@ -20,16 +21,34 @@ import re
 #: same runtime's wrappers as the ones already listed; the `cursor` adapter
 #: reads them too, so its openers get shorter (more accurate) as well.
 _INJECTED_TAGS = (
-    "user_info", "environment_details", "additional_data", "timestamp",
+    "user_info",
+    "environment_details",
+    "additional_data",
+    "timestamp",
     # Cursor store.db, observed 2026-09-07
-    "always_applied_workspace_rule", "always_applied_workspace_rules",
-    "agent_transcripts", "transcript_location", "git_status",
-    "rules", "user_rule", "agent_skill", "agent_skills",
-    "summary_content", "hooks_context", "system_notification",
-    "system_reminder", "mcp_instructions", "mcp_meta_tools",
-    "mcp_meta_tool_servers", "dynamic_tools", "dynamic_tool_catalog",
-    "dynamic_tool_namespaces", "available_subagent_types",
-    "available_subagent_models", "mermaid_syntax", "todo_update",
+    "always_applied_workspace_rule",
+    "always_applied_workspace_rules",
+    "agent_transcripts",
+    "transcript_location",
+    "git_status",
+    "rules",
+    "user_rule",
+    "agent_skill",
+    "agent_skills",
+    "summary_content",
+    "hooks_context",
+    "system_notification",
+    "system_reminder",
+    "mcp_instructions",
+    "mcp_meta_tools",
+    "mcp_meta_tool_servers",
+    "dynamic_tools",
+    "dynamic_tool_catalog",
+    "dynamic_tool_namespaces",
+    "available_subagent_types",
+    "available_subagent_models",
+    "mermaid_syntax",
+    "todo_update",
     # Claude Code harness, observed 2026-09-11 in this project's own session
     # log. A background task finishing delivers its whole result in the USER
     # role: three such turns ran 1728, 902 and 1246 words against a human whose
@@ -48,7 +67,8 @@ _INJECTED_TAGS = (
     # code (`utils/sessionUtils.ts::isIgnoredUserContent`) already treats both
     # prefixes as not-a-real-user-turn for its own purposes — the same
     # front-loading shape as every tag above, this runtime's names for it.
-    "session_context", "hook_context",
+    "session_context",
+    "hook_context",
     # Claude Code harness again, observed 2026-09-11 by running corpuslens on
     # THIS session's own log — the third time dogfooding has caught machine
     # text counted as a person. A slash command the operator runs locally is
@@ -57,8 +77,11 @@ _INJECTED_TAGS = (
     # as a prompt. On that corpus they were 3 of 11 "operator" turns, and two
     # carried backticks, which fired CODE_REF and reported an 18.2%
     # code-reference rate for a human whose real rate was 0.0%.
-    "local-command-caveat", "local-command-stdout",
-    "command-name", "command-message", "command-args",
+    "local-command-caveat",
+    "local-command-stdout",
+    "command-name",
+    "command-message",
+    "command-args",
     # A message relayed from ANOTHER agent session, observed 2026-09-11 in this
     # project's own log. It arrives in the user role wrapped in
     # `<cross-session-message from=… from-name=… from-mode=…>`, followed by
@@ -109,15 +132,17 @@ MACHINE_TURN = re.compile(
 )
 
 INJECTED = re.compile(
-    "|".join([r"<system-reminder>.*?</system-reminder>"]
-             + [_OPEN.format(t=t) + rf".*?</{t}>" for t in _INJECTED_TAGS]
-             # An unclosed injected block (truncated at a context boundary)
-             # still is not the operator's text: consume to the next open tag
-             # or the end rather than leaving thousands of words behind.
-             # `-` is in the terminator class because a wrapper name may carry
-             # one (`task-notification`): without it an unclosed block would run
-             # straight through the next wrapper instead of stopping at it.
-             + [_OPEN.format(t=t) + r"(?:(?!<[a-z_-]{3,32}[\s>]).)*\Z" for t in _INJECTED_TAGS]),
+    "|".join(
+        [r"<system-reminder>.*?</system-reminder>"]
+        + [_OPEN.format(t=t) + rf".*?</{t}>" for t in _INJECTED_TAGS]
+        # An unclosed injected block (truncated at a context boundary)
+        # still is not the operator's text: consume to the next open tag
+        # or the end rather than leaving thousands of words behind.
+        # `-` is in the terminator class because a wrapper name may carry
+        # one (`task-notification`): without it an unclosed block would run
+        # straight through the next wrapper instead of stopping at it.
+        + [_OPEN.format(t=t) + r"(?:(?!<[a-z_-]{3,32}[\s>]).)*\Z" for t in _INJECTED_TAGS]
+    ),
     re.DOTALL | re.IGNORECASE,
 )
 USER_QUERY = re.compile(r"<user_query>\s*(.*?)\s*</user_query>", re.DOTALL)
@@ -131,7 +156,7 @@ def authored_text(raw: str) -> tuple[str, bool]:
         raw = " ".join(m)
         stripped = True
     if MACHINE_TURN.match(raw):
-        return "", True          # not a prompt at all — the caller counts it
+        return "", True  # not a prompt at all — the caller counts it
     cleaned = INJECTED.sub(" ", raw)
     if cleaned != raw:
         stripped = True

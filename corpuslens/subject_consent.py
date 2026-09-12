@@ -53,6 +53,7 @@ could end up in one — a subject's id in the sentence that says nothing
 identifying left the wall would be the same class of leak as the resolved
 home directory `AuditRecord.__setattr__` refuses.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -87,22 +88,32 @@ def require_grant(consent_store: str | Path, subject_id: str) -> None:
         raise SubjectRefused(
             f"consent store directory not found; nothing was read. A subject who is "
             f"not the owner needs a verified '{SCOPE}' grant in a consent store "
-            f"(`corpuslens consent grant ...`) before their corpus is opened.")
+            f"(`corpuslens consent grant ...`) before their corpus is opened."
+        )
     try:
         core.verify_consent_chain(store)
     except core.ChainTamperError:
         raise SubjectRefused(
             "the consent chain failed verification (edited or truncated); nothing was "
-            "read. A record that cannot prove its own integrity does not grant anything.")
+            "read. A record that cannot prove its own integrity does not grant anything."
+        )
     if not core.permitted(store, subject_id, SCOPE):
         raise SubjectRefused(
             f"no verified '{SCOPE}' grant for this subject (absent, pending, or revoked); "
             f"nothing was read. Grants are recorded with `corpuslens consent grant`, by a "
-            f"named grantor, never by a run.")
+            f"named grantor, never by a run."
+        )
 
 
-def disclose(consent_store: str | Path, subject_id: str, action: str, *,
-             adapter: str, n_events: int, n_dropped: int) -> str:
+def disclose(
+    consent_store: str | Path,
+    subject_id: str,
+    action: str,
+    *,
+    adapter: str,
+    n_events: int,
+    n_dropped: int,
+) -> str:
     """Append one row to the subject's disclosure chain. Counts only: never
     the anchor, never a filename, never a result. Returns the new head hash."""
     detail = f"scope={SCOPE} adapter={adapter} events={int(n_events)} dropped={int(n_dropped)}"
@@ -111,6 +122,7 @@ def disclose(consent_store: str | Path, subject_id: str, action: str, *,
 
 # ── the operator seat: `corpuslens consent ...` ──────────────────────────────
 
+
 def grant(consent_store: str | Path, subject_id: str, by: str, scope: str = SCOPE) -> str:
     """Record GRANTED for (subject, scope), signed by a named grantor. Returns
     the new head hash. Refuses an unknown scope and an empty grantor (the core's
@@ -118,7 +130,9 @@ def grant(consent_store: str | Path, subject_id: str, by: str, scope: str = SCOP
     store = Path(consent_store).expanduser()
     store.mkdir(parents=True, exist_ok=True)
     c = core.grant(store, subject_id.strip(), scope, by.strip())
-    core.record_disclosure(store, subject_id.strip(), "consent granted", f"scope={scope} by={by.strip()}")
+    core.record_disclosure(
+        store, subject_id.strip(), "consent granted", f"scope={scope} by={by.strip()}"
+    )
     return c.hash
 
 
@@ -127,7 +141,9 @@ def revoke(consent_store: str | Path, subject_id: str, by: str, scope: str = SCO
     the record: the grant is not deleted, it is followed."""
     store = Path(consent_store).expanduser()
     c = core.revoke(store, subject_id.strip(), scope, by.strip())
-    core.record_disclosure(store, subject_id.strip(), "consent revoked", f"scope={scope} by={by.strip()}")
+    core.record_disclosure(
+        store, subject_id.strip(), "consent revoked", f"scope={scope} by={by.strip()}"
+    )
     return c.hash
 
 
@@ -137,15 +153,20 @@ def status(consent_store: str | Path, subject_id: str) -> dict:
     refusal). Read-only. The subject id is not in the returned dict — the
     caller already has it, and this shape may be printed."""
     store = Path(consent_store).expanduser()
-    out: dict = {"store_present": store.is_dir(), "scopes": {}, "disclosures": [],
-                 "disclosure_chain": "verified"}
+    out: dict = {
+        "store_present": store.is_dir(),
+        "scopes": {},
+        "disclosures": [],
+        "disclosure_chain": "verified",
+    }
     for scope in core.SCOPES:
         out["scopes"][scope] = bool(store.is_dir() and core.permitted(store, subject_id, scope))
     if store.is_dir():
         try:
             rows = core.read_disclosures(store, subject_id)
-            out["disclosures"] = [{"action": r.get("action", ""), "detail": r.get("detail", "")}
-                                  for r in rows]
+            out["disclosures"] = [
+                {"action": r.get("action", ""), "detail": r.get("detail", "")} for r in rows
+            ]
         except core.ChainTamperError:
             out["disclosure_chain"] = "FAILED verification (edited or truncated)"
     return out

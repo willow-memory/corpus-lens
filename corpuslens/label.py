@@ -42,6 +42,7 @@ visibly separate rather than shoehorned into `labels`/`classifier_version`:
 Still nothing new leaves the wall: `authorship_labels` holds only
 `{source_ref, label}` pairs, same opaque hash, no content.
 """
+
 from __future__ import annotations
 
 import json
@@ -74,14 +75,22 @@ CLASSIFIERS_BY_AUTHOR = {
 }
 
 QUESTIONS = {
-    "code_authored": ("Did the OPERATOR author or paste code in this turn "
-                       "(not just refer to code that already exists)?"),
-    "code_ref": ("Does this turn refer to EXISTING code — a file, function, symbol, "
-                 "error, or traceback — without the operator pasting new code?"),
-    "delib": ("Is the operator asking to deliberate or think through options here "
-              "(not just naming a choice they already made)?"),
-    "clarify": ("Does this response read as the machine asking a clarifying question "
-                "— something it wants the operator to pick, confirm, or resolve?"),
+    "code_authored": (
+        "Did the OPERATOR author or paste code in this turn "
+        "(not just refer to code that already exists)?"
+    ),
+    "code_ref": (
+        "Does this turn refer to EXISTING code — a file, function, symbol, "
+        "error, or traceback — without the operator pasting new code?"
+    ),
+    "delib": (
+        "Is the operator asking to deliberate or think through options here "
+        "(not just naming a choice they already made)?"
+    ),
+    "clarify": (
+        "Does this response read as the machine asking a clarifying question "
+        "— something it wants the operator to pick, confirm, or resolve?"
+    ),
 }
 
 #: The ONE question that grades `corpuslens.authorship.classify_turn` — asked
@@ -177,9 +186,14 @@ def sample_events(events, n: int = DEFAULT_SAMPLE_SIZE, seed: int = SEED) -> lis
 
 # ── the label store ──────────────────────────────────────────────────────────
 
+
 def empty_store() -> dict:
-    return {"classifier_version": None, "labels": [],
-            "authorship_version": None, "authorship_labels": []}
+    return {
+        "classifier_version": None,
+        "labels": [],
+        "authorship_version": None,
+        "authorship_labels": [],
+    }
 
 
 def load_store(path) -> dict:
@@ -194,12 +208,16 @@ def load_store(path) -> dict:
     with p.open(encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, dict) or "labels" not in data:
-        raise ValueError(f"{path} does not look like a corpuslens label store "
-                          f"(expected an object with a 'labels' list)")
-    return {"classifier_version": data.get("classifier_version"),
-            "labels": list(data.get("labels", [])),
-            "authorship_version": data.get("authorship_version"),
-            "authorship_labels": list(data.get("authorship_labels", []))}
+        raise ValueError(
+            f"{path} does not look like a corpuslens label store "
+            f"(expected an object with a 'labels' list)"
+        )
+    return {
+        "classifier_version": data.get("classifier_version"),
+        "labels": list(data.get("labels", [])),
+        "authorship_version": data.get("authorship_version"),
+        "authorship_labels": list(data.get("authorship_labels", [])),
+    }
 
 
 def save_store(path, store: dict) -> None:
@@ -213,14 +231,17 @@ def save_store(path, store: dict) -> None:
     authorship `label` is a STRING ("human"/"agent"), never coerced through
     `bool()` like the regex classifiers' labels are — that coercion is
     exactly what a three-valued judgment cannot survive."""
-    labels = [{"source_ref": r["source_ref"], "classifier": r["classifier"],
-               "label": bool(r["label"])} for r in store["labels"]]
+    labels = [
+        {"source_ref": r["source_ref"], "classifier": r["classifier"], "label": bool(r["label"])}
+        for r in store["labels"]
+    ]
     out = {"classifier_version": store.get("classifier_version"), "labels": labels}
     authorship_labels = store.get("authorship_labels") or []
     if store.get("authorship_version") is not None or authorship_labels:
         out["authorship_version"] = store.get("authorship_version")
-        out["authorship_labels"] = [{"source_ref": r["source_ref"], "label": str(r["label"])}
-                                     for r in authorship_labels]
+        out["authorship_labels"] = [
+            {"source_ref": r["source_ref"], "label": str(r["label"])} for r in authorship_labels
+        ]
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2, sort_keys=True)
         f.write("\n")
@@ -234,10 +255,12 @@ def check_version(store: dict, current: str = CLASSIFIER_SET_VERSION) -> str | N
     v = store.get("classifier_version")
     if v is None or v == current:
         return None
-    return (f"this label store was graded against classifier version {v!r}, but the "
-            f"installed classifiers are {current!r}. Scoring (or adding new labels) "
-            f"against a different version is refused, not silently compared — start a "
-            f"fresh --store file if the classifiers changed on purpose.")
+    return (
+        f"this label store was graded against classifier version {v!r}, but the "
+        f"installed classifiers are {current!r}. Scoring (or adding new labels) "
+        f"against a different version is refused, not silently compared — start a "
+        f"fresh --store file if the classifiers changed on purpose."
+    )
 
 
 def check_authorship_version(store: dict, current: str) -> str | None:
@@ -253,23 +276,31 @@ def check_authorship_version(store: dict, current: str) -> str | None:
     v = store.get("authorship_version")
     if v is None or v == current:
         return None
-    return (f"this label store's authorship judgments were graded against authorship "
-            f"version {v!r}, but the installed authorship classifier is {current!r}. "
-            f"Scoring (or adding new authorship labels) against a different version is "
-            f"refused, not silently compared — clear authorship_labels (or start a fresh "
-            f"--store file) if the authorship classifier changed on purpose. The regex "
-            f"classifiers' own labels in this store are unaffected.")
+    return (
+        f"this label store's authorship judgments were graded against authorship "
+        f"version {v!r}, but the installed authorship classifier is {current!r}. "
+        f"Scoring (or adding new authorship labels) against a different version is "
+        f"refused, not silently compared — clear authorship_labels (or start a fresh "
+        f"--store file) if the authorship classifier changed on purpose. The regex "
+        f"classifiers' own labels in this store are unaffected."
+    )
 
 
 def already_labelled(store: dict) -> set:
     return {(r["source_ref"], r["classifier"]) for r in store["labels"]}
 
 
-def add_label(store: dict, source_ref: str, classifier: str, label: bool,
-              version: str = CLASSIFIER_SET_VERSION) -> None:
+def add_label(
+    store: dict,
+    source_ref: str,
+    classifier: str,
+    label: bool,
+    version: str = CLASSIFIER_SET_VERSION,
+) -> None:
     store["classifier_version"] = version
-    store["labels"].append({"source_ref": source_ref, "classifier": classifier,
-                            "label": bool(label)})
+    store["labels"].append(
+        {"source_ref": source_ref, "classifier": classifier, "label": bool(label)}
+    )
 
 
 def already_labelled_authorship(store: dict) -> set:
@@ -288,10 +319,12 @@ def add_authorship_label(store: dict, source_ref: str, label: str, version: str)
     sibling module itself."""
     store["authorship_version"] = version
     store.setdefault("authorship_labels", []).append(
-        {"source_ref": source_ref, "label": str(label)})
+        {"source_ref": source_ref, "label": str(label)}
+    )
 
 
 # ── scoring ──────────────────────────────────────────────────────────────────
+
 
 def score(events, store: dict) -> dict:
     """Precision, recall and n per classifier, re-running the classifiers over
@@ -317,8 +350,7 @@ def score(events, store: dict) -> dict:
     results = {}
     for classifier, pairs in sorted(pairs_by_classifier.items()):
         results[classifier] = _precision_recall(pairs)
-    return {"classifiers": results, "missing": missing,
-            "total_labels": len(store["labels"])}
+    return {"classifiers": results, "missing": missing, "total_labels": len(store["labels"])}
 
 
 def _precision_recall(pairs: list) -> dict:
@@ -332,14 +364,20 @@ def _precision_recall(pairs: list) -> dict:
     precision = round(100 * tp / predicted_pos, 1) if predicted_pos else None
     recall = round(100 * tp / actual_pos, 1) if actual_pos else None
     out = {
-        "n": n, "tp": tp, "fp": fp, "fn": fn, "tn": tn,
+        "n": n,
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "tn": tn,
         "precision_pct": precision,
         "precision_denominator": "labelled turns the classifier predicted positive (tp+fp)",
         "recall_pct": recall,
         "recall_denominator": "labelled turns a human marked positive (tp+fn)",
     }
     if precision is None:
-        out["precision_note"] = "not computable: the classifier never predicted positive in this sample"
+        out["precision_note"] = (
+            "not computable: the classifier never predicted positive in this sample"
+        )
     if recall is None:
         out["recall_note"] = "not computable: no labelled turn in this sample was marked positive"
     return out
@@ -447,8 +485,9 @@ def _three_valued_scores(pairs: list, human: str, agent: str, unknown: str) -> d
         "unknown_pct": round(100 * n_unknown / n, 1) if n else None,
     }
     if n == 0:
-        out["unknown_note"] = ("not computable: no authorship-labelled turn in this "
-                                "sample was found in the corpus")
+        out["unknown_note"] = (
+            "not computable: no authorship-labelled turn in this sample was found in the corpus"
+        )
 
     for name, this_class, other_class in (("human", human, agent), ("agent", agent, human)):
         tp = sum(1 for t, p in pairs if t == this_class and p == this_class)
@@ -462,17 +501,27 @@ def _three_valued_scores(pairs: list, human: str, agent: str, unknown: str) -> d
         precision = round(100 * tp / predicted_pos, 1) if predicted_pos else None
         recall = round(100 * tp / actual_pos, 1) if actual_pos else None
         cls = {
-            "tp": tp, "fp": fp, "fn": fn, "tn": tn,
-            "fn_wrong": fn_wrong, "fn_declined": fn_declined,
+            "tp": tp,
+            "fp": fp,
+            "fn": fn,
+            "tn": tn,
+            "fn_wrong": fn_wrong,
+            "fn_declined": fn_declined,
             "precision_pct": precision,
             "precision_denominator": f"labelled turns the classifier predicted {name} (tp+fp)",
             "recall_pct": recall,
-            "recall_denominator": (f"labelled turns a human marked {name} (tp+fn — fn split "
-                                    f"into predicted-{other_class} vs declined-unknown below)"),
+            "recall_denominator": (
+                f"labelled turns a human marked {name} (tp+fn — fn split "
+                f"into predicted-{other_class} vs declined-unknown below)"
+            ),
         }
         if precision is None:
-            cls["precision_note"] = f"not computable: the classifier never predicted {name} in this sample"
+            cls["precision_note"] = (
+                f"not computable: the classifier never predicted {name} in this sample"
+            )
         if recall is None:
-            cls["recall_note"] = f"not computable: no labelled turn in this sample was marked {name}"
+            cls["recall_note"] = (
+                f"not computable: no labelled turn in this sample was marked {name}"
+            )
         out[name] = cls
     return out

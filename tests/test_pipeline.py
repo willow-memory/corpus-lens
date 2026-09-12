@@ -1,4 +1,5 @@
 """End-to-end + a regression test for every review finding that was fixed."""
+
 import io
 import json
 import re
@@ -16,8 +17,9 @@ from corpuslens.render import markdown
 
 
 def _cc_line(role, text, ts):
-    return json.dumps({"type": role, "timestamp": ts,
-                       "message": {"content": [{"type": "text", "text": text}]}})
+    return json.dumps(
+        {"type": role, "timestamp": ts, "message": {"content": [{"type": "text", "text": text}]}}
+    )
 
 
 def _cc_line_with(role, text, ts, **extra):
@@ -37,16 +39,34 @@ class PipelineTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.d = Path(self.tmp.name)
-        _write(self.d / "s1.jsonl", [
-            _cc_line("user", "build the parser for the config file please", "2026-02-01T10:00:00Z"),
-            _cc_line("assistant", "Done. Should I add validation, or keep it minimal?", "2026-02-01T10:05:00Z"),
-            _cc_line("user", "it still fails on empty input, fix that", "2026-02-01T10:20:00Z"),
-            _cc_line("user", "lets talk about options for the cache layer", "2026-02-03T09:00:00Z"),
-        ])
-        _write(self.d / "s2.jsonl", [
-            _cc_line("user", "<system-reminder>x</system-reminder> what does mastery.py return on line 40?", "2026-02-02T08:00:00Z"),
-            _cc_line("assistant", "It returns the posterior.", "2026-02-02T08:01:00Z"),
-        ])
+        _write(
+            self.d / "s1.jsonl",
+            [
+                _cc_line(
+                    "user", "build the parser for the config file please", "2026-02-01T10:00:00Z"
+                ),
+                _cc_line(
+                    "assistant",
+                    "Done. Should I add validation, or keep it minimal?",
+                    "2026-02-01T10:05:00Z",
+                ),
+                _cc_line("user", "it still fails on empty input, fix that", "2026-02-01T10:20:00Z"),
+                _cc_line(
+                    "user", "lets talk about options for the cache layer", "2026-02-03T09:00:00Z"
+                ),
+            ],
+        )
+        _write(
+            self.d / "s2.jsonl",
+            [
+                _cc_line(
+                    "user",
+                    "<system-reminder>x</system-reminder> what does mastery.py return on line 40?",
+                    "2026-02-02T08:00:00Z",
+                ),
+                _cc_line("assistant", "It returns the posterior.", "2026-02-02T08:01:00Z"),
+            ],
+        )
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -55,7 +75,9 @@ class PipelineTests(unittest.TestCase):
         events, q, dropped = ingest.get("claude-code")(str(self.d))
         self.assertEqual(q.base_date_iso, "2026-02-01")
         self.assertTrue(all(e.time.day_offset in (0, 1, 2) for e in events))
-        s2u = [e for e in events if e.author_class == "operator" and e.features["injected_stripped"]]
+        s2u = [
+            e for e in events if e.author_class == "operator" and e.features["injected_stripped"]
+        ]
         self.assertTrue(s2u and s2u[0].features["code_ref"])
 
     def test_no_filename_reaches_events(self):
@@ -69,7 +91,9 @@ class PipelineTests(unittest.TestCase):
 
     def test_battery_runs_and_report_renders(self):
         events, q, dropped = ingest.get("claude-code")(str(self.d))
-        guard = Guard(q); guard.audit.n_events = len(events); guard.audit.n_dropped = dropped.total
+        guard = Guard(q)
+        guard.audit.n_events = len(events)
+        guard.audit.n_dropped = dropped.total
         results = {a.name: a.run(events) for a in all_analyzers() if guard.admit(a)}
         self.assertEqual(results["steering_density"]["sessions"], 2)
         self.assertEqual(results["thread_shape"]["threads"], 2)
@@ -84,33 +108,55 @@ class PipelineTests(unittest.TestCase):
 
     def test_bom_does_not_eat_the_opener(self):
         b = Path(self.tmp.name) / "bom.jsonl"
-        _write(b, [_cc_line("user", "first turn is the opener here", "2026-02-01T10:00:00Z"),
-                   _cc_line("assistant", "reply", "2026-02-01T10:01:00Z")], bom=True)
+        _write(
+            b,
+            [
+                _cc_line("user", "first turn is the opener here", "2026-02-01T10:00:00Z"),
+                _cc_line("assistant", "reply", "2026-02-01T10:01:00Z"),
+            ],
+            bom=True,
+        )
         sub = tempfile.TemporaryDirectory()
         Path(sub.name, "bom.jsonl").write_bytes(b.read_bytes())
         events, q, dropped = ingest.get("claude-code")(sub.name)
         openers = [e for e in events if e.author_class == "operator"]
-        self.assertTrue(openers and "opener" in "".join(str(e.features) for e in openers) or
-                        any(e.features["word_count"] >= 5 for e in openers))
-        self.assertEqual(dropped.total, 0)   # the BOM line is NOT dropped
+        self.assertTrue(
+            openers
+            and "opener" in "".join(str(e.features) for e in openers)
+            or any(e.features["word_count"] >= 5 for e in openers)
+        )
+        self.assertEqual(dropped.total, 0)  # the BOM line is NOT dropped
         sub.cleanup()
 
     def test_nondict_and_system_lines_are_counted_dropped(self):
         j = Path(self.tmp.name) / "junk.jsonl"
-        _write(j, ['[1,2,3]', '42', 'null', '{"type":"system","timestamp":"2026-02-01T10:00:00Z"}',
-                   'not json at all',
-                   _cc_line("user", "a real datable operator turn here", "2026-02-01T10:00:00Z")])
+        _write(
+            j,
+            [
+                "[1,2,3]",
+                "42",
+                "null",
+                '{"type":"system","timestamp":"2026-02-01T10:00:00Z"}',
+                "not json at all",
+                _cc_line("user", "a real datable operator turn here", "2026-02-01T10:00:00Z"),
+            ],
+        )
         sub = tempfile.TemporaryDirectory()
         Path(sub.name, "junk.jsonl").write_bytes(j.read_bytes())
         events, q, dropped = ingest.get("claude-code")(sub.name)
         self.assertEqual(len(events), 1)
-        self.assertEqual(dropped.total, 5)   # every skipped line counted, none hidden
+        self.assertEqual(dropped.total, 5)  # every skipped line counted, none hidden
         sub.cleanup()
 
     def test_out_of_order_lines_give_no_negative_delta(self):
         o = Path(self.tmp.name) / "ooo.jsonl"
-        _write(o, [_cc_line("user", "later turn appears first in the file", "2026-02-01T12:00:00Z"),
-                   _cc_line("user", "earlier turn appears second in the file", "2026-02-01T09:00:00Z")])
+        _write(
+            o,
+            [
+                _cc_line("user", "later turn appears first in the file", "2026-02-01T12:00:00Z"),
+                _cc_line("user", "earlier turn appears second in the file", "2026-02-01T09:00:00Z"),
+            ],
+        )
         sub = tempfile.TemporaryDirectory()
         Path(sub.name, "ooo.jsonl").write_bytes(o.read_bytes())
         events, q, _ = ingest.get("claude-code")(sub.name)
@@ -120,10 +166,12 @@ class PipelineTests(unittest.TestCase):
         sub.cleanup()
 
     def test_code_ref_does_not_fire_on_plain_prose(self):
-        prose = ["The company returns to profitability next quarter.",
-                 "There was an Error in judgment when we hired that vendor.",
-                 "As a function of time, sales decline in winter.",
-                 "I import goods from overseas for my business."]
+        prose = [
+            "The company returns to profitability next quarter.",
+            "There was an Error in judgment when we hired that vendor.",
+            "As a function of time, sales decline in winter.",
+            "I import goods from overseas for my business.",
+        ]
         for s in prose:
             self.assertFalse(CODE_REF.search(s), f"false positive on: {s}")
         for s in ["what does foo() return?", "see mastery.py line 40", "hit a ValueError"]:
@@ -137,35 +185,60 @@ class PipelineTests(unittest.TestCase):
     def test_denominator_is_character_based(self):
         # a 5-char two-word turn must NOT count toward a ">=12 characters" denom
         short = Path(self.tmp.name) / "short.jsonl"
-        _write(short, [_cc_line("user", "do it", "2026-02-01T10:00:00Z"),
-                       _cc_line("user", "here is a much longer operator instruction", "2026-02-01T10:05:00Z")])
+        _write(
+            short,
+            [
+                _cc_line("user", "do it", "2026-02-01T10:00:00Z"),
+                _cc_line(
+                    "user", "here is a much longer operator instruction", "2026-02-01T10:05:00Z"
+                ),
+            ],
+        )
         sub = tempfile.TemporaryDirectory()
         Path(sub.name, "short.jsonl").write_bytes(short.read_bytes())
         events, q, _ = ingest.get("claude-code")(sub.name)
         from corpuslens.analyze.composition import composition_mix
+
         res = composition_mix(events)
-        self.assertEqual(res["n_turns"], 1)   # "do it" (5 chars) excluded
+        self.assertEqual(res["n_turns"], 1)  # "do it" (5 chars) excluded
         sub.cleanup()
 
     def test_cursor_counts_untagged_drops(self):
         c = Path(self.tmp.name) / "cur.jsonl"
-        tagged = {"role": "user", "message": {"content": [{"type": "text",
-                  "text": "<timestamp>Tuesday, May 19, 2026, 12:38 PM (UTC-6)</timestamp>\n<user_query>fix the bug in the parser</user_query>"}]}}
-        untagged = {"role": "user", "message": {"content": [{"type": "text", "text": "no timestamp here"}]}}
+        tagged = {
+            "role": "user",
+            "message": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "<timestamp>Tuesday, May 19, 2026, 12:38 PM (UTC-6)</timestamp>\n<user_query>fix the bug in the parser</user_query>",
+                    }
+                ]
+            },
+        }
+        untagged = {
+            "role": "user",
+            "message": {"content": [{"type": "text", "text": "no timestamp here"}]},
+        }
         asst = {"role": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}}
         _write(c, [json.dumps(tagged), json.dumps(untagged), json.dumps(asst)])
         sub = tempfile.TemporaryDirectory()
         Path(sub.name, "cur.jsonl").write_bytes(c.read_bytes())
         events, q, dropped = ingest.get("cursor")(sub.name)
         self.assertEqual(len(events), 1)
-        self.assertEqual(dropped.total, 2)   # untagged user + assistant, both counted
+        self.assertEqual(dropped.total, 2)  # untagged user + assistant, both counted
         sub.cleanup()
 
     def test_malformed_message_shape_does_not_crash_and_is_counted(self):
         j = Path(self.tmp.name) / "badmsg.jsonl"
-        _write(j, ['{"type":"user","timestamp":"2026-02-01T10:00:00Z","message":"a string not a dict"}',
-                   '{"type":"user","timestamp":"2026-02-01T10:01:00Z","message":42}',
-                   _cc_line("user", "a real datable operator turn here", "2026-02-01T10:02:00Z")])
+        _write(
+            j,
+            [
+                '{"type":"user","timestamp":"2026-02-01T10:00:00Z","message":"a string not a dict"}',
+                '{"type":"user","timestamp":"2026-02-01T10:01:00Z","message":42}',
+                _cc_line("user", "a real datable operator turn here", "2026-02-01T10:02:00Z"),
+            ],
+        )
         sub = tempfile.TemporaryDirectory()
         Path(sub.name, "badmsg.jsonl").write_bytes(j.read_bytes())
         # truthy non-dict message must NOT crash — it degrades to an empty-text drop
@@ -178,60 +251,109 @@ class PipelineTests(unittest.TestCase):
         root = tempfile.TemporaryDirectory()
         for sub, ts in (("projA", "2026-02-01T10:00:00Z"), ("projB", "2026-02-09T10:00:00Z")):
             Path(root.name, sub).mkdir()
-            _write(Path(root.name, sub, "session.jsonl"),
-                   [_cc_line("user", f"work in {sub} on the thing", ts)])
+            _write(
+                Path(root.name, sub, "session.jsonl"),
+                [_cc_line("user", f"work in {sub} on the thing", ts)],
+            )
         events, q, _ = ingest.get("claude-code")(root.name)
-        self.assertEqual(len({e.thread_id for e in events}), 2)   # not merged
+        self.assertEqual(len({e.thread_id for e in events}), 2)  # not merged
         root.cleanup()
 
     def test_cursor_two_dated_blocks_get_distinct_ids(self):
-        line = {"role": "user", "message": {"content": [
-            {"type": "text", "text": "<timestamp>Tuesday, May 19, 2026, 12:38 PM (UTC-6)</timestamp>\n<user_query>first block query</user_query>"},
-            {"type": "text", "text": "<timestamp>Tuesday, May 19, 2026, 12:40 PM (UTC-6)</timestamp>\n<user_query>second block query</user_query>"},
-        ]}}
+        line = {
+            "role": "user",
+            "message": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "<timestamp>Tuesday, May 19, 2026, 12:38 PM (UTC-6)</timestamp>\n<user_query>first block query</user_query>",
+                    },
+                    {
+                        "type": "text",
+                        "text": "<timestamp>Tuesday, May 19, 2026, 12:40 PM (UTC-6)</timestamp>\n<user_query>second block query</user_query>",
+                    },
+                ]
+            },
+        }
         sub = tempfile.TemporaryDirectory()
         _write(Path(sub.name, "c.jsonl"), [json.dumps(line)])
         events, q, dropped = ingest.get("cursor")(sub.name)
         self.assertEqual(len(events), 2)
-        self.assertEqual(len({e.event_id for e in events}), 2)    # no collision
+        self.assertEqual(len({e.event_id for e in events}), 2)  # no collision
         sub.cleanup()
 
     def test_naive_timestamp_is_utc_not_host_tz(self):
         import os
+
         j = Path(self.tmp.name) / "naive.jsonl"
-        _write(j, [_cc_line("user", "turn one is a full length prompt", "2026-02-01T10:00:00"),
-                   _cc_line("user", "turn two is a full length prompt", "2026-02-01T10:05:00")])
+        _write(
+            j,
+            [
+                _cc_line("user", "turn one is a full length prompt", "2026-02-01T10:00:00"),
+                _cc_line("user", "turn two is a full length prompt", "2026-02-01T10:05:00"),
+            ],
+        )
         sub = tempfile.TemporaryDirectory()
         Path(sub.name, "naive.jsonl").write_bytes(j.read_bytes())
-        old = os.environ.get("TZ")
-        try:
-            os.environ["TZ"] = "Asia/Kolkata"
-            import time; time.tzset()
+        import time
+
+        def five_minutes_apart():
             events, q, _ = ingest.get("claude-code")(sub.name)
             deltas = [e.time.delta_prev_s for e in events if e.time.delta_prev_s is not None]
-            self.assertIn(300.0, deltas)   # 5 min, independent of host TZ
-        finally:
-            if old is None:
-                os.environ.pop("TZ", None)
-            else:
-                os.environ["TZ"] = old
-            import time; time.tzset()
+            self.assertIn(300.0, deltas)  # 5 min, independent of host TZ
+
+        tzset = getattr(time, "tzset", None)
+        if tzset is None:
+            # Windows: `time.tzset` does not exist and the C runtime does not
+            # re-read TZ, so the host zone cannot be swapped under the test.
+            # The property still holds or fails under the host's own zone;
+            # that is the weaker half of this check, run rather than skipped,
+            # and the strong half runs on every POSIX leg of the matrix.
+            five_minutes_apart()
+        else:
+            old = os.environ.get("TZ")
+            try:
+                os.environ["TZ"] = "Asia/Kolkata"
+                tzset()
+                five_minutes_apart()
+            finally:
+                if old is None:
+                    os.environ.pop("TZ", None)
+                else:
+                    os.environ["TZ"] = old
+                tzset()
         sub.cleanup()
 
     def test_classifier_prose_false_positives_fixed(self):
         from corpuslens.classifiers import AUTHORED, DELIB
-        for s in ["I take exception to that remark", "we waited in line 40 minutes at the DMV",
-                  "a strong sense of self. Then it faded", "I made an exception for him"]:
+
+        for s in [
+            "I take exception to that remark",
+            "we waited in line 40 minutes at the DMV",
+            "a strong sense of self. Then it faded",
+            "I made an exception for him",
+        ]:
             self.assertFalse(CODE_REF.search(s), f"CODE_REF FP: {s}")
-        for s in ["Budget = 500 dollars this month", "weight = 180 lbs today", "  return to sender please"]:
+        for s in [
+            "Budget = 500 dollars this month",
+            "weight = 180 lbs today",
+            "  return to sender please",
+        ]:
             self.assertFalse(AUTHORED.search(s), f"AUTHORED FP: {s}")
         for s in ["my stock options vested today", "thoughts and prayers to the family"]:
             self.assertFalse(DELIB.search(s), f"DELIB FP: {s}")
         # round-4 prose false positives (plural-paren, import-prose)
-        for s in ["make some change(s) to it", "bring the kids(!) along", "several meeting(s) this week"]:
+        for s in [
+            "make some change(s) to it",
+            "bring the kids(!) along",
+            "several meeting(s) this week",
+        ]:
             self.assertFalse(CODE_REF.search(s), f"CODE_REF plural-paren FP: {s}")
-        for s in ["import export business is booming", "import duty is high on that",
-                  "from home import lessons for the kids too"]:
+        for s in [
+            "import export business is booming",
+            "import duty is high on that",
+            "from home import lessons for the kids too",
+        ]:
             self.assertFalse(AUTHORED.search(s), f"AUTHORED import-prose FP: {s}")
         # real code still caught
         self.assertTrue(AUTHORED.search("SELECT id FROM users WHERE active = true"))
@@ -240,11 +362,16 @@ class PipelineTests(unittest.TestCase):
 
     def test_out_of_range_date_is_dropped_not_crash(self):
         j = Path(self.tmp.name) / "baddate.jsonl"
-        _write(j, [_cc_line("user", "corrupt month thirteen timestamp here", "2026-13-01T10:00:00Z"),
-                   _cc_line("user", "a valid datable operator turn here", "2026-02-01T10:00:00Z")])
+        _write(
+            j,
+            [
+                _cc_line("user", "corrupt month thirteen timestamp here", "2026-13-01T10:00:00Z"),
+                _cc_line("user", "a valid datable operator turn here", "2026-02-01T10:00:00Z"),
+            ],
+        )
         sub = tempfile.TemporaryDirectory()
         Path(sub.name, "baddate.jsonl").write_bytes(j.read_bytes())
-        events, q, dropped = ingest.get("claude-code")(sub.name)   # must not raise
+        events, q, dropped = ingest.get("claude-code")(sub.name)  # must not raise
         self.assertEqual(len(events), 1)
         self.assertEqual(dropped.total, 1)
         sub.cleanup()
@@ -252,18 +379,23 @@ class PipelineTests(unittest.TestCase):
     def test_casual_aside_corpus_reads_low_code_ref(self):
         # round-4 Sonnet: parenthetical asides must not read as code references
         j = Path(self.tmp.name) / "casual.jsonl"
-        asides = ["sure(ish) that could work for us tomorrow",
-                  "kind of(ish) but i am not totally certain yet",
-                  "see you(soon) at the usual spot friend",
-                  "make some change(s) to the dinner plan please",
-                  "bring the kids(!) along to the park later"]
-        _write(j, [_cc_line("user", t, f"2026-02-0{i+1}T10:00:00Z") for i, t in enumerate(asides)])
+        asides = [
+            "sure(ish) that could work for us tomorrow",
+            "kind of(ish) but i am not totally certain yet",
+            "see you(soon) at the usual spot friend",
+            "make some change(s) to the dinner plan please",
+            "bring the kids(!) along to the park later",
+        ]
+        _write(
+            j, [_cc_line("user", t, f"2026-02-0{i + 1}T10:00:00Z") for i, t in enumerate(asides)]
+        )
         sub = tempfile.TemporaryDirectory()
         Path(sub.name, "casual.jsonl").write_bytes(j.read_bytes())
         events, q, _ = ingest.get("claude-code")(sub.name)
         from corpuslens.analyze.composition import composition_mix
+
         res = composition_mix(events)
-        self.assertEqual(res["code_ref_pct"], 0.0)     # was 100% before the fix
+        self.assertEqual(res["code_ref_pct"], 0.0)  # was 100% before the fix
         self.assertEqual(res["authored_code_pct"], 0.0)
         sub.cleanup()
 
@@ -271,20 +403,23 @@ class PipelineTests(unittest.TestCase):
         # the flagship honesty case: a zero-code personal corpus must NOT score
         # as more code-authored than the coding reference population
         j = Path(self.tmp.name) / "personal.jsonl"
-        prose = ["let me know if that works for you tomorrow",
-                 "let it go, we can figure out dinner later",
-                 "static electricity made her hair stand up at the park",
-                 "var was short for variance in the old statistics textbook",
-                 "thoughts and prayers to the family this week",
-                 "my stock options vested today which was a relief",
-                 "if the weather is nice tomorrow, we could go to the park:"]
-        _write(j, [_cc_line("user", t, f"2026-02-0{i+1}T10:00:00Z") for i, t in enumerate(prose)])
+        prose = [
+            "let me know if that works for you tomorrow",
+            "let it go, we can figure out dinner later",
+            "static electricity made her hair stand up at the park",
+            "var was short for variance in the old statistics textbook",
+            "thoughts and prayers to the family this week",
+            "my stock options vested today which was a relief",
+            "if the weather is nice tomorrow, we could go to the park:",
+        ]
+        _write(j, [_cc_line("user", t, f"2026-02-0{i + 1}T10:00:00Z") for i, t in enumerate(prose)])
         sub = tempfile.TemporaryDirectory()
         Path(sub.name, "personal.jsonl").write_bytes(j.read_bytes())
         events, q, _ = ingest.get("claude-code")(sub.name)
         from corpuslens.analyze.composition import composition_mix
+
         res = composition_mix(events)
-        self.assertLess(res["authored_code_pct"], 14.5)   # below the coding-pop reference
+        self.assertLess(res["authored_code_pct"], 14.5)  # below the coding-pop reference
         self.assertEqual(res["authored_code_pct"], 0.0)
         sub.cleanup()
 
@@ -302,12 +437,12 @@ class PipelineTests(unittest.TestCase):
         err = io.StringIO()
         with redirect_stderr(err):
             rc = cli_main(["run", empty.name, "--adapter", "claude-code"])
-        self.assertEqual(rc, 1)               # matched nothing -> error, not cheerful 0
+        self.assertEqual(rc, 1)  # matched nothing -> error, not cheerful 0
         empty.cleanup()
         err2 = io.StringIO()
         with redirect_stderr(err2):
             rc2 = cli_main(["run", "/no/such/path/xyz", "--adapter", "claude-code"])
-        self.assertEqual(rc2, 2)              # missing path -> usage error
+        self.assertEqual(rc2, 2)  # missing path -> usage error
         self.assertIn("does not exist", err2.getvalue())
 
     def test_file_instead_of_dir_is_rejected(self):
@@ -324,14 +459,19 @@ class PipelineTests(unittest.TestCase):
         # refuse to emit — nonzero exit, nothing on stdout.
         from unittest import mock
         from corpuslens.analyze import Analyzer
+
         # the corpus in setUp quarantines base_date_iso == "2026-02-01"
-        leaky = Analyzer(name="leaky", claims=("tempo",), denominator="events",
-                         run=lambda ev: {"note": "2026-02-01"})
+        leaky = Analyzer(
+            name="leaky",
+            claims=("tempo",),
+            denominator="events",
+            run=lambda ev: {"note": "2026-02-01"},
+        )
         out, err = io.StringIO(), io.StringIO()
         with mock.patch("corpuslens.cli.all_analyzers", return_value=[leaky]):
             with redirect_stdout(out), redirect_stderr(err):
                 rc = cli_main(["run", str(self.d), "--adapter", "claude-code"])
-        self.assertEqual(rc, 3)                       # fail-closed exit code
+        self.assertEqual(rc, 3)  # fail-closed exit code
         self.assertNotIn("2026-02-01", out.getvalue())  # the report never printed
         self.assertIn("egress scan", err.getvalue())
         self.assertNotIn("2026-02-01", err.getvalue())  # error carries no payload
@@ -356,38 +496,55 @@ class DogfoodRegressions(unittest.TestCase):
     def test_subagent_transcripts_are_not_the_operators_turns(self):
         sess = self.d / "proj"
         (sess / "sub-session" / "subagents").mkdir(parents=True)
-        _write(sess / "main.jsonl", [
-            _cc_line("user", "build the parser for the config file please", "2026-02-01T10:00:00Z"),
-            _cc_line("assistant", "done, it handles empty input now", "2026-02-01T10:05:00Z"),
-        ])
+        _write(
+            sess / "main.jsonl",
+            [
+                _cc_line(
+                    "user", "build the parser for the config file please", "2026-02-01T10:00:00Z"
+                ),
+                _cc_line("assistant", "done, it handles empty input now", "2026-02-01T10:05:00Z"),
+            ],
+        )
         # the same shape, but the "user" here is the model prompting its agent
-        _write(sess / "sub-session" / "subagents" / "agent-abc.jsonl", [
-            _cc_line("user", "Use WebSearch to verify this list of tools. " * 40,
-                     "2026-02-01T10:06:00Z"),
-            _cc_line("assistant", "here are the verified results", "2026-02-01T10:09:00Z"),
-        ])
+        _write(
+            sess / "sub-session" / "subagents" / "agent-abc.jsonl",
+            [
+                _cc_line(
+                    "user",
+                    "Use WebSearch to verify this list of tools. " * 40,
+                    "2026-02-01T10:06:00Z",
+                ),
+                _cc_line("assistant", "here are the verified results", "2026-02-01T10:09:00Z"),
+            ],
+        )
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
-        self.assertEqual(len(events), 2)              # only the real session
+        self.assertEqual(len(events), 2)  # only the real session
         self.assertEqual(len(ops), 1)
-        self.assertEqual(ops[0].features["word_count"], 8)   # not the 200-word prompt
-        self.assertEqual(dropped.total, 2)                  # counted, never hidden
+        self.assertEqual(ops[0].features["word_count"], 8)  # not the 200-word prompt
+        self.assertEqual(dropped.total, 2)  # counted, never hidden
         self.assertEqual(len({e.thread_id for e in events}), 1)
 
     def test_a_file_merely_named_subagents_is_still_read(self):
         # the skip keys on a DIRECTORY component, so a session file that happens
         # to be called subagents.jsonl is the operator's and stays.
-        _write(self.d / "subagents.jsonl", [
-            _cc_line("user", "what does the parser return on line 40?", "2026-02-01T10:00:00Z"),
-        ])
+        _write(
+            self.d / "subagents.jsonl",
+            [
+                _cc_line("user", "what does the parser return on line 40?", "2026-02-01T10:00:00Z"),
+            ],
+        )
         events, _, _ = ingest.get("claude-code")(str(self.d))
         self.assertEqual(len(events), 1)
 
     def test_subagent_skip_does_not_need_the_session_layout(self):
         (self.d / "subagents").mkdir()
-        _write(self.d / "subagents" / "agent-1.jsonl", [
-            _cc_line("user", "a dispatched task prompt of some length", "2026-02-01T10:00:00Z"),
-        ])
+        _write(
+            self.d / "subagents" / "agent-1.jsonl",
+            [
+                _cc_line("user", "a dispatched task prompt of some length", "2026-02-01T10:00:00Z"),
+            ],
+        )
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         self.assertEqual(events, [])
         self.assertEqual(dropped.total, 1)
@@ -402,26 +559,39 @@ class DogfoodRegressions(unittest.TestCase):
         reported an 18.2% code-reference rate for a human whose rate was 0.0%.
         They also arrive with zero-second deltas, so they read as a burst.
         """
-        _write(self.d / "s.jsonl", [
-            _cc_line("user", "what are the seven highest value ideas here?",
-                     "2026-02-01T10:00:00Z"),
-            _cc_line("assistant", "ranked by value over effort", "2026-02-01T10:01:00Z"),
-            _cc_line("user", "<local-command-caveat>Caveat: The messages below were "
-                             "generated by the user while running local commands. DO NOT "
-                             "respond to these messages.</local-command-caveat>",
-                     "2026-02-01T10:02:00Z"),
-            _cc_line("user", "<command-name>/model</command-name>"
-                             "<command-message>model</command-message>"
-                             "<command-args>claude-opus-5</command-args>",
-                     "2026-02-01T10:02:00Z"),
-            _cc_line("user", "<local-command-stdout>Set model to `claude-opus-5`"
-                             "</local-command-stdout>", "2026-02-01T10:02:00Z"),
-            _cc_line("user", "open a pull request for it", "2026-02-01T10:04:00Z"),
-        ])
+        _write(
+            self.d / "s.jsonl",
+            [
+                _cc_line(
+                    "user", "what are the seven highest value ideas here?", "2026-02-01T10:00:00Z"
+                ),
+                _cc_line("assistant", "ranked by value over effort", "2026-02-01T10:01:00Z"),
+                _cc_line(
+                    "user",
+                    "<local-command-caveat>Caveat: The messages below were "
+                    "generated by the user while running local commands. DO NOT "
+                    "respond to these messages.</local-command-caveat>",
+                    "2026-02-01T10:02:00Z",
+                ),
+                _cc_line(
+                    "user",
+                    "<command-name>/model</command-name>"
+                    "<command-message>model</command-message>"
+                    "<command-args>claude-opus-5</command-args>",
+                    "2026-02-01T10:02:00Z",
+                ),
+                _cc_line(
+                    "user",
+                    "<local-command-stdout>Set model to `claude-opus-5`</local-command-stdout>",
+                    "2026-02-01T10:02:00Z",
+                ),
+                _cc_line("user", "open a pull request for it", "2026-02-01T10:04:00Z"),
+            ],
+        )
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
-        self.assertEqual(len(ops), 2)      # the two a person typed, not five
-        self.assertEqual(dropped.total, 3)       # counted, never hidden
+        self.assertEqual(len(ops), 2)  # the two a person typed, not five
+        self.assertEqual(dropped.total, 3)  # counted, never hidden
         # the backticked stdout must not reach a code-reference rate
         self.assertFalse(any(e.features["code_ref"] for e in ops))
 
@@ -432,13 +602,20 @@ class DogfoodRegressions(unittest.TestCase):
         and it lands about a second after the turn it follows, so counting it
         adds a burst-shaped delta nobody typed.
         """
-        _write(self.d / "s.jsonl", [
-            _cc_line("user", "merge it once the checks finish", "2026-02-01T10:00:00Z"),
-            _cc_line("user", "Stop hook feedback:\n[~/.claude/hook.sh]: There are "
-                             "untracked files in the repository. Please commit and push "
-                             "these changes to the remote branch.", "2026-02-01T10:00:01Z"),
-            _cc_line("user", "test it against this session", "2026-02-01T10:09:00Z"),
-        ])
+        _write(
+            self.d / "s.jsonl",
+            [
+                _cc_line("user", "merge it once the checks finish", "2026-02-01T10:00:00Z"),
+                _cc_line(
+                    "user",
+                    "Stop hook feedback:\n[~/.claude/hook.sh]: There are "
+                    "untracked files in the repository. Please commit and push "
+                    "these changes to the remote branch.",
+                    "2026-02-01T10:00:01Z",
+                ),
+                _cc_line("user", "test it against this session", "2026-02-01T10:09:00Z"),
+            ],
+        )
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 2)
@@ -458,11 +635,14 @@ class DogfoodRegressions(unittest.TestCase):
         act, not a prompt, and now sits in `MACHINE_TURN` alongside the
         stop-hook prefix (same anchored, text-only door, same drop reason).
         """
-        _write(self.d / "s.jsonl", [
-            _cc_line("user", "merge it once the checks finish", "2026-02-01T10:00:00Z"),
-            _cc_line("user", "[Request interrupted by user]", "2026-02-01T10:00:01Z"),
-            _cc_line("user", "test it against this session", "2026-02-01T10:09:00Z"),
-        ])
+        _write(
+            self.d / "s.jsonl",
+            [
+                _cc_line("user", "merge it once the checks finish", "2026-02-01T10:00:00Z"),
+                _cc_line("user", "[Request interrupted by user]", "2026-02-01T10:00:01Z"),
+                _cc_line("user", "test it against this session", "2026-02-01T10:09:00Z"),
+            ],
+        )
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 2)
@@ -473,12 +653,16 @@ class DogfoodRegressions(unittest.TestCase):
 
     def test_an_interrupt_marker_for_tool_use_is_not_a_prompt(self):
         """The sibling form observed in the wild: interrupting mid-tool-call."""
-        _write(self.d / "s.jsonl", [
-            _cc_line("user", "merge it once the checks finish", "2026-02-01T10:00:00Z"),
-            _cc_line("user", "[Request interrupted by user for tool use]",
-                     "2026-02-01T10:00:01Z"),
-            _cc_line("user", "test it against this session", "2026-02-01T10:09:00Z"),
-        ])
+        _write(
+            self.d / "s.jsonl",
+            [
+                _cc_line("user", "merge it once the checks finish", "2026-02-01T10:00:00Z"),
+                _cc_line(
+                    "user", "[Request interrupted by user for tool use]", "2026-02-01T10:00:01Z"
+                ),
+                _cc_line("user", "test it against this session", "2026-02-01T10:09:00Z"),
+            ],
+        )
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 2)
@@ -488,11 +672,16 @@ class DogfoodRegressions(unittest.TestCase):
     def test_interrupt_marker_quoted_mid_message_is_still_a_prompt(self):
         """The anchor is what makes this safe: a person asking ABOUT the
         marker, with the phrase not at the start of the turn, is untouched."""
-        _write(self.d / "s.jsonl", [
-            _cc_line("user",
-                     'I saw "[Request interrupted by user]" in the log — is '
-                     "that me or the harness?", "2026-02-01T10:00:00Z"),
-        ])
+        _write(
+            self.d / "s.jsonl",
+            [
+                _cc_line(
+                    "user",
+                    'I saw "[Request interrupted by user]" in the log — is that me or the harness?',
+                    "2026-02-01T10:00:00Z",
+                ),
+            ],
+        )
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 1)
@@ -505,29 +694,45 @@ class DogfoodRegressions(unittest.TestCase):
         in the operator's thread, all False; 1,634 across seven subagent
         transcripts, all True. The directory skip is the outer guard; this is
         the inner one, and it holds when the layout does not."""
-        _write(self.d / "s.jsonl", [
-            _cc_line("user", "walk me through what the parser does here",
-                     "2026-02-01T10:00:00Z"),
-            # same file, no `subagents/` anywhere in the path
-            _cc_line_with("user", "Research the four runtimes and report back. " * 20,
-                          "2026-02-01T10:01:00Z", isSidechain=True),
-            _cc_line_with("assistant", "here is what I found", "2026-02-01T10:02:00Z",
-                          isSidechain=True),
-            _cc_line("user", "good, open a pull request", "2026-02-01T10:03:00Z"),
-        ])
+        _write(
+            self.d / "s.jsonl",
+            [
+                _cc_line(
+                    "user", "walk me through what the parser does here", "2026-02-01T10:00:00Z"
+                ),
+                # same file, no `subagents/` anywhere in the path
+                _cc_line_with(
+                    "user",
+                    "Research the four runtimes and report back. " * 20,
+                    "2026-02-01T10:01:00Z",
+                    isSidechain=True,
+                ),
+                _cc_line_with(
+                    "assistant", "here is what I found", "2026-02-01T10:02:00Z", isSidechain=True
+                ),
+                _cc_line("user", "good, open a pull request", "2026-02-01T10:03:00Z"),
+            ],
+        )
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
-        self.assertEqual(len(ops), 2)          # the person's two, not the agent's
-        self.assertEqual(dropped.total, 2)           # counted, never hidden
+        self.assertEqual(len(ops), 2)  # the person's two, not the agent's
+        self.assertEqual(dropped.total, 2)  # counted, never hidden
         self.assertTrue(all(e.features["word_count"] < 20 for e in ops))
 
     def test_a_false_sidechain_flag_is_still_the_operator(self):
         # the skip keys on True specifically — an explicit False, or a runtime
         # version that omits the field, leaves the operator's turn alone.
-        _write(self.d / "s.jsonl", [
-            _cc_line_with("user", "what does this return on an empty file?",
-                          "2026-02-01T10:00:00Z", isSidechain=False),
-        ])
+        _write(
+            self.d / "s.jsonl",
+            [
+                _cc_line_with(
+                    "user",
+                    "what does this return on an empty file?",
+                    "2026-02-01T10:00:00Z",
+                    isSidechain=False,
+                ),
+            ],
+        )
         events, _, _ = ingest.get("claude-code")(str(self.d))
         self.assertEqual(len(events), 1)
 
@@ -537,15 +742,21 @@ class DogfoodRegressions(unittest.TestCase):
         role. It is one agent's output delivered to another, and `owner ==
         subject` is the scope rule. Observed 2026-09-11: one such turn ran 505
         words against a human median of 6, pulling the mean from 8.9 to 70.9."""
-        relay = ("Another Claude session sent a message:\n"
-                 "<cross-session-message from=\"bridge:session_01\" from-name=\"peer\" "
-                 "from-mode=\"prompting\">\n" + "schema findings relayed at request. " * 60 +
-                 "\n</cross-session-message>\nThis came from another Claude session.")
-        _write(self.d / "s.jsonl", [
-            _cc_line("user", "test it against this session", "2026-02-01T10:00:00Z"),
-            _cc_line("user", relay, "2026-02-01T10:01:00Z"),
-            _cc_line("user", "fix what that turned up", "2026-02-01T10:05:00Z"),
-        ])
+        relay = (
+            "Another Claude session sent a message:\n"
+            '<cross-session-message from="bridge:session_01" from-name="peer" '
+            'from-mode="prompting">\n'
+            + "schema findings relayed at request. " * 60
+            + "\n</cross-session-message>\nThis came from another Claude session."
+        )
+        _write(
+            self.d / "s.jsonl",
+            [
+                _cc_line("user", "test it against this session", "2026-02-01T10:00:00Z"),
+                _cc_line("user", relay, "2026-02-01T10:01:00Z"),
+                _cc_line("user", "fix what that turned up", "2026-02-01T10:05:00Z"),
+            ],
+        )
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 2)
@@ -560,12 +771,19 @@ class DogfoodRegressions(unittest.TestCase):
         the provenance note in claude_code.py — so this test also pins that a
         record WITHOUT the field is unaffected, which is what makes the check
         safe to carry while the claim is outstanding."""
-        _write(self.d / "s.jsonl", [
-            _cc_line("user", "walk me through the adapter seam", "2026-02-01T10:00:00Z"),
-            _cc_line_with("user", "Here is a summary of the conversation so far. " * 40,
-                          "2026-02-01T10:01:00Z", isCompactSummary=True),
-            _cc_line("user", "good, carry on from there", "2026-02-01T10:02:00Z"),
-        ])
+        _write(
+            self.d / "s.jsonl",
+            [
+                _cc_line("user", "walk me through the adapter seam", "2026-02-01T10:00:00Z"),
+                _cc_line_with(
+                    "user",
+                    "Here is a summary of the conversation so far. " * 40,
+                    "2026-02-01T10:01:00Z",
+                    isCompactSummary=True,
+                ),
+                _cc_line("user", "good, carry on from there", "2026-02-01T10:02:00Z"),
+            ],
+        )
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 2)
@@ -575,42 +793,67 @@ class DogfoodRegressions(unittest.TestCase):
     def test_a_turn_without_the_compaction_flag_is_untouched(self):
         # the check is inert unless the runtime actually sets the field: an
         # ordinary turn, and one carrying an explicit False, both survive.
-        _write(self.d / "s.jsonl", [
-            _cc_line("user", "summarise what we decided about the wall",
-                     "2026-02-01T10:00:00Z"),
-            _cc_line_with("user", "and what did the second agent find?",
-                          "2026-02-01T10:01:00Z", isCompactSummary=False),
-        ])
+        _write(
+            self.d / "s.jsonl",
+            [
+                _cc_line(
+                    "user", "summarise what we decided about the wall", "2026-02-01T10:00:00Z"
+                ),
+                _cc_line_with(
+                    "user",
+                    "and what did the second agent find?",
+                    "2026-02-01T10:01:00Z",
+                    isCompactSummary=False,
+                ),
+            ],
+        )
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         self.assertEqual(len([e for e in events if e.author_class == "operator"]), 2)
         self.assertEqual(dropped.total, 0)
 
     # ── finding 2: a finished background task arrives in the user role ──
     def test_task_notification_is_stripped_not_counted_as_a_prompt(self):
-        notification = ("<task-notification> <task-id>abc</task-id> "
-                        "<status>completed</status> <result>" + "agent words " * 300 +
-                        "</result> </task-notification>")
-        _write(self.d / "s.jsonl", [
-            _cc_line("user", "I think this tool could do more than what it's doing",
-                     "2026-02-01T10:00:00Z"),
-            _cc_line("assistant", "here is what I found in the repo", "2026-02-01T10:01:00Z"),
-            _cc_line("user", notification, "2026-02-01T10:02:00Z"),
-            _cc_line("user", "fix both and add the regression tests", "2026-02-01T10:03:00Z"),
-        ])
+        notification = (
+            "<task-notification> <task-id>abc</task-id> "
+            "<status>completed</status> <result>"
+            + "agent words " * 300
+            + "</result> </task-notification>"
+        )
+        _write(
+            self.d / "s.jsonl",
+            [
+                _cc_line(
+                    "user",
+                    "I think this tool could do more than what it's doing",
+                    "2026-02-01T10:00:00Z",
+                ),
+                _cc_line("assistant", "here is what I found in the repo", "2026-02-01T10:01:00Z"),
+                _cc_line("user", notification, "2026-02-01T10:02:00Z"),
+                _cc_line("user", "fix both and add the regression tests", "2026-02-01T10:03:00Z"),
+            ],
+        )
         events, _, dropped = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
-        self.assertEqual(len(ops), 2)                       # the notification is not one
+        self.assertEqual(len(ops), 2)  # the notification is not one
         self.assertEqual(max(e.features["word_count"] for e in ops), 11)
-        self.assertEqual(dropped.total, 1)                        # emptied, then counted
+        self.assertEqual(dropped.total, 1)  # emptied, then counted
 
     def test_a_notification_never_inflates_the_opener(self):
         # the finding itself, end to end: the median opener must be the human's
-        notification = "<task-notification><summary>" + "x " * 900 + "</summary></task-notification>"
-        _write(self.d / "s.jsonl", [
-            _cc_line("user", notification, "2026-02-01T10:00:00Z"),
-            _cc_line("user", "take the render, and pypi is one of the things I wanted",
-                     "2026-02-01T10:01:00Z"),
-        ])
+        notification = (
+            "<task-notification><summary>" + "x " * 900 + "</summary></task-notification>"
+        )
+        _write(
+            self.d / "s.jsonl",
+            [
+                _cc_line("user", notification, "2026-02-01T10:00:00Z"),
+                _cc_line(
+                    "user",
+                    "take the render, and pypi is one of the things I wanted",
+                    "2026-02-01T10:01:00Z",
+                ),
+            ],
+        )
         events, _, _ = ingest.get("claude-code")(str(self.d))
         ops = [e for e in events if e.author_class == "operator"]
         self.assertEqual(len(ops), 1)
@@ -618,8 +861,10 @@ class DogfoodRegressions(unittest.TestCase):
 
     def test_a_notification_mixed_with_real_text_keeps_the_text(self):
         from corpuslens.ingest.injection import authored_text
+
         text, stripped = authored_text(
-            "yes, do that <task-notification><status>done</status></task-notification>")
+            "yes, do that <task-notification><status>done</status></task-notification>"
+        )
         self.assertEqual(text, "yes, do that")
         self.assertTrue(stripped)
 
@@ -627,6 +872,7 @@ class DogfoodRegressions(unittest.TestCase):
         # only the angle-bracketed tag is machine-injected; a human writing the
         # phrase in prose is untouched, the same rule the other 25 tags follow.
         from corpuslens.ingest.injection import authored_text
+
         prose = "the task notification arrived while I was reading the diff"
         self.assertEqual(authored_text(prose), (prose, False))
 
@@ -667,8 +913,13 @@ class CorpusRefusalTests(unittest.TestCase):
         reply every k-th assistant turn."""
         lines = []
         for i in range(n_pairs):
-            lines.append(_cc_line("user", f"please handle item {i} on the list today",
-                                  f"2026-02-01T10:{i % 60:02d}:00Z"))
+            lines.append(
+                _cc_line(
+                    "user",
+                    f"please handle item {i} on the list today",
+                    f"2026-02-01T10:{i % 60:02d}:00Z",
+                )
+            )
             if clarify_every and (i + 1) % clarify_every == 0:
                 reply = "Just to confirm, do you want the old version removed too?"
             else:
@@ -685,6 +936,7 @@ class CorpusRefusalTests(unittest.TestCase):
     def test_prose_corpus_above_threshold_refuses(self):
         from corpuslens.analyze import SMALL_N
         from corpuslens.analyze.composition import composition_mix
+
         events = self._ingest_prose(SMALL_N + 1)
         res = composition_mix(events)
         self.assertIn("error", res)
@@ -693,14 +945,21 @@ class CorpusRefusalTests(unittest.TestCase):
         self.assertIn("English-and-Python", res["error"])
         # a refusal is total: no headline, no rate, and no delib_pct smuggled
         # through the side door (see composition_mix's own docstring for why).
-        for key in ("headline", "authored_code_pct", "code_ref_pct", "delib_pct",
-                    "vs_coding_population", "reading"):
+        for key in (
+            "headline",
+            "authored_code_pct",
+            "code_ref_pct",
+            "delib_pct",
+            "vs_coding_population",
+            "reading",
+        ):
             self.assertNotIn(key, res)
 
     def test_prose_corpus_at_or_below_threshold_does_not_refuse(self):
         from corpuslens.analyze import SMALL_N
         from corpuslens.analyze.composition import composition_mix
-        events = self._ingest_prose(SMALL_N)   # exactly at the threshold: NOT "more than"
+
+        events = self._ingest_prose(SMALL_N)  # exactly at the threshold: NOT "more than"
         res = composition_mix(events)
         self.assertNotIn("error", res)
         self.assertEqual(res["authored_code_pct"], 0.0)
@@ -709,7 +968,8 @@ class CorpusRefusalTests(unittest.TestCase):
     def test_coding_corpus_above_threshold_is_unaffected(self):
         from corpuslens.analyze import SMALL_N
         from corpuslens.analyze.composition import composition_mix
-        events = self._ingest_prose(SMALL_N + 5, code_every=5)   # some turns carry real code
+
+        events = self._ingest_prose(SMALL_N + 5, code_every=5)  # some turns carry real code
         res = composition_mix(events)
         self.assertNotIn("error", res)
         self.assertGreater(res["authored_code_pct"] + res["code_ref_pct"], 0.0)
@@ -720,6 +980,7 @@ class CorpusRefusalTests(unittest.TestCase):
         # is specifically about the CODE classifiers.
         from corpuslens.analyze import SMALL_N
         from corpuslens.analyze.composition import composition_mix
+
         events = self._ingest_prose(SMALL_N + 1, delib_every=3)
         res = composition_mix(events)
         self.assertIn("error", res)
@@ -730,6 +991,7 @@ class CorpusRefusalTests(unittest.TestCase):
     def test_dialog_above_threshold_with_no_clarify_refuses(self):
         from corpuslens.analyze import SMALL_N
         from corpuslens.analyze.composition import clarification_pull
+
         events = self._ingest_dialog(SMALL_N + 1)
         res = clarification_pull(events)
         self.assertIn("error", res)
@@ -741,6 +1003,7 @@ class CorpusRefusalTests(unittest.TestCase):
     def test_dialog_at_or_below_threshold_does_not_refuse(self):
         from corpuslens.analyze import SMALL_N
         from corpuslens.analyze.composition import clarification_pull
+
         events = self._ingest_dialog(SMALL_N)
         res = clarification_pull(events)
         self.assertNotIn("error", res)
@@ -749,6 +1012,7 @@ class CorpusRefusalTests(unittest.TestCase):
     def test_dialog_above_threshold_with_clarify_hits_is_unaffected(self):
         from corpuslens.analyze import SMALL_N
         from corpuslens.analyze.composition import clarification_pull
+
         events = self._ingest_dialog(SMALL_N + 5, clarify_every=4)
         res = clarification_pull(events)
         self.assertNotIn("error", res)

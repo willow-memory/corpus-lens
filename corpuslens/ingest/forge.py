@@ -124,6 +124,7 @@ adapter reads every ledger under the path it is given; scope it to your own
 records the way you would any other corpus, and read `authorship_mix`'s
 result before trusting a rate.
 """
+
 from __future__ import annotations
 
 import json
@@ -132,8 +133,14 @@ from pathlib import Path
 from ..model import Surface
 from . import register, register_default_path, register_unmeasurable
 from ._rows import assemble, as_text, parse_db_ts
-from .drops import (DropCounts, EMPTY_TURN, MISSING_TIMESTAMP,
-                    NOT_A_TURN_RECORD, UNPARSEABLE_LINE, UNREADABLE_FILE)
+from .drops import (
+    DropCounts,
+    EMPTY_TURN,
+    MISSING_TIMESTAMP,
+    NOT_A_TURN_RECORD,
+    UNPARSEABLE_LINE,
+    UNREADABLE_FILE,
+)
 
 ADAPTER_ID = "forge/1"
 
@@ -142,15 +149,21 @@ _ASK = "entity_resolve"
 _ANSWER = "entity_seal"
 
 UNMEASURABLE = {
-    "steering_density": ("a checkpoint has no opening prompt; every operator turn is an "
-                         "answer to a question the engine asked, so 'mid-task' is 100% by "
-                         "construction and measures nothing"),
-    "composition_mix": ("a maker's answer to a fork names an option; it neither authors "
-                        "code nor cites it, so authored/read-ref shares are 0% by construction"),
-    "clarification_pull": ("the CLARIFY phrase list was built for chat and a Forge question "
-                           "('which major?') matches none of it, so the rate reads 0% however "
-                           "often the engine asked; the ask/confirm split is on the ledger, "
-                           "not in the classifier"),
+    "steering_density": (
+        "a checkpoint has no opening prompt; every operator turn is an "
+        "answer to a question the engine asked, so 'mid-task' is 100% by "
+        "construction and measures nothing"
+    ),
+    "composition_mix": (
+        "a maker's answer to a fork names an option; it neither authors "
+        "code nor cites it, so authored/read-ref shares are 0% by construction"
+    ),
+    "clarification_pull": (
+        "the CLARIFY phrase list was built for chat and a Forge question "
+        "('which major?') matches none of it, so the rate reads 0% however "
+        "often the engine asked; the ask/confirm split is on the ledger, "
+        "not in the classifier"
+    ),
 }
 
 
@@ -205,10 +218,10 @@ def _read_ledger(path: Path, rel: str):
             drops.add(MISSING_TIMESTAMP)
             continue
         if not domain:
-            drops.add(UNPARSEABLE_LINE)   # no thread key — not a shape this adapter can use
+            drops.add(UNPARSEABLE_LINE)  # no thread key — not a shape this adapter can use
             continue
         if not text.strip():
-            drops.add(EMPTY_TURN)         # an ask never answered, or a blank canonical answer
+            drops.add(EMPTY_TURN)  # an ask never answered, or a blank canonical answer
             continue
         raw.append((d, epoch, domain, role, text, f"{rel}:{n}"))
     return raw, drops
@@ -224,11 +237,14 @@ def ingest(path: str, corpus_id: str = "corpus"):
     raw = []
     drops = DropCounts()
     for f in sorted(root.rglob("ledger.jsonl")):
-        rel = str(f.relative_to(root))
+        # `as_posix()`, like every other adapter: the locator is a stable
+        # string that goes into the quarantine's ref map and is asserted by
+        # shape, and `str(Path)` spells it with backslashes on Windows.
+        rel = f.relative_to(root).as_posix()
         try:
             rows, d = _read_ledger(f, rel)
         except OSError:
-            drops.add(UNREADABLE_FILE)   # never abort the walk
+            drops.add(UNREADABLE_FILE)  # never abort the walk
             continue
         raw.extend(rows)
         drops.merge(d)

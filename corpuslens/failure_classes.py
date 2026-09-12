@@ -41,26 +41,29 @@ connection will sometimes have to reproduce the failure with `psql` directly.
 That is the intended trade and it must not be quietly undone by adding "...
 (detail: {stderr})" to a message here later.
 """
+
 from __future__ import annotations
 
 #: The closed vocabulary. A reporter may emit these strings and no others.
-FAILURE_CLASSES: frozenset[str] = frozenset({
-    "could not resolve the host name",
-    "connection refused",
-    "connection timed out",
-    "authentication failed",
-    "the named database does not exist",
-    "permission denied by the server",
-    "TLS/SSL negotiation failed",
-    "the connection string is malformed",
-    "the query was rejected",
-    "the file is not a readable database",
-    "the database is locked",
-    "the database file could not be opened",
-    "the client binary is missing",
-    "the operation timed out",
-    "unknown failure",
-})
+FAILURE_CLASSES: frozenset[str] = frozenset(
+    {
+        "could not resolve the host name",
+        "connection refused",
+        "connection timed out",
+        "authentication failed",
+        "the named database does not exist",
+        "permission denied by the server",
+        "TLS/SSL negotiation failed",
+        "the connection string is malformed",
+        "the query was rejected",
+        "the file is not a readable database",
+        "the database is locked",
+        "the database file could not be opened",
+        "the client binary is missing",
+        "the operation timed out",
+        "unknown failure",
+    }
+)
 
 UNKNOWN = "unknown failure"
 
@@ -73,7 +76,7 @@ _MARKERS: tuple[tuple[str, str], ...] = (
     ("in uri", "the connection string is malformed"),
     ("invalid uri", "the connection string is malformed"),
     ("invalid connection option", "the connection string is malformed"),
-    ("missing \"=\" after", "the connection string is malformed"),
+    ('missing "=" after', "the connection string is malformed"),
     ("could not translate host name", "could not resolve the host name"),
     ("name or service not known", "could not resolve the host name"),
     ("no address associated with hostname", "could not resolve the host name"),
@@ -84,7 +87,7 @@ _MARKERS: tuple[tuple[str, str], ...] = (
     ("password authentication failed", "authentication failed"),
     ("authentication failed", "authentication failed"),
     ("no password supplied", "authentication failed"),
-    ("role \"", "authentication failed"),
+    ('role "', "authentication failed"),
     ("file is not a database", "the file is not a readable database"),
     ("encrypted or is not a database", "the file is not a readable database"),
     ("database disk image is malformed", "the file is not a readable database"),

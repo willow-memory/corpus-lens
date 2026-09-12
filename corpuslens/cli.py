@@ -36,6 +36,7 @@ symlink that leaves it) and `run_discovered` for what happens when several
 corpora exist (the largest, by file count, is run — see its docstring for
 why). The explicit two-argument form is unchanged by any of this.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -71,14 +72,16 @@ def _check_path(path: str, adapter: str, src: str):
     Returns (n_matching_files, error_message|None)."""
     p = Path(path)
     if src == "dsn":
-        return 0, None      # no filesystem check — the adapter validates the connection
+        return 0, None  # no filesystem check — the adapter validates the connection
     if not p.exists():
         return 0, f"path does not exist: {path}"
     if src == "dir":
         pat = ingest.pattern_of(adapter)
         if not p.is_dir():
-            return 0, (f"expected a directory of {pat} session files, got a file: {path}\n"
-                       f"       point corpuslens at the parent directory, not a single session file.")
+            return 0, (
+                f"expected a directory of {pat} session files, got a file: {path}\n"
+                f"       point corpuslens at the parent directory, not a single session file."
+            )
         return sum(1 for f in p.rglob(pat) if f.is_file()), None
     if p.is_dir():
         return 0, f"adapter '{adapter}' expects a single file, got a directory: {path}"
@@ -134,10 +137,14 @@ def _empty_message(path, adapter, src, n_files, drops, display_path=None) -> str
     if src == "dir" and n_files == 0:
         return f"no {pat} files found under {path}. Wrong directory?"
     if src == "dir":
-        return (f"{n_files} {pat} file(s) under {path} but none yielded a datable, "
-                f"non-empty turn for adapter '{adapter}' (dropped {drops.total}). Wrong adapter?")
-    return (f"adapter '{adapter}' yielded no datable, non-empty turn from {path} "
-            f"(dropped {drops.total}). Wrong table/columns, or an empty corpus?")
+        return (
+            f"{n_files} {pat} file(s) under {path} but none yielded a datable, "
+            f"non-empty turn for adapter '{adapter}' (dropped {drops.total}). Wrong adapter?"
+        )
+    return (
+        f"adapter '{adapter}' yielded no datable, non-empty turn from {path} "
+        f"(dropped {drops.total}). Wrong table/columns, or an empty corpus?"
+    )
 
 
 def _window(events, since_day, until_day):
@@ -147,8 +154,8 @@ def _window(events, since_day, until_day):
     numbers."""
     if since_day is None and until_day is None:
         return events, 0, None
-    lo = since_day if since_day is not None else -(10 ** 9)
-    hi = until_day if until_day is not None else 10 ** 9
+    lo = since_day if since_day is not None else -(10**9)
+    hi = until_day if until_day is not None else 10**9
     kept = [e for e in events if lo <= e.time.day_offset <= hi]
     lo_s = "corpus start" if since_day is None else str(since_day)
     hi_s = "corpus end" if until_day is None else str(until_day)
@@ -206,8 +213,14 @@ def _discover_corpora() -> list[dict]:
     for name in ingest.discoverable():
         raw = ingest.default_path_of(name)
         pat = ingest.pattern_of(name)
-        entry = {"adapter": name, "declared_path": raw, "resolved_path": None,
-                  "n_files": 0, "usable": False, "note": None}
+        entry = {
+            "adapter": name,
+            "declared_path": raw,
+            "resolved_path": None,
+            "n_files": 0,
+            "usable": False,
+            "note": None,
+        }
         try:
             resolved = Path(raw).expanduser().resolve()
         except (OSError, RuntimeError) as e:
@@ -235,14 +248,14 @@ def _discover_corpora() -> list[dict]:
             continue
         entry["n_files"] = n
         entry["usable"] = n > 0
-        entry["note"] = (f"{n} {pat} file(s) found" if n
-                         else f"present, but no {pat} files under it")
+        entry["note"] = f"{n} {pat} file(s) found" if n else f"present, but no {pat} files under it"
         found.append(entry)
     return found
 
 
-def run_discovered(out: str | None, fmt: str, since_day: int | None,
-                    until_day: int | None, share: bool) -> int:
+def run_discovered(
+    out: str | None, fmt: str, since_day: int | None, until_day: int | None, share: bool
+) -> int:
     """`corpuslens run` with no PATH and no `--adapter`: look in every
     adapter's declared conventional location, print what was found at each
     one BEFORE reading anything, then run the battery on what was found.
@@ -266,9 +279,14 @@ def run_discovered(out: str | None, fmt: str, since_day: int | None,
         lines.append(f"  - {e['adapter']}: {e['declared_path']} — {e['note']}")
     usable = [e for e in found if e["usable"]]
     if not usable:
-        lines += ["", "No corpus found in any conventional location. Point corpuslens at one "
-                       "explicitly:", "", "  corpuslens run <path> --adapter <adapter>", "",
-                  "Run `corpuslens adapters` to see what each adapter expects."]
+        lines += [
+            "",
+            "No corpus found in any conventional location. Point corpuslens at one explicitly:",
+            "",
+            "  corpuslens run <path> --adapter <adapter>",
+            "",
+            "Run `corpuslens adapters` to see what each adapter expects.",
+        ]
         print("\n".join(lines), file=sys.stderr)
         return 1
     chosen = max(usable, key=lambda e: e["n_files"])
@@ -279,26 +297,47 @@ def run_discovered(out: str | None, fmt: str, since_day: int | None,
     # `resolved_path` is used below ONLY to hand `run()` a real filesystem
     # location to read from, never to print.
     if len(usable) > 1:
-        others = ", ".join(f"{e['adapter']} ({e['n_files']} files)"
-                           for e in usable if e is not chosen)
-        lines.append(f"Found corpora in {len(usable)} locations ({others} too); running the "
-                     f"LARGEST by file count: '{chosen['adapter']}' at "
-                     f"{chosen['declared_path']} ({chosen['n_files']} files). Run corpuslens "
-                     f"with an explicit path and --adapter to analyze a different one instead.")
+        others = ", ".join(
+            f"{e['adapter']} ({e['n_files']} files)" for e in usable if e is not chosen
+        )
+        lines.append(
+            f"Found corpora in {len(usable)} locations ({others} too); running the "
+            f"LARGEST by file count: '{chosen['adapter']}' at "
+            f"{chosen['declared_path']} ({chosen['n_files']} files). Run corpuslens "
+            f"with an explicit path and --adapter to analyze a different one instead."
+        )
     else:
-        lines.append(f"Using '{chosen['adapter']}' at {chosen['declared_path']} "
-                     f"({chosen['n_files']} files).")
+        lines.append(
+            f"Using '{chosen['adapter']}' at {chosen['declared_path']} ({chosen['n_files']} files)."
+        )
     print("\n".join(lines))
     print()
-    return run(chosen["resolved_path"], chosen["adapter"], out, None, fmt,
-               since_day, until_day, share, discovered_path=chosen["declared_path"])
+    return run(
+        chosen["resolved_path"],
+        chosen["adapter"],
+        out,
+        None,
+        fmt,
+        since_day,
+        until_day,
+        share,
+        discovered_path=chosen["declared_path"],
+    )
 
 
-def run(path: str, adapter: str, out: str | None, table: str | None = None,
-        fmt: str = "markdown", since_day: int | None = None,
-        until_day: int | None = None, share: bool = False,
-        discovered_path: str | None = None, subject: str | None = None,
-        consent_store: str | None = None) -> int:
+def run(
+    path: str,
+    adapter: str,
+    out: str | None,
+    table: str | None = None,
+    fmt: str = "markdown",
+    since_day: int | None = None,
+    until_day: int | None = None,
+    share: bool = False,
+    discovered_path: str | None = None,
+    subject: str | None = None,
+    consent_store: str | None = None,
+) -> int:
     """`path`/`adapter` are always the REAL location to read from, typed by
     the user or resolved by `run_discovered` — that never changes here.
 
@@ -327,24 +366,37 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
         return rc
     try:
         events, quarantine, drops, n_files = _ingest(path, adapter, table)
-    except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
-            RuntimeError) as e:
+    except (
+        FileNotFoundError,
+        IsADirectoryError,
+        NotADirectoryError,
+        ValueError,
+        RuntimeError,
+    ) as e:
         # the ingest error text can quote the resolved path; on a discovered run
         # the user never typed it, so swap it for the declared form.
-        msg = str(e).replace(str(Path(path).expanduser().resolve()), discovered_path) \
-            if discovered_path else str(e)
+        msg = (
+            str(e).replace(str(Path(path).expanduser().resolve()), discovered_path)
+            if discovered_path
+            else str(e)
+        )
         print(f"error: {msg}", file=sys.stderr)
         return 2
 
     if not events:
-        print(f"error: {_empty_message(path, adapter, src, n_files, drops, discovered_path)}",
-              file=sys.stderr)
+        print(
+            f"error: {_empty_message(path, adapter, src, n_files, drops, discovered_path)}",
+            file=sys.stderr,
+        )
         return 1
 
     events, n_filtered, clause = _window(events, since_day, until_day)
     if not events:
-        print(f"error: the --since-day/--until-day window ({clause}) excluded every event "
-              f"({n_filtered} dropped by the window). Widen it.", file=sys.stderr)
+        print(
+            f"error: the --since-day/--until-day window ({clause}) excluded every event "
+            f"({n_filtered} dropped by the window). Widen it.",
+            file=sys.stderr,
+        )
         return 1
 
     guard = Guard(quarantine, DEFAULT_PROFILE)
@@ -357,7 +409,7 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
     if discovered_path:
         guard.audit.discovered_path = discovered_path
     if subject:
-        guard.audit.subject_consent = consentmod.SCOPE   # the scope, never the id
+        guard.audit.subject_consent = consentmod.SCOPE  # the scope, never the id
     if clause:
         guard.audit.filters.append(clause)
         guard.audit.n_filtered = n_filtered
@@ -369,13 +421,18 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
             # The adapter said this corpus cannot mean this number. Refuse
             # by name, in the same list the Guard's own refusals go in, so
             # the audit sentence carries it — see ingest.register_unmeasurable.
-            guard.audit.analyzers_refused.append(f"{a.name} (adapter {adapter}: {unmeasurable[a.name]})")
+            guard.audit.analyzers_refused.append(
+                f"{a.name} (adapter {adapter}: {unmeasurable[a.name]})"
+            )
             continue
         if not guard.admit(a):
             continue
-        results[a.name] = {"denominator": a.denominator, "analyzer_version": a.version,
-                          "grading_question": a.grading_question,
-                          **a.run(events)}
+        results[a.name] = {
+            "denominator": a.denominator,
+            "analyzer_version": a.version,
+            "grading_question": a.grading_question,
+            **a.run(events),
+        }
         guard.audit.analyzers_run.append(a.name)
     # DERIVED, never a flag: this run's own authorship_mix result (when that
     # analyzer is registered) is the only input — see corpuslens/subject.py.
@@ -411,7 +468,7 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
             # docstring for why this is not a duplicate of scan_egress.
             guard.scan_share_shape(results, audit.as_dict())
         report = render.render(fmt, results, audit, share=share)
-        report = guard.scan_egress(report)   # fail-closed backstop at the output door
+        report = guard.scan_egress(report)  # fail-closed backstop at the output door
     except WallError as e:
         # A quarantined value reached the rendered report. Do NOT emit it —
         # refuse loudly. The report is discarded, not printed.
@@ -429,8 +486,14 @@ def run(path: str, adapter: str, out: str | None, table: str | None = None,
         print(report)
     if subject:
         # Only now: a refused or unwritten report leaves no "analysis ran" row.
-        _disclose(subject, consent_store, consentmod.ACTION_RUN, adapter,
-                  guard.audit.n_events, guard.audit.n_dropped)
+        _disclose(
+            subject,
+            consent_store,
+            consentmod.ACTION_RUN,
+            adapter,
+            guard.audit.n_events,
+            guard.audit.n_dropped,
+        )
     return 0
 
 
@@ -442,9 +505,12 @@ def _subject_gate(subject: str | None, consent_store: str | None) -> int:
     if subject is None and consent_store is None:
         return 0
     if subject is None or consent_store is None:
-        print("error: --subject and --consent-store go together: a subject who is not the "
-              "owner needs a store holding their grant, and a store needs a subject to look "
-              "up. Give both, or neither (the owner's own corpus).", file=sys.stderr)
+        print(
+            "error: --subject and --consent-store go together: a subject who is not the "
+            "owner needs a store holding their grant, and a store needs a subject to look "
+            "up. Give both, or neither (the owner's own corpus).",
+            file=sys.stderr,
+        )
         return 2
     try:
         consentmod.require_grant(consent_store, subject)
@@ -454,16 +520,31 @@ def _subject_gate(subject: str | None, consent_store: str | None) -> int:
     return 0
 
 
-def _disclose(subject: str, consent_store: str | None, action: str, adapter: str,
-              n_events: int, n_dropped: int) -> None:
+def _disclose(
+    subject: str,
+    consent_store: str | None,
+    action: str,
+    adapter: str,
+    n_events: int,
+    n_dropped: int,
+) -> None:
     """Append the counts-only disclosure row; a failure to write it is loud
     (stderr) but never retracts a report already emitted."""
     try:
-        consentmod.disclose(consent_store or "", subject, action, adapter=adapter,
-                            n_events=n_events, n_dropped=n_dropped)
+        consentmod.disclose(
+            consent_store or "",
+            subject,
+            action,
+            adapter=adapter,
+            n_events=n_events,
+            n_dropped=n_dropped,
+        )
     except consentmod.core.SubjectConsentError as e:
-        print(f"warning: the disclosure row could not be appended ({e.__class__.__name__}); "
-              f"the subject's record does not show this run.", file=sys.stderr)
+        print(
+            f"warning: the disclosure row could not be appended ({e.__class__.__name__}); "
+            f"the subject's record does not show this run.",
+            file=sys.stderr,
+        )
 
 
 def _diagnose(events, quarantine, drops, adapter, src, n_files, path) -> dict:
@@ -499,8 +580,9 @@ def _diagnose(events, quarantine, drops, adapter, src, n_files, path) -> dict:
         "events_dropped_structural": drops.structural,
         "events_dropped_malformed": drops.malformed,
         "drop_pct": round(100 * drops.total / total, 1) if total else 0.0,
-        "malformed_drop_pct": (round(100 * drops.malformed / candidate_turns, 1)
-                               if candidate_turns else 0.0),
+        "malformed_drop_pct": (
+            round(100 * drops.malformed / candidate_turns, 1) if candidate_turns else 0.0
+        ),
         "dropped_by_reason": drops.as_dict(),
         "operator_turns": len(op),
         "machine_turns": len(machine),
@@ -515,24 +597,32 @@ def _diagnose(events, quarantine, drops, adapter, src, n_files, path) -> dict:
     if events and not machine:
         notes.append("no machine turns: `clarification_pull` cannot be computed on this corpus.")
     if events and not with_delta:
-        notes.append("no within-day tempo deltas: `tempo` cannot be computed on this corpus "
-                     "(a store that does not clock prompts, or one turn per thread per day).")
+        notes.append(
+            "no within-day tempo deltas: `tempo` cannot be computed on this corpus "
+            "(a store that does not clock prompts, or one turn per thread per day)."
+        )
     if diag["malformed_drop_pct"] >= 50.0:
-        notes.append(f"{diag['malformed_drop_pct']}% of the records that should have been a "
-                     f"turn failed to become one (unparseable lines, missing timestamps, "
-                     f"unrecognised roles, empty turns) — check the adapter (and --table) "
-                     f"before trusting any rate computed from the rest. This does NOT count "
-                     f"the {diag['events_dropped_structural']} record(s) dropped by design "
-                     f"(tool traffic, thinking, attachments, harness bookkeeping) — those are "
-                     f"normal and not part of this warning.")
+        notes.append(
+            f"{diag['malformed_drop_pct']}% of the records that should have been a "
+            f"turn failed to become one (unparseable lines, missing timestamps, "
+            f"unrecognised roles, empty turns) — check the adapter (and --table) "
+            f"before trusting any rate computed from the rest. This does NOT count "
+            f"the {diag['events_dropped_structural']} record(s) dropped by design "
+            f"(tool traffic, thinking, attachments, harness bookkeeping) — those are "
+            f"normal and not part of this warning."
+        )
     if not quarantine.base_date_iso and events:
         notes.append("no calendar anchor was quarantined for this corpus.")
     for name, why in sorted(ingest.unmeasurable_of(adapter).items()):
-        notes.append(f"`{name}` is declared unmeasurable by the {adapter!r} adapter and will "
-                     f"be refused by `run`: {why}.")
+        notes.append(
+            f"`{name}` is declared unmeasurable by the {adapter!r} adapter and will "
+            f"be refused by `run`: {why}."
+        )
     diag["notes"] = notes
-    diag["reminder"] = ("diagnostics only — no analyzer ran, no rate was computed, and the "
-                        "calendar anchor stayed quarantined.")
+    diag["reminder"] = (
+        "diagnostics only — no analyzer ran, no rate was computed, and the "
+        "calendar anchor stayed quarantined."
+    )
     return diag
 
 
@@ -546,15 +636,22 @@ def _render_doctor(diag: dict, fmt: str) -> str:
         lines.append(f"- **{k}**: {v}")
     if diag.get("dropped_by_reason"):
         lines += ["", "## dropped_by_reason"] + [
-            f"- **{reason}**: {n}" for reason, n in sorted(diag["dropped_by_reason"].items())]
+            f"- **{reason}**: {n}" for reason, n in sorted(diag["dropped_by_reason"].items())
+        ]
     if diag["notes"]:
         lines += ["", "## notes"] + [f"- {n}" for n in diag["notes"]]
     lines += ["", f"*{diag['reminder']}*"]
     return "\n".join(lines)
 
 
-def doctor(path: str, adapter: str, table: str | None = None, fmt: str = "markdown",
-           subject: str | None = None, consent_store: str | None = None) -> int:
+def doctor(
+    path: str,
+    adapter: str,
+    table: str | None = None,
+    fmt: str = "markdown",
+    subject: str | None = None,
+    consent_store: str | None = None,
+) -> int:
     """A dry run of ingestion only: what this adapter can see in this corpus,
     how much it had to drop, and which analyzers that corpus can actually feed
     — before committing to a report. Runs no analyzer and emits no rates.
@@ -571,14 +668,19 @@ def doctor(path: str, adapter: str, table: str | None = None, fmt: str = "markdo
         return rc
     try:
         events, quarantine, drops, n_files = _ingest(path, adapter, table)
-    except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
-            RuntimeError) as e:
+    except (
+        FileNotFoundError,
+        IsADirectoryError,
+        NotADirectoryError,
+        ValueError,
+        RuntimeError,
+    ) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 
     diag = _diagnose(events, quarantine, drops, adapter, src, n_files, path)
     if subject:
-        diag["subject_consent"] = consentmod.SCOPE   # the scope verified, never the id
+        diag["subject_consent"] = consentmod.SCOPE  # the scope verified, never the id
     text = _render_doctor(diag, fmt)
     try:
         text = Guard(quarantine, DEFAULT_PROFILE).scan_egress(text)
@@ -587,7 +689,9 @@ def doctor(path: str, adapter: str, table: str | None = None, fmt: str = "markdo
         return 3
     print(text)
     if subject:
-        _disclose(subject, consent_store, consentmod.ACTION_DOCTOR, adapter, len(events), drops.total)
+        _disclose(
+            subject, consent_store, consentmod.ACTION_DOCTOR, adapter, len(events), drops.total
+        )
     return 0 if events else 1
 
 
@@ -599,16 +703,20 @@ def consent_cmd(action: str, subject: str, store: str, by: str | None, fmt: str)
     try:
         if action == "grant":
             if not by:
-                print("error: --by NAME is required: a grant with no grantor is not a grant.",
-                      file=sys.stderr)
+                print(
+                    "error: --by NAME is required: a grant with no grantor is not a grant.",
+                    file=sys.stderr,
+                )
                 return 2
             head = consentmod.grant(store, subject, by)
             print(f"granted '{consentmod.SCOPE}' (chain head {head[:16]})")
             return 0
         if action == "revoke":
             if not by:
-                print("error: --by NAME is required: a revocation is signed like a grant.",
-                      file=sys.stderr)
+                print(
+                    "error: --by NAME is required: a revocation is signed like a grant.",
+                    file=sys.stderr,
+                )
                 return 2
             head = consentmod.revoke(store, subject, by)
             print(f"revoked '{consentmod.SCOPE}' (chain head {head[:16]})")
@@ -632,8 +740,10 @@ def consent_cmd(action: str, subject: str, store: str, by: str | None, fmt: str)
 
 
 def adapters(fmt: str = "markdown") -> int:
-    rows = [{"adapter": name, "argument": ingest.source_of(name), "expects": _expects(name)}
-            for name in ingest.available()]
+    rows = [
+        {"adapter": name, "argument": ingest.source_of(name), "expects": _expects(name)}
+        for name in ingest.available()
+    ]
     if fmt == "json":
         print(json.dumps(rows, indent=2))
     else:
@@ -647,26 +757,37 @@ def adapters(fmt: str = "markdown") -> int:
 
 
 def analyzers(fmt: str = "markdown") -> int:
-    rows = [{"analyzer": a.name, "claims": list(a.claims), "denominator": a.denominator,
-            "version": a.version, "grading_question": a.grading_question}
-            for a in all_analyzers()]
+    rows = [
+        {
+            "analyzer": a.name,
+            "claims": list(a.claims),
+            "denominator": a.denominator,
+            "version": a.version,
+            "grading_question": a.grading_question,
+        }
+        for a in all_analyzers()
+    ]
     if fmt == "json":
         print(json.dumps(rows, indent=2))
     else:
         print("# corpuslens analyzers")
         print()
         for r in rows:
-            print(f"- **{r['analyzer']}** (v{r['version']}) — claims {', '.join(r['claims'])}; "
-                  f"out of {r['denominator']}")
+            print(
+                f"- **{r['analyzer']}** (v{r['version']}) — claims {', '.join(r['claims'])}; "
+                f"out of {r['denominator']}"
+            )
             print(f"  - GRADING.md: {r['grading_question']}")
         print()
-        print("*Every rate names its denominator, and every claim type is on the process-only "
-              "allowlist in `model.py` — a person-shaped claim has no representation here. The "
-              "version is the analyzer's SEMANTICS (classifiers/thresholds), not the JSON document "
-              "shape — see `corpuslens.analyze.Analyzer` — and `corpuslens diff` withholds the "
-              "delta for any analyzer whose version disagrees between the two runs. GRADING.md "
-              "questions 5-8 (honesty machinery) and 9-10 (fingerprinting, continuity) are not "
-              "corpus-measurable and have no analyzer here at all — see GRADING.md itself.*")
+        print(
+            "*Every rate names its denominator, and every claim type is on the process-only "
+            "allowlist in `model.py` — a person-shaped claim has no representation here. The "
+            "version is the analyzer's SEMANTICS (classifiers/thresholds), not the JSON document "
+            "shape — see `corpuslens.analyze.Analyzer` — and `corpuslens diff` withholds the "
+            "delta for any analyzer whose version disagrees between the two runs. GRADING.md "
+            "questions 5-8 (honesty machinery) and 9-10 (fingerprinting, continuity) are not "
+            "corpus-measurable and have no analyzer here at all — see GRADING.md itself.*"
+        )
     return 0
 
 
@@ -691,8 +812,9 @@ def _ask_yes_no(question: str):
         print("please answer y, n, or q.")
 
 
-def label(path: str, adapter: str, sample_size: int, store_path: str,
-          table: str | None = None) -> int:
+def label(
+    path: str, adapter: str, sample_size: int, store_path: str, table: str | None = None
+) -> int:
     """Sample eligible turns under a fixed seed, show each one's text in the
     terminal, and ask one yes/no per classifier that applies to it, plus (when
     `corpuslens.authorship` is installed) the one authorship question for
@@ -712,20 +834,29 @@ def label(path: str, adapter: str, sample_size: int, store_path: str,
     or not the sibling classifier has shipped yet.
     """
     if not ingest.text_capable_of(adapter):
-        print(f"error: 'label' needs to show you your own turn text, and the {adapter!r} "
-              f"adapter does not support that yet (only claude-code does) — refusing rather "
-              f"than guessing at a text format nobody has implemented or tested for it.",
-              file=sys.stderr)
+        print(
+            f"error: 'label' needs to show you your own turn text, and the {adapter!r} "
+            f"adapter does not support that yet (only claude-code does) — refusing rather "
+            f"than guessing at a text format nobody has implemented or tested for it.",
+            file=sys.stderr,
+        )
         return 2
     try:
         events, quarantine, drops, n_files, text_by_ref = _ingest_for_label(path, adapter, table)
-    except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
-            RuntimeError) as e:
+    except (
+        FileNotFoundError,
+        IsADirectoryError,
+        NotADirectoryError,
+        ValueError,
+        RuntimeError,
+    ) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
     if not events:
-        print(f"error: {_empty_message(path, adapter, ingest.source_of(adapter), n_files, drops)}",
-              file=sys.stderr)
+        print(
+            f"error: {_empty_message(path, adapter, ingest.source_of(adapter), n_files, drops)}",
+            file=sys.stderr,
+        )
         return 1
 
     try:
@@ -745,44 +876,58 @@ def label(path: str, adapter: str, sample_size: int, store_path: str,
         pass
     if authorship_mod is not None:
         authorship_version_err = labelmod.check_authorship_version(
-            store, authorship_mod.AUTHORSHIP_VERSION)
+            store, authorship_mod.AUTHORSHIP_VERSION
+        )
         if authorship_version_err:
             print(f"error: {authorship_version_err}", file=sys.stderr)
             return 2
 
     sample = labelmod.sample_events(events, sample_size)
     if not sample:
-        print("error: no eligible turns to sample in this corpus (operator prompts or machine "
-              "responses with >=12 characters).", file=sys.stderr)
+        print(
+            "error: no eligible turns to sample in this corpus (operator prompts or machine "
+            "responses with >=12 characters).",
+            file=sys.stderr,
+        )
         return 1
 
     labelled = labelmod.already_labelled(store)
     authorship_labelled = labelmod.already_labelled_authorship(store)
     pending = []
     for e in sample:
-        classifiers = [c for c in labelmod.classifiers_for(e.author_class)
-                       if (e.source_ref, c) not in labelled]
+        classifiers = [
+            c for c in labelmod.classifiers_for(e.author_class) if (e.source_ref, c) not in labelled
+        ]
         needs_authorship = authorship_mod is not None and e.source_ref not in authorship_labelled
         if classifiers or needs_authorship:
             pending.append((e, classifiers, needs_authorship))
     if not pending:
-        print(f"nothing new to label: all {len(sample)} sampled turn(s) already have a label "
-              f"for every classifier (and authorship judgment, if applicable) that applies to "
-              f"them, in {store_path}.")
+        print(
+            f"nothing new to label: all {len(sample)} sampled turn(s) already have a label "
+            f"for every classifier (and authorship judgment, if applicable) that applies to "
+            f"them, in {store_path}."
+        )
         return 0
 
     if not sys.stdin.isatty():
-        print("error: `corpuslens label` is interactive — it reads y/n answers from a terminal, "
-              "and stdin here is not one (a piped input, or a CI run). Run it directly in a "
-              "terminal instead of redirecting stdin.", file=sys.stderr)
+        print(
+            "error: `corpuslens label` is interactive — it reads y/n answers from a terminal, "
+            "and stdin here is not one (a piped input, or a CI run). Run it directly in a "
+            "terminal instead of redirecting stdin.",
+            file=sys.stderr,
+        )
         return 2
 
-    print(f"{len(pending)} of {len(sample)} sampled turn(s) still need a label "
-          f"(sample fixed by seed — the same corpus and --sample-size sample the same turns).")
+    print(
+        f"{len(pending)} of {len(sample)} sampled turn(s) still need a label "
+        f"(sample fixed by seed — the same corpus and --sample-size sample the same turns)."
+    )
     print("Answer y or n for each question, or q to stop and save what you have so far.")
     if authorship_mod is None:
-        print("(the authorship classifier is not installed in this build — skipping its "
-              "question; the classifier questions below are unaffected.)")
+        print(
+            "(the authorship classifier is not installed in this build — skipping its "
+            "question; the classifier questions below are unaffected.)"
+        )
     print()
     asked = 0
     for e, classifiers, needs_authorship in pending:
@@ -807,8 +952,9 @@ def label(path: str, adapter: str, sample_size: int, store_path: str,
                 stopped = True
             else:
                 label_value = authorship_mod.HUMAN if answer else authorship_mod.AGENT
-                labelmod.add_authorship_label(store, e.source_ref, label_value,
-                                              authorship_mod.AUTHORSHIP_VERSION)
+                labelmod.add_authorship_label(
+                    store, e.source_ref, label_value, authorship_mod.AUTHORSHIP_VERSION
+                )
                 asked += 1
         print()
         if stopped:
@@ -825,43 +971,56 @@ def _render_authorship(result: dict) -> list:
     classifiers above — with each class's `fn` broken into "predicted the
     other class" versus "declined (unknown)" so those two failure modes
     never collapse into a single indistinguishable number."""
-    lines = ["## authorship", "",
-             "*Three-valued: human / agent / unknown. UNKNOWN is the classifier declining "
-             "to answer, not a wrong guess — a classifier that answers unknown on every turn "
-             "shows 0% recall below for BOTH classes and \"not computable\" precision, never a "
-             "flattering 100%. Read recall together with the decline rate below it, not alone.*",
-             ""]
+    lines = [
+        "## authorship",
+        "",
+        "*Three-valued: human / agent / unknown. UNKNOWN is the classifier declining "
+        "to answer, not a wrong guess — a classifier that answers unknown on every turn "
+        'shows 0% recall below for BOTH classes and "not computable" precision, never a '
+        "flattering 100%. Read recall together with the decline rate below it, not alone.*",
+        "",
+    ]
     n = result["n"]
     lines.append(f"n = {n} authorship-labelled turn(s) found in this corpus.")
     if result.get("missing"):
-        lines.append(f"*{result['missing']} authorship-labelled turn(s) were not found in this "
-                     f"run of the corpus (counted, not silently dropped).*")
+        lines.append(
+            f"*{result['missing']} authorship-labelled turn(s) were not found in this "
+            f"run of the corpus (counted, not silently dropped).*"
+        )
     if n == 0:
         lines.append(f"*{result['unknown_note']}*")
         lines.append("")
         return lines
     if 0 < n < render.SMALL_N:
         lines.append(f"*Small sample (n = {n}): read the direction, not the decimal.*")
-    lines.append(f"- **declined (unknown)**: {result['unknown_pct']}% of turns "
-                 f"({result['unknown_n']} of {n}) — the classifier did not answer at all")
+    lines.append(
+        f"- **declined (unknown)**: {result['unknown_pct']}% of turns "
+        f"({result['unknown_n']} of {n}) — the classifier did not answer at all"
+    )
     lines.append("")
     for name in ("human", "agent"):
         r = result[name]
         lines.append(f"### {name}")
         lines.append("")
         if r["precision_pct"] is not None:
-            lines.append(f"- **precision**: {r['precision_pct']}% — out of "
-                         f"{r['precision_denominator']} (tp={r['tp']}, fp={r['fp']})")
+            lines.append(
+                f"- **precision**: {r['precision_pct']}% — out of "
+                f"{r['precision_denominator']} (tp={r['tp']}, fp={r['fp']})"
+            )
         else:
             lines.append(f"- **precision**: {r['precision_note']}")
         if r["recall_pct"] is not None:
-            lines.append(f"- **recall**: {r['recall_pct']}% — out of "
-                         f"{r['recall_denominator']} (tp={r['tp']}, fn={r['fn']})")
+            lines.append(
+                f"- **recall**: {r['recall_pct']}% — out of "
+                f"{r['recall_denominator']} (tp={r['tp']}, fn={r['fn']})"
+            )
         else:
             lines.append(f"- **recall**: {r['recall_note']}")
-        lines.append(f"  - of {r['fn']} missed {name} turn(s): {r['fn_wrong']} the classifier "
-                     f"answered wrong (the other class), {r['fn_declined']} it declined "
-                     f"(unknown) — said-unknown and said-wrong are counted separately on purpose.")
+        lines.append(
+            f"  - of {r['fn']} missed {name} turn(s): {r['fn_wrong']} the classifier "
+            f"answered wrong (the other class), {r['fn_declined']} it declined "
+            f"(unknown) — said-unknown and said-wrong are counted separately on purpose."
+        )
         lines.append("")
     return lines
 
@@ -869,15 +1028,21 @@ def _render_authorship(result: dict) -> list:
 def _render_score(result: dict, fmt: str) -> str:
     if fmt == "json":
         return json.dumps(result, indent=2)
-    lines = ["# corpuslens score", "",
-             f"*Precision and recall of the regex classifiers against "
-             f"{result['total_labels']} human label(s) — your own judgment on your own turns, "
-             f"never a model's. Named denominators below; this covers only the classifiers and "
-             f"the corpus this label store actually has labels for.*", ""]
+    lines = [
+        "# corpuslens score",
+        "",
+        f"*Precision and recall of the regex classifiers against "
+        f"{result['total_labels']} human label(s) — your own judgment on your own turns, "
+        f"never a model's. Named denominators below; this covers only the classifiers and "
+        f"the corpus this label store actually has labels for.*",
+        "",
+    ]
     if result["missing"]:
-        lines.append(f"*{result['missing']} labelled turn(s) were not found in this run of the "
-                     f"corpus (counted, not silently dropped) — the corpus may have changed "
-                     f"since labelling.*")
+        lines.append(
+            f"*{result['missing']} labelled turn(s) were not found in this run of the "
+            f"corpus (counted, not silently dropped) — the corpus may have changed "
+            f"since labelling.*"
+        )
         lines.append("")
     if not result["classifiers"] and not result.get("authorship"):
         lines.append("No labelled turn in the store matched a turn in this corpus.")
@@ -890,13 +1055,17 @@ def _render_score(result: dict, fmt: str) -> str:
         if 0 < n < render.SMALL_N:
             lines.append(f"*Small sample (n = {n}): read the direction, not the decimal.*")
         if r["precision_pct"] is not None:
-            lines.append(f"- **precision**: {r['precision_pct']}% — out of "
-                         f"{r['precision_denominator']} (tp={r['tp']}, fp={r['fp']})")
+            lines.append(
+                f"- **precision**: {r['precision_pct']}% — out of "
+                f"{r['precision_denominator']} (tp={r['tp']}, fp={r['fp']})"
+            )
         else:
             lines.append(f"- **precision**: {r['precision_note']}")
         if r["recall_pct"] is not None:
-            lines.append(f"- **recall**: {r['recall_pct']}% — out of "
-                         f"{r['recall_denominator']} (tp={r['tp']}, fn={r['fn']})")
+            lines.append(
+                f"- **recall**: {r['recall_pct']}% — out of "
+                f"{r['recall_denominator']} (tp={r['tp']}, fn={r['fn']})"
+            )
         else:
             lines.append(f"- **recall**: {r['recall_note']}")
         lines.append("")
@@ -905,8 +1074,9 @@ def _render_score(result: dict, fmt: str) -> str:
     return "\n".join(lines)
 
 
-def score(path: str, adapter: str, table: str | None, store_path: str,
-          fmt: str = "markdown") -> int:
+def score(
+    path: str, adapter: str, table: str | None, store_path: str, fmt: str = "markdown"
+) -> int:
     """Re-run the classifiers over `path` and grade them against the labels in
     `store_path`: precision, recall and n per classifier, named denominators
     throughout, plus (when the store has any and `corpuslens.authorship` is
@@ -917,13 +1087,20 @@ def score(path: str, adapter: str, table: str | None, store_path: str,
     since they move on independent schedules (see label.py)."""
     try:
         events, quarantine, drops, n_files = _ingest(path, adapter, table)
-    except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError,
-            RuntimeError) as e:
+    except (
+        FileNotFoundError,
+        IsADirectoryError,
+        NotADirectoryError,
+        ValueError,
+        RuntimeError,
+    ) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
     if not Path(store_path).exists():
-        print(f"error: no label store at {store_path} — run `corpuslens label` first.",
-              file=sys.stderr)
+        print(
+            f"error: no label store at {store_path} — run `corpuslens label` first.",
+            file=sys.stderr,
+        )
         return 1
     try:
         store = labelmod.load_store(store_path)
@@ -931,8 +1108,10 @@ def score(path: str, adapter: str, table: str | None, store_path: str,
         print(f"error: could not read --store {store_path}: {e}", file=sys.stderr)
         return 2
     if not store["labels"] and not store.get("authorship_labels"):
-        print(f"error: {store_path} has no labels yet — run `corpuslens label` first.",
-              file=sys.stderr)
+        print(
+            f"error: {store_path} has no labels yet — run `corpuslens label` first.",
+            file=sys.stderr,
+        )
         return 1
     version_err = labelmod.check_version(store)
     if version_err:
@@ -947,7 +1126,8 @@ def score(path: str, adapter: str, table: str | None, store_path: str,
             print(f"error: {e}", file=sys.stderr)
             return 2
         authorship_version_err = labelmod.check_authorship_version(
-            store, authorship_mod.AUTHORSHIP_VERSION)
+            store, authorship_mod.AUTHORSHIP_VERSION
+        )
         if authorship_version_err:
             print(f"error: {authorship_version_err}", file=sys.stderr)
             return 2
@@ -962,6 +1142,8 @@ def score(path: str, adapter: str, table: str | None, store_path: str,
         return 3
     print(text)
     return 0
+
+
 def diff_cmd(path_a: str, path_b: str, fmt: str = "markdown") -> int:
     """Compare two `corpuslens run --format json` files. Never a traceback:
     a malformed or non-corpuslens file is a clear `error:` line and a
@@ -989,47 +1171,90 @@ def main(argv=None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def add_format(parser):
-        parser.add_argument("--format", default="markdown", choices=render.available(),
-                            dest="fmt", help="output format (default: markdown)")
+        parser.add_argument(
+            "--format",
+            default="markdown",
+            choices=render.available(),
+            dest="fmt",
+            help="output format (default: markdown)",
+        )
 
-    r = sub.add_parser("run", help="run the process battery on a corpus "
-                                    "(a directory, a SQLite .db, or a Postgres DSN) -- "
-                                    "or, with no arguments, discover one")
-    r.add_argument("path", nargs="?", default=None,
-                   help="directory of *.jsonl, a SQLite .db file, or a "
-                        "Postgres connection string, per --adapter. Omit this AND --adapter "
-                        "together to auto-discover a corpus in conventional locations "
-                        "(~/.claude/projects, ~/.cursor/chats, ~/.gemini/tmp).")
-    r.add_argument("--adapter", default=None, choices=ingest.available(),
-                   help="required unless PATH is also omitted for auto-discovery")
+    r = sub.add_parser(
+        "run",
+        help="run the process battery on a corpus "
+        "(a directory, a SQLite .db, or a Postgres DSN) -- "
+        "or, with no arguments, discover one",
+    )
+    r.add_argument(
+        "path",
+        nargs="?",
+        default=None,
+        help="directory of *.jsonl, a SQLite .db file, or a "
+        "Postgres connection string, per --adapter. Omit this AND --adapter "
+        "together to auto-discover a corpus in conventional locations "
+        "(~/.claude/projects, ~/.cursor/chats, ~/.gemini/tmp).",
+    )
+    r.add_argument(
+        "--adapter",
+        default=None,
+        choices=ingest.available(),
+        help="required unless PATH is also omitted for auto-discovery",
+    )
     r.add_argument("--out", default=None)
-    r.add_argument("--table", default=None,
-                   help="db adapters only: the turns table (schema.table ok); "
-                        "auto-detected when the db has one obvious candidate")
-    r.add_argument("--since-day", type=int, default=None, metavar="N",
-                   help="analyze only events on or after RELATIVE day N "
-                        "(day 0 = the corpus's first event — never a calendar date)")
-    r.add_argument("--until-day", type=int, default=None, metavar="N",
-                   help="analyze only events on or before relative day N; a filtered "
-                        "run says so in its audit sentence — subset numbers, not corpus numbers")
-    r.add_argument("--subject", default=None, metavar="ID",
-                   help="this corpus is about someone who is NOT you: an opaque local id whose "
-                        "'process_analysis' consent grant must verify in --consent-store before "
-                        "anything is read (fail-closed). Omit for your own corpus. See "
-                        "corpuslens/subject_consent.py.")
-    r.add_argument("--consent-store", default=None, metavar="DIR",
-                   help="the consent store directory (`corpuslens consent grant ...`); "
-                        "required with --subject")
-    r.add_argument("--share", action="store_true",
-                   help="coarsen the report for sharing off this machine: headline rates "
-                        "only, n rounded to a wide band, no tempo quantiles/thread counts/day "
-                        "spans/concurrency figures. Composes with --format (e.g. --format json "
-                        "--share). NOT a claim that the result is anonymous or safe to publish "
-                        "— see corpuslens/share.py.")
+    r.add_argument(
+        "--table",
+        default=None,
+        help="db adapters only: the turns table (schema.table ok); "
+        "auto-detected when the db has one obvious candidate",
+    )
+    r.add_argument(
+        "--since-day",
+        type=int,
+        default=None,
+        metavar="N",
+        help="analyze only events on or after RELATIVE day N "
+        "(day 0 = the corpus's first event — never a calendar date)",
+    )
+    r.add_argument(
+        "--until-day",
+        type=int,
+        default=None,
+        metavar="N",
+        help="analyze only events on or before relative day N; a filtered "
+        "run says so in its audit sentence — subset numbers, not corpus numbers",
+    )
+    r.add_argument(
+        "--subject",
+        default=None,
+        metavar="ID",
+        help="this corpus is about someone who is NOT you: an opaque local id whose "
+        "'process_analysis' consent grant must verify in --consent-store before "
+        "anything is read (fail-closed). Omit for your own corpus. See "
+        "corpuslens/subject_consent.py.",
+    )
+    r.add_argument(
+        "--consent-store",
+        default=None,
+        metavar="DIR",
+        help="the consent store directory (`corpuslens consent grant ...`); "
+        "required with --subject",
+    )
+    r.add_argument(
+        "--share",
+        action="store_true",
+        help="coarsen the report for sharing off this machine: headline rates "
+        "only, n rounded to a wide band, no tempo quantiles/thread counts/day "
+        "spans/concurrency figures. Composes with --format (e.g. --format json "
+        "--share). NOT a claim that the result is anonymous or safe to publish "
+        "— see corpuslens/share.py.",
+    )
     add_format(r)
 
-    d = sub.add_parser("doctor", help="dry-run ingestion: what would be read, what would be "
-                                      "dropped, and which analyzers this corpus can feed")
+    d = sub.add_parser(
+        "doctor",
+        help="dry-run ingestion: what would be read, what would be "
+        "dropped, and which analyzers this corpus can feed",
+    )
     d.add_argument("path", help="same argument `run` takes for this --adapter")
     d.add_argument("--adapter", required=True, choices=ingest.available())
     d.add_argument("--table", default=None, help="db adapters only: the turns table")
@@ -1043,69 +1268,125 @@ def main(argv=None) -> int:
     z = sub.add_parser("analyzers", help="list the analyzers, their claims and denominators")
     add_format(z)
 
-    lb = sub.add_parser("label", help="interactively label a sample of your own turns, to "
-                                      "measure the classifiers' own precision/recall")
+    lb = sub.add_parser(
+        "label",
+        help="interactively label a sample of your own turns, to "
+        "measure the classifiers' own precision/recall",
+    )
     lb.add_argument("path", help="same argument `run` takes for this --adapter")
     lb.add_argument("--adapter", required=True, choices=ingest.available())
     lb.add_argument("--table", default=None, help="db adapters only: the turns table")
-    lb.add_argument("--sample-size", type=int, default=labelmod.DEFAULT_SAMPLE_SIZE, metavar="N",
-                    help=f"how many eligible turns to sample (default: "
-                         f"{labelmod.DEFAULT_SAMPLE_SIZE}). This is a CONVENTION, like the "
-                         f"renderer's small-sample threshold — not a power analysis. corpuslens "
-                         f"does not compute how large a sample would need to be for a given "
-                         f"confidence (see IDEAS.md, 'A local labelling mode').")
-    lb.add_argument("--store", default="corpuslens-labels.json", dest="store_path",
-                    help="JSON file to read/write labels (default: ./corpuslens-labels.json). "
-                         "Holds only label values, each turn's opaque hash, and the classifier "
-                         "version graded — never content, a filename, or a timestamp.")
+    lb.add_argument(
+        "--sample-size",
+        type=int,
+        default=labelmod.DEFAULT_SAMPLE_SIZE,
+        metavar="N",
+        help=f"how many eligible turns to sample (default: "
+        f"{labelmod.DEFAULT_SAMPLE_SIZE}). This is a CONVENTION, like the "
+        f"renderer's small-sample threshold — not a power analysis. corpuslens "
+        f"does not compute how large a sample would need to be for a given "
+        f"confidence (see IDEAS.md, 'A local labelling mode').",
+    )
+    lb.add_argument(
+        "--store",
+        default="corpuslens-labels.json",
+        dest="store_path",
+        help="JSON file to read/write labels (default: ./corpuslens-labels.json). "
+        "Holds only label values, each turn's opaque hash, and the classifier "
+        "version graded — never content, a filename, or a timestamp.",
+    )
 
-    sc = sub.add_parser("score", help="precision/recall/n per classifier, from a label store "
-                                      "`corpuslens label` made")
-    sc.add_argument("path", help="the same corpus you labelled — re-ingested to re-run the "
-                                 "classifiers over it")
+    sc = sub.add_parser(
+        "score",
+        help="precision/recall/n per classifier, from a label store `corpuslens label` made",
+    )
+    sc.add_argument(
+        "path", help="the same corpus you labelled — re-ingested to re-run the classifiers over it"
+    )
     sc.add_argument("--adapter", required=True, choices=ingest.available())
     sc.add_argument("--table", default=None, help="db adapters only: the turns table")
-    sc.add_argument("--store", default="corpuslens-labels.json", dest="store_path",
-                    help="the label store to grade against (default: ./corpuslens-labels.json)")
+    sc.add_argument(
+        "--store",
+        default="corpuslens-labels.json",
+        dest="store_path",
+        help="the label store to grade against (default: ./corpuslens-labels.json)",
+    )
     add_format(sc)
-    df = sub.add_parser("diff", help="compare two `run --format json` files and report the "
-                                     "delta for every shared headline number")
+    df = sub.add_parser(
+        "diff",
+        help="compare two `run --format json` files and report the "
+        "delta for every shared headline number",
+    )
     df.add_argument("report_a", help="first run's JSON file (from `corpuslens run --format json`)")
     df.add_argument("report_b", help="second run's JSON file")
     add_format(df)
 
-    cs = sub.add_parser("consent", help="the operator seat for a subject who is not you: "
-                                          "grant, revoke, or show a subject's consent record")
+    cs = sub.add_parser(
+        "consent",
+        help="the operator seat for a subject who is not you: "
+        "grant, revoke, or show a subject's consent record",
+    )
     cs.add_argument("action", choices=["grant", "revoke", "status"])
     cs.add_argument("subject", help="the subject's opaque local id")
     cs.add_argument("--store", required=True, metavar="DIR", help="the consent store directory")
-    cs.add_argument("--by", default=None, metavar="NAME",
-                    help="who is granting/revoking — recorded on the chain (grant/revoke)")
+    cs.add_argument(
+        "--by",
+        default=None,
+        metavar="NAME",
+        help="who is granting/revoking — recorded on the chain (grant/revoke)",
+    )
     add_format(cs)
 
     args = p.parse_args(argv)
     if args.cmd == "run":
-        if args.since_day is not None and args.until_day is not None \
-                and args.since_day > args.until_day:
-            print(f"error: --since-day {args.since_day} is after --until-day {args.until_day} "
-                  f"— that window is empty.", file=sys.stderr)
+        if (
+            args.since_day is not None
+            and args.until_day is not None
+            and args.since_day > args.until_day
+        ):
+            print(
+                f"error: --since-day {args.since_day} is after --until-day {args.until_day} "
+                f"— that window is empty.",
+                file=sys.stderr,
+            )
             return 2
         if args.path is None and args.adapter is None:
             if args.subject is not None or args.consent_store is not None:
-                print("error: --subject cannot be combined with auto-discovery: a corpus that "
-                      "is someone else's is named, never guessed at.", file=sys.stderr)
+                print(
+                    "error: --subject cannot be combined with auto-discovery: a corpus that "
+                    "is someone else's is named, never guessed at.",
+                    file=sys.stderr,
+                )
                 return 2
             return run_discovered(args.out, args.fmt, args.since_day, args.until_day, args.share)
         if args.path is None or args.adapter is None:
-            print("error: give both PATH and --adapter, or neither (to auto-discover a corpus "
-                  "in conventional locations) — see `corpuslens run --help`.", file=sys.stderr)
+            print(
+                "error: give both PATH and --adapter, or neither (to auto-discover a corpus "
+                "in conventional locations) — see `corpuslens run --help`.",
+                file=sys.stderr,
+            )
             return 2
-        return run(args.path, args.adapter, args.out, args.table, args.fmt,
-                   args.since_day, args.until_day, args.share,
-                   subject=args.subject, consent_store=args.consent_store)
+        return run(
+            args.path,
+            args.adapter,
+            args.out,
+            args.table,
+            args.fmt,
+            args.since_day,
+            args.until_day,
+            args.share,
+            subject=args.subject,
+            consent_store=args.consent_store,
+        )
     if args.cmd == "doctor":
-        return doctor(args.path, args.adapter, args.table, args.fmt,
-                      subject=args.subject, consent_store=args.consent_store)
+        return doctor(
+            args.path,
+            args.adapter,
+            args.table,
+            args.fmt,
+            subject=args.subject,
+            consent_store=args.consent_store,
+        )
     if args.cmd == "consent":
         return consent_cmd(args.action, args.subject, args.store, args.by, args.fmt)
     if args.cmd == "adapters":

@@ -20,10 +20,10 @@ Robustness rules (every one earned in review):
   * Naive timestamps (no offset) are read as UTC explicitly, so the same
     corpus yields identical deltas on any machine (never the host timezone).
 """
+
 from __future__ import annotations
 
 import datetime
-import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -31,31 +31,50 @@ from pathlib import Path
 
 from ..model import AuthorClass, CoarseTime, DataType, Event, Quarantine, Surface
 from . import register, register_default_path, register_label_text
-from .drops import (ATTACHMENT, COMPACTION_SUMMARY, DropCounts, EMPTY_TURN,
-                    HARNESS_BOOKKEEPING, MISSING_TIMESTAMP, SUBAGENT, THINKING,
-                    TOOL_TRAFFIC, UNPARSEABLE_LINE)
+from .drops import (
+    ATTACHMENT,
+    COMPACTION_SUMMARY,
+    DropCounts,
+    EMPTY_TURN,
+    HARNESS_BOOKKEEPING,
+    MISSING_TIMESTAMP,
+    SUBAGENT,
+    THINKING,
+    TOOL_TRAFFIC,
+    UNPARSEABLE_LINE,
+)
 from .injection import authored_text
-
-ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T")
 
 # The four classifiers and the features they set moved to the top-level
 # `corpuslens.classifiers` at 0.2.1: every other adapter, the labeller and the
 # analyzers all needed them, and reaching into one adapter by name for a thing
 # that was never an adapter's property is how that coupling stayed invisible.
 from ..classifiers import (  # noqa: F401  (re-exported: adapters import them from here)
-    AUTHORED, CLARIFY, CLASSIFIER_SET_VERSION, CODE_REF, DELIB, _features, _hash,
+    AUTHORED,
+    CLARIFY,
+    CLASSIFIER_SET_VERSION,
+    CODE_REF,
+    DELIB,
+    _features,
+    _hash,
 )
+
+ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T")
+
+
 def _parse_ts(ts):
     if not (isinstance(ts, str) and ISO.match(ts)):
         return None, None
     try:
-        d = datetime.date(int(ts[:4]), int(ts[5:7]), int(ts[8:10]))   # month 13 etc -> drop, not crash
+        d = datetime.date(
+            int(ts[:4]), int(ts[5:7]), int(ts[8:10])
+        )  # month 13 etc -> drop, not crash
     except ValueError:
         return None, None
     epoch = None
     try:
         dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        if dt.tzinfo is None:                       # naive -> read as UTC, not host tz
+        if dt.tzinfo is None:  # naive -> read as UTC, not host tz
             dt = dt.replace(tzinfo=datetime.timezone.utc)
         epoch = dt.timestamp()
     except Exception:
@@ -252,6 +271,7 @@ class LabelCorpus:
     why `text_by_ref` is allowed to exist at all outside the Guard, and the
     conditions that must stay true for that to remain a justification rather
     than an oversight."""
+
     events: list
     quarantine: Quarantine
     drops: DropCounts
@@ -266,8 +286,10 @@ def _ingest_impl(path: str, corpus_id: str, want_text: bool):
     caller can always unpack this 4-tuple the same way regardless."""
     root = Path(path)
     if root.exists() and not root.is_dir():
-        raise NotADirectoryError(f"corpuslens adapters take a directory of *.jsonl, not a file: {path}")
-    raw = []          # (date, epoch|None, session_key, role, text, real_ref)
+        raise NotADirectoryError(
+            f"corpuslens adapters take a directory of *.jsonl, not a file: {path}"
+        )
+    raw = []  # (date, epoch|None, session_key, role, text, real_ref)
     drops = DropCounts()
     for f in sorted(root.rglob("*.jsonl")):
         rel = f.relative_to(root).as_posix()
@@ -307,8 +329,11 @@ def _ingest_impl(path: str, corpus_id: str, want_text: bool):
                 msg = {}
             content = msg.get("content")
             if isinstance(content, list):
-                text = " ".join(b.get("text") or "" for b in content
-                                if isinstance(b, dict) and b.get("type") == "text")
+                text = " ".join(
+                    b.get("text") or ""
+                    for b in content
+                    if isinstance(b, dict) and b.get("type") == "text"
+                )
             else:
                 text = content if isinstance(content, str) else ""
             if not text:
@@ -331,7 +356,7 @@ def _ingest_impl(path: str, corpus_id: str, want_text: bool):
                 else:
                     drops.add(reason)
                 continue
-            raw.append((d, epoch, rel, o["type"], text, f"{rel}:{i+1}"))
+            raw.append((d, epoch, rel, o["type"], text, f"{rel}:{i + 1}"))
 
     if not raw:
         return [], Quarantine(), drops, {}
@@ -363,25 +388,36 @@ def _ingest_impl(path: str, corpus_id: str, want_text: bool):
                 # text left over. Turn-shaped, dated, correctly roled, and
                 # empty: malformed, not structural (BUGS.md, Open #1, Fixed).
                 drops.add(EMPTY_TURN)
-                if epoch is not None:               # keep the clock advancing
+                if epoch is not None:  # keep the clock advancing
                     prev_epoch, prev_day = epoch, day_offset
                 continue
             # censor cross-day deltas: a midnight-crossing gap would pin the hour
-            same_day = (prev_day == day_offset)
-            delta = (epoch - prev_epoch) if (epoch is not None and prev_epoch is not None
-                                             and same_day) else None
+            same_day = prev_day == day_offset
+            delta = (
+                (epoch - prev_epoch)
+                if (epoch is not None and prev_epoch is not None and same_day)
+                else None
+            )
             if epoch is not None:
                 prev_epoch, prev_day = epoch, day_offset
             opaque = _hash(sid, real_ref)
             ref_map[opaque] = real_ref
             if want_text:
                 text_by_ref[opaque] = text
-            events.append(Event(
-                event_id=opaque, corpus_id=corpus_id, adapter_id="claude-code/1",
-                source_ref=opaque, thread_id=sid, surface=Surface.CLI,
-                author_class=author, data_type=dtype,
-                time=CoarseTime(day_offset=day_offset, delta_prev_s=delta),
-                features=_features(text, stripped)))
+            events.append(
+                Event(
+                    event_id=opaque,
+                    corpus_id=corpus_id,
+                    adapter_id="claude-code/1",
+                    source_ref=opaque,
+                    thread_id=sid,
+                    surface=Surface.CLI,
+                    author_class=author,
+                    data_type=dtype,
+                    time=CoarseTime(day_offset=day_offset, delta_prev_s=delta),
+                    features=_features(text, stripped),
+                )
+            )
     quarantine = Quarantine(base_date_iso=base.isoformat(), ref_map=ref_map)
     return events, quarantine, drops, text_by_ref
 
@@ -451,5 +487,4 @@ def label_text(path: str, corpus_id: str = "corpus") -> LabelCorpus:
         process boundary.
     """
     events, quarantine, drops, text_by_ref = _ingest_impl(path, corpus_id, want_text=True)
-    return LabelCorpus(events=events, quarantine=quarantine, drops=drops,
-                       text_by_ref=text_by_ref)
+    return LabelCorpus(events=events, quarantine=quarantine, drops=drops, text_by_ref=text_by_ref)

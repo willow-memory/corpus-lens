@@ -152,6 +152,7 @@ deliberately no CLI flag that grants a capability. This module does not
 resolve that collision. See NOTES-leakage-demo.md for the open design
 options.
 """
+
 from __future__ import annotations
 
 import datetime as _dt
@@ -162,15 +163,15 @@ from typing import Optional, Sequence, Union
 
 HOUR_S = 3600.0
 DAY_S = 86400.0
-HOURS_PER_WEEK = 24 * 7          # the histogram's bin count
-MAX_LAG_DAYS = 28                # cap the autocorrelation search; four weeks of context
+HOURS_PER_WEEK = 24 * 7  # the histogram's bin count
+MAX_LAG_DAYS = 28  # cap the autocorrelation search; four weeks of context
 
 # Sample-size-bias correction (see module docstring, SAMPLE-SIZE BIAS). The
 # null is a seeded Monte Carlo, not the caller's global `random` state, so a
 # given (n, span) always reproduces the same baseline and calling this
 # function never disturbs randomness anywhere else in the process.
-NULL_TRIALS = 200                # simulated draws averaged into the null baseline
-NULL_SEED = 0xC0FFEE             # fixed: reproducibility, not secrecy
+NULL_TRIALS = 200  # simulated draws averaged into the null baseline
+NULL_SEED = 0xC0FFEE  # fixed: reproducibility, not secrecy
 # If pure chance, at this n and span, already accounts for at least this
 # fraction of the theoretical maximum "bits below uniform", the estimator
 # cannot tell a real weekly pattern from that noise floor at all — refuse
@@ -207,8 +208,9 @@ def _hour_of_week_entropy_bits(offsets_s: Sequence[float]) -> float:
     return -sum(p * math.log2(p) for p in probs)
 
 
-def _null_bits_below_uniform_stats(n: int, span_s: float, trials: int = NULL_TRIALS,
-                                    seed: int = NULL_SEED) -> tuple:
+def _null_bits_below_uniform_stats(
+    n: int, span_s: float, trials: int = NULL_TRIALS, seed: int = NULL_SEED
+) -> tuple:
     """Monte Carlo noise floor for `hour_of_week_bits_below_uniform` at this
     exact `n` and observed `span_s`: `trials` runs of `n` UNIFORMLY RANDOM
     offsets drawn from `[0, span_s)` — no schedule whatsoever — scored the
@@ -274,12 +276,15 @@ def timing_fingerprint(timestamps: Sequence[TimestampLike]) -> dict:
     values = [_to_epoch_seconds(t) for t in timestamps]
     n = len(values)
     if n < 2:
-        return {"n": n, "error": "need at least 2 timestamps to measure periodicity or concentration"}
+        return {
+            "n": n,
+            "error": "need at least 2 timestamps to measure periodicity or concentration",
+        }
 
     ts = sorted(values)
     t0 = ts[0]
     offsets = [t - t0 for t in ts]
-    span_s = offsets[-1]   # 0.0 when every timestamp is identical
+    span_s = offsets[-1]  # 0.0 when every timestamp is identical
 
     # ---- concentration of the hour-of-week histogram, bias-corrected ----
     # `entropy_bits` / `bits_below_uniform` are the RAW plug-in estimator and
@@ -294,8 +299,9 @@ def timing_fingerprint(timestamps: Sequence[TimestampLike]) -> dict:
     null_mean, null_stdev = _null_bits_below_uniform_stats(n, span_s)
     excess = bits_below_uniform - null_mean
 
-    concentration_unreliable = (max_entropy_bits > 0
-                                 and null_mean >= NULL_UNRELIABLE_FRACTION * max_entropy_bits)
+    concentration_unreliable = (
+        max_entropy_bits > 0 and null_mean >= NULL_UNRELIABLE_FRACTION * max_entropy_bits
+    )
 
     # ---- whether a ~7-day period is present, and how strongly ----
     n_days = int(span_s // DAY_S) + 1

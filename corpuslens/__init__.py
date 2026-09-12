@@ -5,6 +5,7 @@ timezone, clock hour, filenames) out of what an analyzer sees — see guard.py
 for exactly what that does and does not guarantee, and GRADING.md in this
 repository for the rubric this instruments.
 """
+
 # Read from the INSTALLED distribution's metadata, which hatch-vcs derived from
 # the git tag at build time. A literal here would be a second copy of the
 # version and would drift from the tag the moment one was cut — this module
@@ -16,8 +17,8 @@ repository for the rubric this instruments.
 from importlib.metadata import PackageNotFoundError, version as _version
 
 try:
-    __version__ = _version("willow-corpus-lens")   # the DISTRIBUTION name
-except PackageNotFoundError:       # a source checkout, not an installed package
+    __version__ = _version("willow-corpus-lens")  # the DISTRIBUTION name
+except PackageNotFoundError:  # a source checkout, not an installed package
     __version__ = "0+unknown"
 
 del _version, PackageNotFoundError

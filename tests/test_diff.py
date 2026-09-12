@@ -7,6 +7,7 @@ numbers at all. A filtered side, or a mismatched analyzer version, => the
 diff still runs but says so where it cannot be missed. A file that is not a
 corpuslens JSON report is a clear error, never a traceback.
 """
+
 import io
 import json
 import tempfile
@@ -30,8 +31,11 @@ def _run(argv):
 def _make_corpus(dirpath: Path, extra_turn: bool = False, base_day="2026-02-01"):
     lines = [
         _cc_line("user", "build the parser for the config file please", f"{base_day}T10:00:00Z"),
-        _cc_line("assistant", "Done. Should I add validation, or keep it minimal?",
-                 f"{base_day}T10:05:00Z"),
+        _cc_line(
+            "assistant",
+            "Done. Should I add validation, or keep it minimal?",
+            f"{base_day}T10:05:00Z",
+        ),
         _cc_line("user", "it still fails on empty input, fix that", f"{base_day}T10:20:00Z"),
     ]
     if extra_turn:
@@ -47,11 +51,31 @@ class DiffFixture(unittest.TestCase):
         (self.d / "b").mkdir()
         _make_corpus(self.d / "a")
         _make_corpus(self.d / "b", extra_turn=True)
-        rc, _, _ = _run(["run", str(self.d / "a"), "--adapter", "claude-code",
-                         "--format", "json", "--out", str(self.d / "a.json")])
+        rc, _, _ = _run(
+            [
+                "run",
+                str(self.d / "a"),
+                "--adapter",
+                "claude-code",
+                "--format",
+                "json",
+                "--out",
+                str(self.d / "a.json"),
+            ]
+        )
         self.assertEqual(rc, 0)
-        rc, _, _ = _run(["run", str(self.d / "b"), "--adapter", "claude-code",
-                         "--format", "json", "--out", str(self.d / "b.json")])
+        rc, _, _ = _run(
+            [
+                "run",
+                str(self.d / "b"),
+                "--adapter",
+                "claude-code",
+                "--format",
+                "json",
+                "--out",
+                str(self.d / "b.json"),
+            ]
+        )
         self.assertEqual(rc, 0)
 
     def tearDown(self):
@@ -99,8 +123,9 @@ class LoadReportTests(DiffFixture):
 
 class ComparableDiffTests(DiffFixture):
     def test_cli_diff_succeeds_and_reports_deltas(self):
-        rc, out, _ = _run(["diff", str(self.d / "a.json"), str(self.d / "b.json"),
-                           "--format", "json"])
+        rc, out, _ = _run(
+            ["diff", str(self.d / "a.json"), str(self.d / "b.json"), "--format", "json"]
+        )
         self.assertEqual(rc, 0)
         doc = json.loads(out)
         self.assertFalse(doc["refused"])
@@ -114,12 +139,19 @@ class ComparableDiffTests(DiffFixture):
 
     def test_pct_change_from_zero_is_undefined_not_infinite_or_zero(self):
         d = diffmod.compare(
-            {"schema_version": 1, "audit": {"sentence": "s", "adapter": "claude-code"},
-             "results": {"x": {"analyzer_version": 1, "headline": "h", "n": 1, "v": 0}},
-             "caveat": "c"},
-            {"schema_version": 1, "audit": {"sentence": "s", "adapter": "claude-code"},
-             "results": {"x": {"analyzer_version": 1, "headline": "h", "n": 1, "v": 5}},
-             "caveat": "c"})
+            {
+                "schema_version": 1,
+                "audit": {"sentence": "s", "adapter": "claude-code"},
+                "results": {"x": {"analyzer_version": 1, "headline": "h", "n": 1, "v": 0}},
+                "caveat": "c",
+            },
+            {
+                "schema_version": 1,
+                "audit": {"sentence": "s", "adapter": "claude-code"},
+                "results": {"x": {"analyzer_version": 1, "headline": "h", "n": 1, "v": 5}},
+                "caveat": "c",
+            },
+        )
         self.assertIsNone(d["analyzers"]["x"]["deltas"]["v"]["pct_change"])
         self.assertEqual(d["analyzers"]["x"]["deltas"]["v"]["delta"], 5)
 
@@ -155,8 +187,9 @@ class ComparableDiffTests(DiffFixture):
             self.assertNotIn("reference", entry["deltas"])
 
     def test_identical_runs_diff_to_all_zero_deltas(self):
-        rc, out, _ = _run(["diff", str(self.d / "a.json"), str(self.d / "a.json"),
-                           "--format", "json"])
+        rc, out, _ = _run(
+            ["diff", str(self.d / "a.json"), str(self.d / "a.json"), "--format", "json"]
+        )
         self.assertEqual(rc, 0)
         doc = json.loads(out)
         for entry in doc["analyzers"].values():
@@ -181,7 +214,7 @@ class RefusalTests(DiffFixture):
         doc = json.loads(out)
         self.assertTrue(doc["refused"])
         self.assertTrue(any("adapter differs" in r for r in doc["refusal_reasons"]))
-        self.assertEqual(doc["analyzers"], {})   # no numbers at all on a refusal
+        self.assertEqual(doc["analyzers"], {})  # no numbers at all on a refusal
 
     def test_different_schema_version_is_a_hard_refusal(self):
         doc = json.loads((self.d / "b.json").read_text())
@@ -204,7 +237,7 @@ class RefusalTests(DiffFixture):
         a changed value, the exact class of bug BUGS.md's diff/`analyzer_version`
         entry already records."""
         doc = json.loads((self.d / "b.json").read_text())
-        self.assertEqual(doc["schema_version"], 2)   # this version's real output
+        self.assertEqual(doc["schema_version"], 2)  # this version's real output
         doc["schema_version"] = 1
         for key in ("n_dropped_structural", "n_dropped_malformed", "dropped_by_reason"):
             doc["audit"].pop(key, None)
@@ -215,7 +248,7 @@ class RefusalTests(DiffFixture):
         doc_out = json.loads(out)
         self.assertTrue(doc_out["refused"])
         self.assertTrue(any("schema_version differs" in r for r in doc_out["refusal_reasons"]))
-        self.assertEqual(doc_out["analyzers"], {})   # no numbers at all — nothing read as a delta
+        self.assertEqual(doc_out["analyzers"], {})  # no numbers at all — nothing read as a delta
 
     def test_refusal_still_shows_both_audit_sentences(self):
         b_other = self._with_audit_field(self.d / "b.json", adapter="cursor")
@@ -235,12 +268,27 @@ class RefusalTests(DiffFixture):
 
 class LoudAnnotationTests(DiffFixture):
     def test_a_filtered_side_is_annotated_not_refused(self):
-        rc, _, _ = _run(["run", str(self.d / "a"), "--adapter", "claude-code", "--format", "json",
-                         "--since-day", "0", "--until-day", "0", "--out", str(self.d / "a-f.json")])
+        rc, _, _ = _run(
+            [
+                "run",
+                str(self.d / "a"),
+                "--adapter",
+                "claude-code",
+                "--format",
+                "json",
+                "--since-day",
+                "0",
+                "--until-day",
+                "0",
+                "--out",
+                str(self.d / "a-f.json"),
+            ]
+        )
         self.assertEqual(rc, 0)
-        rc, out, _ = _run(["diff", str(self.d / "a-f.json"), str(self.d / "b.json"),
-                           "--format", "json"])
-        self.assertEqual(rc, 0)     # NOT refused
+        rc, out, _ = _run(
+            ["diff", str(self.d / "a-f.json"), str(self.d / "b.json"), "--format", "json"]
+        )
+        self.assertEqual(rc, 0)  # NOT refused
         doc = json.loads(out)
         self.assertFalse(doc["refused"])
         self.assertTrue(any("SUBSET COMPARISON" in w for w in doc["comparability_warnings"]))
@@ -248,8 +296,20 @@ class LoudAnnotationTests(DiffFixture):
         self.assertTrue(any(e["status"] == "compared" for e in doc["analyzers"].values()))
 
     def test_filtered_warning_is_unmissable_in_markdown(self):
-        rc, _, _ = _run(["run", str(self.d / "a"), "--adapter", "claude-code", "--format", "json",
-                         "--since-day", "0", "--out", str(self.d / "a-f.json")])
+        rc, _, _ = _run(
+            [
+                "run",
+                str(self.d / "a"),
+                "--adapter",
+                "claude-code",
+                "--format",
+                "json",
+                "--since-day",
+                "0",
+                "--out",
+                str(self.d / "a-f.json"),
+            ]
+        )
         rc, out, _ = _run(["diff", str(self.d / "a-f.json"), str(self.d / "b.json")])
         self.assertEqual(rc, 0)
         self.assertIn("COMPARABILITY WARNING", out)
@@ -261,7 +321,7 @@ class LoudAnnotationTests(DiffFixture):
         mutated = self.d / "b-verbump.json"
         mutated.write_text(json.dumps(doc))
         rc, out, _ = _run(["diff", str(self.d / "a.json"), str(mutated), "--format", "json"])
-        self.assertEqual(rc, 0)          # NOT a hard refusal
+        self.assertEqual(rc, 0)  # NOT a hard refusal
         result = json.loads(out)
         self.assertFalse(result["refused"])
         self.assertEqual(result["analyzers"]["tempo"]["status"], "version_mismatch")

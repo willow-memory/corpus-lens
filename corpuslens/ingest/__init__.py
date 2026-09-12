@@ -79,9 +79,8 @@ flag mistake is exactly what this split avoids — see `claude_code.ingest` vs.
 `claude_code.label_text`). Only `claude-code` registers a label-text function
 today; `label` refuses loudly on any adapter that has not, rather than
 guessing at a text-extraction convention nobody has implemented or tested."""
-from __future__ import annotations
 
-from ..model import Event, Quarantine
+from __future__ import annotations
 
 _REGISTRY: dict = {}
 _SOURCE: dict = {}
@@ -97,6 +96,7 @@ def register(name: str, source: str = "dir", pattern: str = "*.jsonl"):
         _SOURCE[name] = source
         _PATTERN[name] = pattern
         return fn
+
     return deco
 
 
@@ -128,16 +128,19 @@ def register_label_text(name: str):
     change shape depending on what a caller passes, and a label-text lookup
     needs a different, richer shape (see `LabelCorpus` in `claude_code.py`) —
     so it gets its own function and its own registry instead."""
+
     def deco(fn):
         _LABEL_TEXT[name] = fn
         return fn
+
     return deco
 
 
 def get_label_text(name: str):
     if name not in _LABEL_TEXT:
-        raise KeyError(f"adapter {name!r} has no label-text support; "
-                       f"available: {sorted(_LABEL_TEXT)}")
+        raise KeyError(
+            f"adapter {name!r} has no label-text support; available: {sorted(_LABEL_TEXT)}"
+        )
     return _LABEL_TEXT[name]
 
 
@@ -165,9 +168,11 @@ def register_default_path(name: str, path: str):
     expands and validates it at discovery time, against the actual `$HOME` of
     the machine it is running on, never against this module's import-time
     environment."""
+
     def deco(fn):
         _DEFAULT_PATH[name] = path
         return fn
+
     return deco
 
 
@@ -183,9 +188,11 @@ def register_unmeasurable(name: str, analyzers: dict):
     module docstring). A decorator, declared beside the `ingest()` it
     describes. `why` is printed verbatim in the audit sentence, so write it
     for a reader who does not know the corpus."""
+
     def deco(fn):
         _UNMEASURABLE[name] = {str(k): str(v) for k, v in dict(analyzers).items()}
         return fn
+
     return deco
 
 

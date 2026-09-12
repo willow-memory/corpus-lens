@@ -8,6 +8,7 @@ discipline in tests/test_analyzer_versions.py — that moving either threshold
 in corpuslens/authorship.py without a deliberate version bump is a test
 failure, not a silent drift.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,9 +34,15 @@ STYLES_CORPUS = pathlib.Path(__file__).resolve().parent.parent / "examples" / "s
 
 def _features(word_count=0, code_ref=False, **kw):
     f = {
-        "word_count": word_count, "char_count": word_count * 5, "code_fenced": False,
-        "code_authored": False, "code_ref": code_ref, "delib": False, "question": False,
-        "clarify": False, "injected_stripped": False,
+        "word_count": word_count,
+        "char_count": word_count * 5,
+        "code_fenced": False,
+        "code_authored": False,
+        "code_ref": code_ref,
+        "delib": False,
+        "question": False,
+        "clarify": False,
+        "injected_stripped": False,
     }
     f.update(kw)
     return f
@@ -46,7 +53,8 @@ class ClassifyTurnTests(unittest.TestCase):
         # Features that look exactly like the human sample must not override
         # a deterministic marker — marked_machine wins outright.
         self.assertEqual(
-            classify_turn(_features(word_count=3, code_ref=False), marked_machine=True), AGENT)
+            classify_turn(_features(word_count=3, code_ref=False), marked_machine=True), AGENT
+        )
 
     def test_marked_turn_is_agent_even_with_no_features_at_all(self):
         self.assertEqual(classify_turn({}, marked_machine=True), AGENT)
@@ -56,9 +64,12 @@ class ClassifyTurnTests(unittest.TestCase):
         self.assertEqual(classify_turn(_features(word_count=9, code_ref=False)), HUMAN)
 
     def test_human_max_words_boundary_is_inclusive(self):
-        self.assertEqual(classify_turn(_features(word_count=HUMAN_MAX_WORDS, code_ref=False)), HUMAN)
         self.assertEqual(
-            classify_turn(_features(word_count=HUMAN_MAX_WORDS + 1, code_ref=False)), UNKNOWN)
+            classify_turn(_features(word_count=HUMAN_MAX_WORDS, code_ref=False)), HUMAN
+        )
+        self.assertEqual(
+            classify_turn(_features(word_count=HUMAN_MAX_WORDS + 1, code_ref=False)), UNKNOWN
+        )
 
     def test_ambiguous_turn_is_unknown_and_never_agent(self):
         # Mid-band word count: clears neither bar.
@@ -81,19 +92,21 @@ class ClassifyTurnTests(unittest.TestCase):
         self.assertEqual(classify_turn(_features(word_count=500, code_ref=True)), AGENT)
 
     def test_agent_min_words_boundary_requires_code_ref_too(self):
+        self.assertEqual(classify_turn(_features(word_count=AGENT_MIN_WORDS, code_ref=True)), AGENT)
         self.assertEqual(
-            classify_turn(_features(word_count=AGENT_MIN_WORDS, code_ref=True)), AGENT)
+            classify_turn(_features(word_count=AGENT_MIN_WORDS - 1, code_ref=True)), UNKNOWN
+        )
         self.assertEqual(
-            classify_turn(_features(word_count=AGENT_MIN_WORDS - 1, code_ref=True)), UNKNOWN)
-        self.assertEqual(
-            classify_turn(_features(word_count=AGENT_MIN_WORDS, code_ref=False)), UNKNOWN)
+            classify_turn(_features(word_count=AGENT_MIN_WORDS, code_ref=False)), UNKNOWN
+        )
 
     def test_marked_machine_defaults_to_false(self):
         # classify_turn(features) alone must behave identically to explicitly
         # passing marked_machine=False.
-        self.assertEqual(classify_turn(_features(word_count=9, code_ref=False)),
-                          classify_turn(_features(word_count=9, code_ref=False),
-                                        marked_machine=False))
+        self.assertEqual(
+            classify_turn(_features(word_count=9, code_ref=False)),
+            classify_turn(_features(word_count=9, code_ref=False), marked_machine=False),
+        )
 
     def test_missing_features_default_safely_to_unknown(self):
         # No word_count, no code_ref at all: must not guess.
@@ -103,8 +116,10 @@ class ClassifyTurnTests(unittest.TestCase):
         for wc in (0, 9, 30, 31, 150, 400, 453, 600, 1000):
             for ref in (True, False):
                 with self.subTest(word_count=wc, code_ref=ref):
-                    self.assertIn(classify_turn(_features(word_count=wc, code_ref=ref)),
-                                  (HUMAN, AGENT, UNKNOWN))
+                    self.assertIn(
+                        classify_turn(_features(word_count=wc, code_ref=ref)),
+                        (HUMAN, AGENT, UNKNOWN),
+                    )
 
 
 class ThresholdVersionDisciplineTests(unittest.TestCase):
@@ -136,12 +151,26 @@ class ClaimTypeTests(unittest.TestCase):
         self.assertIn("authorship_mix", PROCESS_CLAIM_TYPES)
 
 
-def _event(word_count, code_ref, author_class=AuthorClass.OPERATOR,
-           data_type=DataType.PROMPT, thread="t1", ref="r0"):
-    return Event(event_id=ref, corpus_id="c", adapter_id="test/1", source_ref=ref,
-                 thread_id=thread, surface=Surface.CLI, author_class=author_class,
-                 data_type=data_type, time=CoarseTime(day_offset=0),
-                 features=_features(word_count=word_count, code_ref=code_ref))
+def _event(
+    word_count,
+    code_ref,
+    author_class=AuthorClass.OPERATOR,
+    data_type=DataType.PROMPT,
+    thread="t1",
+    ref="r0",
+):
+    return Event(
+        event_id=ref,
+        corpus_id="c",
+        adapter_id="test/1",
+        source_ref=ref,
+        thread_id=thread,
+        surface=Surface.CLI,
+        author_class=author_class,
+        data_type=data_type,
+        time=CoarseTime(day_offset=0),
+        features=_features(word_count=word_count, code_ref=code_ref),
+    )
 
 
 class AuthorshipMixAnalyzerTests(unittest.TestCase):
@@ -153,9 +182,9 @@ class AuthorshipMixAnalyzerTests(unittest.TestCase):
 
     def test_reports_share_of_each_class_with_named_denominator(self):
         events = [
-            _event(9, False, ref="r1"),      # human
-            _event(500, True, ref="r2"),     # agent
-            _event(150, False, ref="r3"),    # unknown
+            _event(9, False, ref="r1"),  # human
+            _event(500, True, ref="r2"),  # agent
+            _event(150, False, ref="r3"),  # unknown
         ]
         res = authorship_mix_mod.authorship_mix(events)
         self.assertEqual(res["n"], 3)
@@ -177,15 +206,19 @@ class AuthorshipMixAnalyzerTests(unittest.TestCase):
     def test_ignores_machine_response_turns(self):
         events = [
             _event(9, False, ref="r1"),
-            _event(9, False, author_class=AuthorClass.MACHINE, data_type=DataType.RESPONSE,
-                   ref="r2"),
+            _event(
+                9, False, author_class=AuthorClass.MACHINE, data_type=DataType.RESPONSE, ref="r2"
+            ),
         ]
         res = authorship_mix_mod.authorship_mix(events)
         self.assertEqual(res["n"], 1)
 
     def test_no_operator_turns_errors(self):
-        events = [_event(9, False, author_class=AuthorClass.MACHINE,
-                          data_type=DataType.RESPONSE, ref="r1")]
+        events = [
+            _event(
+                9, False, author_class=AuthorClass.MACHINE, data_type=DataType.RESPONSE, ref="r1"
+            )
+        ]
         res = authorship_mix_mod.authorship_mix(events)
         self.assertIn("error", res)
 
@@ -199,8 +232,11 @@ def _persona_true_author_by_text() -> dict:
     text_to_author = {}
     for persona_dir in sorted(p for p in STYLES_CORPUS.iterdir() if p.is_dir()):
         persona = persona_dir.name
-        recs = [json.loads(line) for line in
-                (persona_dir / "session.jsonl").read_text().splitlines() if line.strip()]
+        recs = [
+            json.loads(line)
+            for line in (persona_dir / "session.jsonl").read_text().splitlines()
+            if line.strip()
+        ]
         user_recs = [r for r in recs if r.get("type") == "user"]
         for ti, r in enumerate(user_recs):
             blocks = r.get("message", {}).get("content", [])
@@ -229,7 +265,8 @@ class StylesCorpusFalsifierTests(unittest.TestCase):
         if not STYLES_CORPUS.exists():
             raise unittest.SkipTest(
                 "examples/styles-corpus not present — rebuild with "
-                "`python3 examples/styles-corpus/build.py` or restore it from git")
+                "`python3 examples/styles-corpus/build.py` or restore it from git"
+            )
         cls.text_to_author = _persona_true_author_by_text()
         corpus = claude_code_ingest.label_text(str(STYLES_CORPUS), corpus_id="styles-corpus-test")
         cls.events = corpus.events
@@ -274,10 +311,13 @@ class StylesCorpusFalsifierTests(unittest.TestCase):
         # a pinned fact rather than a surprise on the next threshold change.
         classified = self._classified()
         agent_predictions = {p for a, p in classified if a == "agent"}
-        self.assertNotIn(AGENT, agent_predictions,
-                          "if this now fires, classify_turn started catching the terse "
-                          "dispatcher on word count/code_ref alone — re-check it is not "
-                          "ALSO catching a human persona before treating this as progress")
+        self.assertNotIn(
+            AGENT,
+            agent_predictions,
+            "if this now fires, classify_turn started catching the terse "
+            "dispatcher on word count/code_ref alone — re-check it is not "
+            "ALSO catching a human persona before treating this as progress",
+        )
 
 
 if __name__ == "__main__":

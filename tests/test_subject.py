@@ -4,6 +4,7 @@ docstring and NOTES-subject.md). `corpuslens/authorship.py` is not part of
 this branch, so every test here STUBS the shape `subject.infer_subject`
 consumes directly, as a plain dict — never a real classifier.
 """
+
 import unittest
 
 from corpuslens.analyze import SMALL_N
@@ -19,8 +20,14 @@ from corpuslens.subject import (
 
 
 def _mix(n, human_pct=0.0, agent_pct=0.0, unknown_pct=0.0):
-    return {"authorship_mix": {"n": n, "human_pct": human_pct, "agent_pct": agent_pct,
-                                "unknown_pct": unknown_pct}}
+    return {
+        "authorship_mix": {
+            "n": n,
+            "human_pct": human_pct,
+            "agent_pct": agent_pct,
+            "unknown_pct": unknown_pct,
+        }
+    }
 
 
 class MissingEvidenceTests(unittest.TestCase):
@@ -69,10 +76,11 @@ class MissingEvidenceTests(unittest.TestCase):
         would accept in a weaker form, which is what a corpus-size floor does
         to a unanimous result.
         """
-        cases = [(n, pct) for n in (10, 20, 24, 30, 60, 200)
-                 for pct in (80.0, 90.0, 100.0)]
-        decided = {(n, pct): infer_subject(_mix(n, human_pct=pct))[0] != SUBJECT_UNKNOWN
-                   for n, pct in cases}
+        cases = [(n, pct) for n in (10, 20, 24, 30, 60, 200) for pct in (80.0, 90.0, 100.0)]
+        decided = {
+            (n, pct): infer_subject(_mix(n, human_pct=pct))[0] != SUBJECT_UNKNOWN
+            for n, pct in cases
+        }
         for (n1, p1), ok1 in decided.items():
             if not ok1:
                 continue
@@ -109,14 +117,12 @@ class PredominantCallTests(unittest.TestCase):
 
     def test_exactly_at_the_threshold_counts_as_predominant(self):
         pct = DOMINANT_FRAC * 100
-        subj, _ = infer_subject(_mix(100, human_pct=pct, agent_pct=0.0,
-                                     unknown_pct=100 - pct))
+        subj, _ = infer_subject(_mix(100, human_pct=pct, agent_pct=0.0, unknown_pct=100 - pct))
         self.assertEqual(subj, SUBJECT_HUMAN)
 
     def test_just_under_the_threshold_is_mixed_not_human(self):
         pct = DOMINANT_FRAC * 100 - 0.1
-        subj, reason = infer_subject(_mix(100, human_pct=pct, agent_pct=100 - pct,
-                                          unknown_pct=0.0))
+        subj, reason = infer_subject(_mix(100, human_pct=pct, agent_pct=100 - pct, unknown_pct=0.0))
         self.assertEqual(subj, SUBJECT_MIXED)
         self.assertIn("mixes both", reason)
 
@@ -128,8 +134,14 @@ class PredominantCallTests(unittest.TestCase):
 
     def test_never_returns_a_value_outside_the_declared_set(self):
         from corpuslens.subject import SUBJECTS
-        for human, agent, unk in ((100.0, 0.0, 0.0), (0.0, 100.0, 0.0), (50.0, 50.0, 0.0),
-                                   (0.0, 0.0, 100.0), (33.0, 33.0, 34.0)):
+
+        for human, agent, unk in (
+            (100.0, 0.0, 0.0),
+            (0.0, 100.0, 0.0),
+            (50.0, 50.0, 0.0),
+            (0.0, 0.0, 100.0),
+            (33.0, 33.0, 34.0),
+        ):
             subj, _ = infer_subject(_mix(200, human, agent, unk))
             with self.subTest(human=human, agent=agent, unknown=unk):
                 self.assertIn(subj, SUBJECTS)

@@ -8,6 +8,7 @@ object *and* the same plain-language sentence — a consumer that wants only the
 numbers still cannot get them without the sentence that says what left the
 wall. Both outputs go through `Guard.scan_egress` at the CLI's output door.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,8 +31,10 @@ SCHEMA_VERSION = 2
 # this change, and `diff` says so by name rather than comparing mismatched
 # fields as if they meant the same thing.
 
-CAVEAT = ("Numbers are heuristics plus your own eyes: spot-check before citing them. "
-          "Reference points are one measured N=1 plus public population aggregates.")
+CAVEAT = (
+    "Numbers are heuristics plus your own eyes: spot-check before citing them. "
+    "Reference points are one measured N=1 plus public population aggregates."
+)
 
 # Shown once, right after the audit sentence, before any finding — so a reader
 # meets the rubric's scope before a single number. This note must never be
@@ -192,9 +195,12 @@ def _apply_subject_lens(results: dict, audit) -> dict:
                 r[field] = _depersonalize(v)
         if withhold and isinstance(r.get("reference"), dict) and r["reference"]:
             del r["reference"]
-            r["reference_withheld"] = _REFERENCE_WITHHELD_NOTE.format(subject=subject, reason=reason)
+            r["reference_withheld"] = _REFERENCE_WITHHELD_NOTE.format(
+                subject=subject, reason=reason
+            )
         out[name] = r
     return out
+
 
 # Shown only when `share=True` — see corpuslens/share.py for what "coarsened"
 # means here and, just as load-bearing, what it does NOT mean. This sentence
@@ -205,7 +211,7 @@ SHARE_CAVEAT = (
     "SHARE MODE: this output is COARSENED, not anonymized and not "
     "de-identified — whether a coarsened report can still re-identify its "
     "owner is an open question this tool has not measured (see IDEAS.md, "
-    "\"Population reference points without pooling anyone's corpus\"). "
+    '"Population reference points without pooling anyone\'s corpus"). '
     "Every denominator's n is rounded to a wide band, never an exact count, "
     "and shapes — tempo quantiles, thread counts, day spans, concurrency "
     "figures, active-day counts — are omitted entirely, not just rounded. "
@@ -213,12 +219,17 @@ SHARE_CAVEAT = (
 )
 
 
-
 # Rendered above the numbers block verbatim, so they are omitted from it rather
 # than printed twice. Only ever strings already shown — no number is dropped.
-_SHOWN = ("headline", "reading", "vs_coding_population", "error", "grading_question", "reference",
-          "reference_withheld")
-
+_SHOWN = (
+    "headline",
+    "reading",
+    "vs_coding_population",
+    "error",
+    "grading_question",
+    "reference",
+    "reference_withheld",
+)
 
 
 def _unmapped_clause() -> str:
@@ -231,18 +242,22 @@ def _unmapped_clause() -> str:
     treats as a bug, and the durable fix is to stop writing the number down.
     """
     from .analyze import all_analyzers
+
     every = all_analyzers()
-    unmapped = [a.name for a in every
-                if "none of" in (getattr(a, "grading_question", "") or "")]
+    unmapped = [a.name for a in every if "none of" in (getattr(a, "grading_question", "") or "")]
     if not unmapped:
-        return (f"Every one of the battery's {len(every)} analyzers maps onto at least part of "
-                "one of the ten numbered questions.")
+        return (
+            f"Every one of the battery's {len(every)} analyzers maps onto at least part of "
+            "one of the ten numbered questions."
+        )
     names = ", ".join(sorted(unmapped))
     verb = "answers" if len(unmapped) == 1 else "answer"
     noun = "analyzer" if len(unmapped) == 1 else "analyzers"
-    return (f"{len(unmapped)} of the battery's {len(every)} {noun} ({names}) {verb} none of the "
-            "ten numbered questions directly and are reported here as a supporting signal, not a "
-            "rubric answer — each section below says exactly which case it is.")
+    return (
+        f"{len(unmapped)} of the battery's {len(every)} {noun} ({names}) {verb} none of the "
+        "ten numbered questions directly and are reported here as a supporting signal, not a "
+        "rubric answer — each section below says exactly which case it is."
+    )
 
 
 def _section(name: str, res: dict) -> list:
@@ -284,14 +299,21 @@ def _section(name: str, res: dict) -> list:
             if _is_population_reference(k):
                 out.append(f"- `{k}`: {val}")
             else:
-                out.append(f"- `{k}`: {val} — the author's own corpus (N=1); a gap from this "
-                           "reference is a gap from one person, not a population.")
+                out.append(
+                    f"- `{k}`: {val} — the author's own corpus (N=1); a gap from this "
+                    "reference is a gap from one person, not a population."
+                )
                 n1_seen = True
         out.append("")
         if n1_seen:
-            out += [("*Until someone runs `corpuslens label` and `corpuslens score` on this "
-                     "corpus, there is no way to know how much of that N=1 gap is the operator "
-                     "and how much is the classifier's own error.*"), ""]
+            out += [
+                (
+                    "*Until someone runs `corpuslens label` and `corpuslens score` on this "
+                    "corpus, there is no way to know how much of that N=1 gap is the operator "
+                    "and how much is the classifier's own error.*"
+                ),
+                "",
+            ]
     elif res.get("reference_withheld"):
         out += [f"*{res['reference_withheld']}*", ""]
     numbers = {k: v for k, v in res.items() if k not in _SHOWN}
@@ -337,8 +359,9 @@ def markdown(results: dict, audit, share: bool = False) -> str:
                 out.append(f"- **{name}** — {headline}")
             else:
                 err = results[name].get("error")
-                out.append(f"- **{name}** — not computable on this corpus."
-                           + (f" {err}" if err else ""))
+                out.append(
+                    f"- **{name}** — not computable on this corpus." + (f" {err}" if err else "")
+                )
         out.append("")
     for name, res in results.items():
         out += _section(name, res)

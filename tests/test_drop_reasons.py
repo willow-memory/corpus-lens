@@ -13,6 +13,7 @@ now Fixed. Three things pinned here:
      drops (the exact 93.7%-dropped-and-nothing-is-wrong case this bug
      report measured), loud on one that is genuinely failing to parse.
 """
+
 import io
 import json
 import tempfile
@@ -22,12 +23,21 @@ from pathlib import Path
 
 from corpuslens import ingest
 from corpuslens.cli import _diagnose, main as cli_main
-from corpuslens.ingest.drops import (ATTACHMENT, DropCounts, EMPTY_TURN,
-                                     HARNESS_BOOKKEEPING, MISSING_TIMESTAMP,
-                                     STRUCTURAL, MALFORMED, SUBAGENT,
-                                     THINKING, TOOL_TRAFFIC, UNPARSEABLE_LINE,
-                                     reason_class)
-from corpuslens.model import DataType, Quarantine
+from corpuslens.ingest.drops import (
+    ATTACHMENT,
+    DropCounts,
+    EMPTY_TURN,
+    HARNESS_BOOKKEEPING,
+    MISSING_TIMESTAMP,
+    STRUCTURAL,
+    MALFORMED,
+    SUBAGENT,
+    THINKING,
+    TOOL_TRAFFIC,
+    UNPARSEABLE_LINE,
+    reason_class,
+)
+from corpuslens.model import DataType
 
 from test_pipeline import _cc_line, _cc_line_with, _write
 
@@ -64,8 +74,11 @@ class DropCountsTests(unittest.TestCase):
         self.assertFalse(d)
 
     def test_merge_combines_two_counts(self):
-        a = DropCounts(); a.add(TOOL_TRAFFIC, 2)
-        b = DropCounts(); b.add(TOOL_TRAFFIC, 3); b.add(EMPTY_TURN, 1)
+        a = DropCounts()
+        a.add(TOOL_TRAFFIC, 2)
+        b = DropCounts()
+        b.add(TOOL_TRAFFIC, 3)
+        b.add(EMPTY_TURN, 1)
         a.merge(b)
         self.assertEqual(a.as_dict(), {TOOL_TRAFFIC: 5, EMPTY_TURN: 1})
 
@@ -87,19 +100,41 @@ def _agentic_corpus(d: Path):
     own log: mostly non-turn records, every drop correct."""
     lines = [
         _cc_line("user", "build the parser for the config file please", "2026-02-01T10:00:00Z"),
-        json.dumps({"type": "assistant", "timestamp": "2026-02-01T10:00:05Z",
-                   "message": {"content": [{"type": "tool_use", "id": "t1",
-                                           "name": "Bash", "input": {}}]}}),
-        json.dumps({"type": "user", "timestamp": "2026-02-01T10:00:06Z",
-                   "message": {"content": [{"type": "tool_result", "tool_use_id": "t1",
-                                           "content": "ok"}]}}),
-        json.dumps({"type": "assistant", "timestamp": "2026-02-01T10:00:07Z",
-                   "message": {"content": [{"type": "thinking", "thinking": "hmm"}]}}),
+        json.dumps(
+            {
+                "type": "assistant",
+                "timestamp": "2026-02-01T10:00:05Z",
+                "message": {
+                    "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "user",
+                "timestamp": "2026-02-01T10:00:06Z",
+                "message": {
+                    "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]
+                },
+            }
+        ),
+        json.dumps(
+            {
+                "type": "assistant",
+                "timestamp": "2026-02-01T10:00:07Z",
+                "message": {"content": [{"type": "thinking", "thinking": "hmm"}]},
+            }
+        ),
         json.dumps({"type": "attachment", "timestamp": "2026-02-01T10:00:08Z"}),
         json.dumps({"type": "last-prompt", "lastPrompt": "build the parser"}),
         json.dumps({"type": "atis-latch", "atis": True}),
-        json.dumps({"type": "assistant", "timestamp": "2026-02-01T10:00:09Z",
-                   "message": {"content": [{"type": "text", "text": "Done."}]}}),
+        json.dumps(
+            {
+                "type": "assistant",
+                "timestamp": "2026-02-01T10:00:09Z",
+                "message": {"content": [{"type": "text", "text": "Done."}]},
+            }
+        ),
     ]
     _write(d / "s1.jsonl", lines)
 
@@ -116,13 +151,13 @@ class ClaudeCodeReasonClassificationTests(unittest.TestCase):
     def test_tool_and_thinking_and_attachment_and_bookkeeping_are_structural(self):
         events, q, drops = ingest.get("claude-code")(str(self.d))
         by_reason = drops.as_dict()
-        self.assertEqual(by_reason.get(TOOL_TRAFFIC), 2)      # tool_use + tool_result
+        self.assertEqual(by_reason.get(TOOL_TRAFFIC), 2)  # tool_use + tool_result
         self.assertEqual(by_reason.get(THINKING), 1)
         self.assertEqual(by_reason.get(ATTACHMENT), 1)
         self.assertEqual(by_reason.get(HARNESS_BOOKKEEPING), 2)  # last-prompt + atis-latch
         self.assertEqual(drops.structural, 6)
         self.assertEqual(drops.malformed, 0)
-        self.assertEqual(len(events), 2)   # the one real prompt, and the one real reply
+        self.assertEqual(len(events), 2)  # the one real prompt, and the one real reply
 
     def test_a_mostly_structural_corpus_reports_zero_malformed(self):
         events, q, drops = ingest.get("claude-code")(str(self.d))
@@ -132,11 +167,19 @@ class ClaudeCodeReasonClassificationTests(unittest.TestCase):
     def test_missing_timestamp_and_unparseable_line_are_malformed(self):
         d2 = Path(tempfile.mkdtemp())
         try:
-            _write(d2 / "s1.jsonl", [
-                _cc_line("user", "hello", "2026-02-01T10:00:00Z"),
-                json.dumps({"type": "user", "message": {"content": [{"type": "text", "text": "no ts"}]}}),
-                "not even json",
-            ])
+            _write(
+                d2 / "s1.jsonl",
+                [
+                    _cc_line("user", "hello", "2026-02-01T10:00:00Z"),
+                    json.dumps(
+                        {
+                            "type": "user",
+                            "message": {"content": [{"type": "text", "text": "no ts"}]},
+                        }
+                    ),
+                    "not even json",
+                ],
+            )
             events, q, drops = ingest.get("claude-code")(str(d2))
             self.assertEqual(drops.as_dict().get(MISSING_TIMESTAMP), 1)
             self.assertEqual(drops.as_dict().get(UNPARSEABLE_LINE), 1)
@@ -144,21 +187,29 @@ class ClaudeCodeReasonClassificationTests(unittest.TestCase):
             self.assertEqual(drops.structural, 0)
         finally:
             import shutil
+
             shutil.rmtree(d2)
 
     def test_empty_turn_after_injection_stripping_is_malformed(self):
         d2 = Path(tempfile.mkdtemp())
         try:
-            _write(d2 / "s1.jsonl", [
-                _cc_line("user", "hello there", "2026-02-01T10:00:00Z"),
-                _cc_line("user", "<system-reminder>only harness text</system-reminder>",
-                        "2026-02-01T10:00:05Z"),
-            ])
+            _write(
+                d2 / "s1.jsonl",
+                [
+                    _cc_line("user", "hello there", "2026-02-01T10:00:00Z"),
+                    _cc_line(
+                        "user",
+                        "<system-reminder>only harness text</system-reminder>",
+                        "2026-02-01T10:00:05Z",
+                    ),
+                ],
+            )
             events, q, drops = ingest.get("claude-code")(str(d2))
             self.assertEqual(drops.as_dict(), {EMPTY_TURN: 1})
             self.assertEqual(drops.malformed, 1)
         finally:
             import shutil
+
             shutil.rmtree(d2)
 
     def test_subagent_drops_are_structural(self):
@@ -166,12 +217,15 @@ class ClaudeCodeReasonClassificationTests(unittest.TestCase):
         try:
             _write(d2 / "s1.jsonl", [_cc_line("user", "hello", "2026-02-01T10:00:00Z")])
             (d2 / "subagents").mkdir()
-            _write(d2 / "subagents" / "agent-1.jsonl",
-                  [_cc_line("user", "delegate task", "2026-02-01T10:00:01Z")])
+            _write(
+                d2 / "subagents" / "agent-1.jsonl",
+                [_cc_line("user", "delegate task", "2026-02-01T10:00:01Z")],
+            )
             events, q, drops = ingest.get("claude-code")(str(d2))
             self.assertEqual(drops.as_dict(), {SUBAGENT: 1})
         finally:
             import shutil
+
             shutil.rmtree(d2)
 
 
@@ -189,12 +243,14 @@ class DoctorWarningTests(unittest.TestCase):
         try:
             _agentic_corpus(d)
             diag = self._diag_for(d)
-            self.assertGreaterEqual(diag["drop_pct"], 50.0)       # still a lot dropped...
-            self.assertEqual(diag["malformed_drop_pct"], 0.0)     # ...but none of it malformed
-            self.assertFalse(any("should have been a turn" in n
-                                 for n in diag["notes"]), diag["notes"])
+            self.assertGreaterEqual(diag["drop_pct"], 50.0)  # still a lot dropped...
+            self.assertEqual(diag["malformed_drop_pct"], 0.0)  # ...but none of it malformed
+            self.assertFalse(
+                any("should have been a turn" in n for n in diag["notes"]), diag["notes"]
+            )
         finally:
             import shutil
+
             shutil.rmtree(d)
 
     def test_mostly_malformed_drops_do_trigger_the_warning(self):
@@ -203,18 +259,25 @@ class DoctorWarningTests(unittest.TestCase):
             lines = [_cc_line("user", "the one good turn", "2026-02-01T10:00:00Z")]
             # a pile of lines with no usable timestamp: malformed, not structural
             for i in range(5):
-                lines.append(json.dumps({
-                    "type": "user",
-                    "message": {"content": [{"type": "text", "text": f"lost turn {i}"}]}}))
+                lines.append(
+                    json.dumps(
+                        {
+                            "type": "user",
+                            "message": {"content": [{"type": "text", "text": f"lost turn {i}"}]},
+                        }
+                    )
+                )
             _write(d / "s1.jsonl", lines)
             diag = self._diag_for(d)
             self.assertGreaterEqual(diag["malformed_drop_pct"], 50.0)
-            self.assertTrue(any("should have been a turn" in n
-                                for n in diag["notes"]), diag["notes"])
+            self.assertTrue(
+                any("should have been a turn" in n for n in diag["notes"]), diag["notes"]
+            )
             # the note explicitly excludes the structural bucket from the claim
             self.assertTrue(any("does NOT count" in n for n in diag["notes"]), diag["notes"])
         finally:
             import shutil
+
             shutil.rmtree(d)
 
     def test_real_cli_doctor_stays_quiet_on_an_agentic_corpus(self):
@@ -227,6 +290,7 @@ class DoctorWarningTests(unittest.TestCase):
             self.assertNotIn("should have been a turn", " ".join(diag["notes"]))
         finally:
             import shutil
+
             shutil.rmtree(d)
 
 
@@ -247,12 +311,17 @@ class HarnessAuthoredUserTurnTests(unittest.TestCase):
         return ingest.get("claude-code")(str(self.d))
 
     def test_a_meta_resume_prompt_is_harness_bookkeeping_not_a_prompt(self):
-        events, _, drops = self._ingest([
-            _cc_line("user", "build the parser for the config file please", "2026-02-01T10:00:00Z"),
-            _cc_line("assistant", "Done.", "2026-02-01T10:05:00Z"),
-            _cc_line_with("user", "Continue from where you left off.", "2026-02-01T11:00:00Z",
-                          isMeta=True),
-        ])
+        events, _, drops = self._ingest(
+            [
+                _cc_line(
+                    "user", "build the parser for the config file please", "2026-02-01T10:00:00Z"
+                ),
+                _cc_line("assistant", "Done.", "2026-02-01T10:05:00Z"),
+                _cc_line_with(
+                    "user", "Continue from where you left off.", "2026-02-01T11:00:00Z", isMeta=True
+                ),
+            ]
+        )
         self.assertEqual(drops.as_dict().get(HARNESS_BOOKKEEPING), 1)
         self.assertEqual(drops.malformed, 0)
         self.assertEqual(sum(1 for e in events if e.data_type is DataType.PROMPT), 1)
@@ -260,38 +329,61 @@ class HarnessAuthoredUserTurnTests(unittest.TestCase):
     def test_a_task_notification_origin_is_structural_not_an_empty_turn(self):
         # Before: the tag filter stripped the wrapper to nothing and the record
         # was counted as EMPTY_TURN — a *malformed* drop for a correct one.
-        events, _, drops = self._ingest([
-            _cc_line("user", "build the parser for the config file please", "2026-02-01T10:00:00Z"),
-            _cc_line_with("user", "<task-notification><result>done</result></task-notification>",
-                          "2026-02-01T10:30:00Z", origin={"kind": "task-notification"}),
-        ])
+        events, _, drops = self._ingest(
+            [
+                _cc_line(
+                    "user", "build the parser for the config file please", "2026-02-01T10:00:00Z"
+                ),
+                _cc_line_with(
+                    "user",
+                    "<task-notification><result>done</result></task-notification>",
+                    "2026-02-01T10:30:00Z",
+                    origin={"kind": "task-notification"},
+                ),
+            ]
+        )
         self.assertEqual(drops.as_dict().get(HARNESS_BOOKKEEPING), 1)
         self.assertIsNone(drops.as_dict().get(EMPTY_TURN))
         self.assertEqual(drops.malformed, 0)
         self.assertEqual(len(events), 1)
 
     def test_a_human_origin_turn_is_kept(self):
-        events, _, drops = self._ingest([
-            _cc_line_with("user", "build the parser for the config file please",
-                          "2026-02-01T10:00:00Z", origin={"kind": "human"}, promptSource="sdk"),
-        ])
+        events, _, drops = self._ingest(
+            [
+                _cc_line_with(
+                    "user",
+                    "build the parser for the config file please",
+                    "2026-02-01T10:00:00Z",
+                    origin={"kind": "human"},
+                    promptSource="sdk",
+                ),
+            ]
+        )
         self.assertEqual(len(events), 1)
         self.assertEqual(drops.total, 0)
 
     def test_a_record_with_neither_field_is_as_much_a_turn_as_before(self):
         # fail-open on absence: an older harness, or another producer
-        events, _, drops = self._ingest([
-            _cc_line("user", "Continue from where you left off.", "2026-02-01T10:00:00Z"),
-        ])
+        events, _, drops = self._ingest(
+            [
+                _cc_line("user", "Continue from where you left off.", "2026-02-01T10:00:00Z"),
+            ]
+        )
         self.assertEqual(len(events), 1)
         self.assertEqual(drops.total, 0)
 
     def test_the_check_reads_the_field_not_the_text(self):
         # the same resume wording typed by a person (origin says human) stays
-        events, _, drops = self._ingest([
-            _cc_line_with("user", "Continue from where you left off.", "2026-02-01T10:00:00Z",
-                          origin={"kind": "human"}),
-        ])
+        events, _, drops = self._ingest(
+            [
+                _cc_line_with(
+                    "user",
+                    "Continue from where you left off.",
+                    "2026-02-01T10:00:00Z",
+                    origin={"kind": "human"},
+                ),
+            ]
+        )
         self.assertEqual(len(events), 1)
         self.assertEqual(drops.total, 0)
 

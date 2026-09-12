@@ -24,6 +24,7 @@ only a *status claim* is not. Within the Status section itself, a paragraph
 that opens with a recognized dated-history lead-in ("**At 0.2.0 ...**",
 "**What 0.2.0 added ...**") is exempted the same way.
 """
+
 import re
 import unittest
 from pathlib import Path
@@ -95,14 +96,16 @@ class ReadmeStatusVersionTests(unittest.TestCase):
 
         bad_headings = stale_versions_in_headings(readme, current)
         self.assertEqual(
-            bad_headings, [],
+            bad_headings,
+            [],
             f"README heading(s) name a version other than the CHANGELOG's "
             f"top release ({current}): {bad_headings}",
         )
 
         bad_status = stale_versions_in_status_body(readme, current)
         self.assertEqual(
-            bad_status, [],
+            bad_status,
+            [],
             f"README '## Status' section names a version other than the "
             f"CHANGELOG's top release ({current}): {bad_status}",
         )

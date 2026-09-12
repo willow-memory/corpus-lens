@@ -25,6 +25,7 @@ Nothing enforced that. This pin does, narrowly:
   too. A named local override is allowed: record it here, beside the
   constant, and update the hash in the same commit.
 """
+
 from __future__ import annotations
 
 import ast
@@ -54,7 +55,7 @@ RESYNC = (
 
 def _body(text: str) -> str:
     """The pinned region: from the `from __future__` line to end of file."""
-    return text[text.index(BODY_START):]
+    return text[text.index(BODY_START) :]
 
 
 def _body_sha256(text: str) -> str:
@@ -62,7 +63,6 @@ def _body_sha256(text: str) -> str:
 
 
 class VendoredChangelogDedupIsPinned(unittest.TestCase):
-
     def setUp(self):
         self.text = DEDUP.read_text(encoding="utf-8")
 

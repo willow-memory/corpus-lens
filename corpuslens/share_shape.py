@@ -51,6 +51,7 @@ result is always safe to put in an error, a log, or an audit record. The
 enforcing caller (`Guard.scan_share_shape`, in `guard.py`) raises; this
 module never does.
 """
+
 from __future__ import annotations
 
 import re
@@ -73,13 +74,28 @@ ALLOWED_RESULT_FIELDS: frozenset = _RESULT_META_FIELDS | RATE_FIELDS
 #: its own reviewed list rather than introspecting `AuditRecord` at runtime —
 #: a field added to the dataclass without a matching review here must fail
 #: closed, not pass because the dataclass happened to grow a slot for it.
-ALLOWED_AUDIT_FIELDS: frozenset = frozenset({
-    "profile", "adapter", "discovered_path", "granted", "denied",
-    "analyzers_run", "analyzers_refused", "n_events", "n_dropped",
-    "n_dropped_structural", "n_dropped_malformed", "dropped_by_reason",
-    "filters", "n_filtered", "subject", "subject_reason", "subject_consent",
-    "sentence",
-})
+ALLOWED_AUDIT_FIELDS: frozenset = frozenset(
+    {
+        "profile",
+        "adapter",
+        "discovered_path",
+        "granted",
+        "denied",
+        "analyzers_run",
+        "analyzers_refused",
+        "n_events",
+        "n_dropped",
+        "n_dropped_structural",
+        "n_dropped_malformed",
+        "dropped_by_reason",
+        "filters",
+        "n_filtered",
+        "subject",
+        "subject_reason",
+        "subject_consent",
+        "sentence",
+    }
+)
 
 #: Keys whose value is a denominator-shaped count. Each MUST hold a band
 #: string (`share.band_n`'s output shape) once coarsening has run — never an
@@ -87,9 +103,17 @@ ALLOWED_AUDIT_FIELDS: frozenset = frozenset({
 #: has it (see `_RESULT_META_FIELDS` above): if one appears, that is exactly
 #: the "forgot to band" bug this module exists to catch, not an unrecognized
 #: field to report as the softer violation.
-_DENOMINATOR_FIELDS = frozenset({"n", "n_band", "n_events", "n_dropped",
-                                 "n_dropped_structural", "n_dropped_malformed",
-                                 "n_filtered"})
+_DENOMINATOR_FIELDS = frozenset(
+    {
+        "n",
+        "n_band",
+        "n_events",
+        "n_dropped",
+        "n_dropped_structural",
+        "n_dropped_malformed",
+        "n_filtered",
+    }
+)
 
 #: The exact shape `share.band_n` produces. A value under a denominator field
 #: that does not match this is a violation regardless of its type — an exact
@@ -109,7 +133,11 @@ def _check_denominator_field(key: str, value, where: str, violations: list) -> N
         )
         return
     if not _is_band_string(value):
-        kind = "an exact integer" if isinstance(value, int) and not isinstance(value, bool) else "not a band"
+        kind = (
+            "an exact integer"
+            if isinstance(value, int) and not isinstance(value, bool)
+            else "not a band"
+        )
         violations.append(f"'{key}' in {where} is {kind}, not a coarsened band")
 
 
@@ -150,8 +178,11 @@ def _check_dropped_by_reason(value, where: str, violations: list) -> None:
             violations.append(f"unrecognized drop reason '{reason}' in {where}")
             continue
         if not _is_band_string(count):
-            kind = ("an exact integer" if isinstance(count, int) and not isinstance(count, bool)
-                    else "not a band")
+            kind = (
+                "an exact integer"
+                if isinstance(count, int) and not isinstance(count, bool)
+                else "not a band"
+            )
             violations.append(f"drop reason '{reason}' in {where} is {kind}, not a coarsened band")
 
 

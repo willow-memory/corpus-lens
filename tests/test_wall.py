@@ -5,6 +5,7 @@ honest boundary — a test that PROVES the supported path can't recover the
 absolute anchor, plus a test that DOCUMENTS weekly cadence is reconstructable
 (so nobody re-adds the false 'weekday unreachable' claim).
 """
+
 import unittest
 
 from corpuslens.guard import DEFAULT_PROFILE, AuditRecord, Guard, Profile, WallError
@@ -13,8 +14,11 @@ from corpuslens.analyze import Analyzer
 
 
 def _q():
-    return Quarantine(base_date_iso="2026-01-05", local_tz="America/Denver",
-                      ref_map={"opaque1": "chat-2026-02-01T14-30.jsonl:7"})
+    return Quarantine(
+        base_date_iso="2026-01-05",
+        local_tz="America/Denver",
+        ref_map={"opaque1": "chat-2026-02-01T14-30.jsonl:7"},
+    )
 
 
 class ReleaseDoorTests(unittest.TestCase):
@@ -56,21 +60,32 @@ class ReleaseDoorTests(unittest.TestCase):
 class ClaimGateTests(unittest.TestCase):
     def test_person_claim_unregisterable_by_default(self):
         g = Guard(_q())
-        spy = Analyzer(name="custody_map", claims=("life_partition",),
-                       denominator="events", run=lambda ev: {})
+        spy = Analyzer(
+            name="custody_map", claims=("life_partition",), denominator="events", run=lambda ev: {}
+        )
         self.assertFalse(g.admit(spy))
         self.assertTrue(g.audit.analyzers_refused)
 
     def test_unknown_claim_refused(self):
         g = Guard(_q())
-        self.assertFalse(g.admit(Analyzer(name="vibes", claims=("who_he_is",),
-                                          denominator="events", run=lambda ev: {})))
+        self.assertFalse(
+            g.admit(
+                Analyzer(
+                    name="vibes", claims=("who_he_is",), denominator="events", run=lambda ev: {}
+                )
+            )
+        )
 
     def test_person_claim_admitted_only_with_grant_and_token(self):
         p = Profile(capabilities=frozenset({"person_inference"}), owner_token="t")
         g = Guard(_q(), p)
-        self.assertTrue(g.admit(Analyzer(name="cm", claims=("life_partition",),
-                                        denominator="events", run=lambda ev: {})))
+        self.assertTrue(
+            g.admit(
+                Analyzer(
+                    name="cm", claims=("life_partition",), denominator="events", run=lambda ev: {}
+                )
+            )
+        )
 
 
 class AuditSentenceTests(unittest.TestCase):
@@ -113,7 +128,7 @@ class DiscoveredPathStructuralGuardTests(unittest.TestCase):
         a = AuditRecord(profile="default")
         with self.assertRaises(WallError):
             a.discovered_path = "/home/sean-campbell/.claude/projects"
-        self.assertIsNone(a.discovered_path)   # the refused assignment did not stick
+        self.assertIsNone(a.discovered_path)  # the refused assignment did not stick
 
     def test_a_relative_but_unexpanded_path_is_also_refused(self):
         # not just absolute paths -- anything that is not the declared,
@@ -135,17 +150,24 @@ class DiscoveredPathStructuralGuardTests(unittest.TestCase):
     def test_none_is_always_accepted(self):
         a = AuditRecord(profile="default")
         a.discovered_path = "~/.claude/projects"
-        a.discovered_path = None   # clearing it back out must never raise
+        a.discovered_path = None  # clearing it back out must never raise
         self.assertIsNone(a.discovered_path)
 
 
 class HonestBoundaryTests(unittest.TestCase):
     def test_event_carries_no_absolute_anchor_or_filename(self):
-        e = Event(event_id="a1b2", corpus_id="c", adapter_id="claude-code/1",
-                  source_ref="a1b2", thread_id="deadbeef", surface="cli",
-                  author_class="operator", data_type="prompt",
-                  time=CoarseTime(day_offset=3, delta_prev_s=90.0),
-                  features={"word_count": 5})
+        e = Event(
+            event_id="a1b2",
+            corpus_id="c",
+            adapter_id="claude-code/1",
+            source_ref="a1b2",
+            thread_id="deadbeef",
+            surface="cli",
+            author_class="operator",
+            data_type="prompt",
+            time=CoarseTime(day_offset=3, delta_prev_s=90.0),
+            features={"word_count": 5},
+        )
         blob = repr(e.__dict__) + repr(e.time)
         for leak in ("2026", "01-05", "Monday", "Denver", ".jsonl", "chat-"):
             self.assertNotIn(leak, blob)
@@ -170,18 +192,35 @@ class HonestBoundaryTests(unittest.TestCase):
         clock hour. Defense: the cross-day delta is censored (None), so the
         midnight boundary carries no measurable offset. Assert no delta spans
         two different days in a built corpus."""
-        import json, tempfile
+        import json
+        import tempfile
         from pathlib import Path
         from corpuslens import ingest
+
         d = tempfile.TemporaryDirectory()
         # a thread crossing midnight: 23:59:00 then 00:00:30 next day
         lines = [
-            {"type": "user", "timestamp": "2026-02-01T23:59:00Z",
-             "message": {"content": [{"type": "text", "text": "last turn before midnight here"}]}},
-            {"type": "user", "timestamp": "2026-02-02T00:00:30Z",
-             "message": {"content": [{"type": "text", "text": "first turn after midnight here"}]}},
-            {"type": "user", "timestamp": "2026-02-02T00:02:00Z",
-             "message": {"content": [{"type": "text", "text": "second turn after midnight here"}]}},
+            {
+                "type": "user",
+                "timestamp": "2026-02-01T23:59:00Z",
+                "message": {
+                    "content": [{"type": "text", "text": "last turn before midnight here"}]
+                },
+            },
+            {
+                "type": "user",
+                "timestamp": "2026-02-02T00:00:30Z",
+                "message": {
+                    "content": [{"type": "text", "text": "first turn after midnight here"}]
+                },
+            },
+            {
+                "type": "user",
+                "timestamp": "2026-02-02T00:02:00Z",
+                "message": {
+                    "content": [{"type": "text", "text": "second turn after midnight here"}]
+                },
+            },
         ]
         (Path(d.name) / "s.jsonl").write_text("\n".join(json.dumps(x) for x in lines))
         events, q, _ = ingest.get("claude-code")(d.name)
@@ -197,9 +236,9 @@ class HonestBoundaryTests(unittest.TestCase):
         """The README promises weekly cadence is NOT hidden. This test documents
         that on purpose — if someone 'fixes' it away, this fails and forces them
         to correct the README rather than silently re-introduce an overclaim."""
-        offsets = [0, 1, 2, 7, 8, 9, 14]     # a weekly rhythm
+        offsets = [0, 1, 2, 7, 8, 9, 14]  # a weekly rhythm
         weekday_slots = {o % 7 for o in offsets}
-        self.assertEqual(weekday_slots, {0, 1, 2})   # cadence visible up to rotation
+        self.assertEqual(weekday_slots, {0, 1, 2})  # cadence visible up to rotation
         # ...but WHICH real weekday slot 0 is stays unknown without the anchor,
         # and the anchor is gated:
         with self.assertRaises(WallError):

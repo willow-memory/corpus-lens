@@ -11,11 +11,11 @@ recomputed here stops matching the pinned literal in the analyzer's own module
 has quietly gone stale. The fix is never "update the hash" alone: it is "bump
 `version`, THEN update the hash" (see corpuslens/analyze/__init__.py).
 """
+
 import unittest
 
 from corpuslens.analyze import all_analyzers, register, semantic_hash
 from corpuslens.analyze import composition as composition_mod
-from corpuslens.analyze import steering as steering_mod
 from corpuslens.analyze import tempo as tempo_mod
 from corpuslens.classifiers import AUTHORED, CLARIFY, CODE_REF, DELIB
 
@@ -60,11 +60,13 @@ class ClassifierHashDisciplineTests(unittest.TestCase):
             with self.subTest(analyzer=name):
                 live = semantic_hash(*a.semantic_inputs)
                 self.assertEqual(
-                    live, a.semantic_hash,
+                    live,
+                    a.semantic_hash,
                     f"{name}'s semantic_hash no longer matches its live classifier/threshold "
                     f"inputs — a regex or threshold changed. Bump `version` in the @register(...) "
                     f"call, then recompute semantic_hash(*semantic_inputs) and paste the new value "
-                    f"in as the pinned semantic_hash (see corpuslens/analyze/__init__.py).")
+                    f"in as the pinned semantic_hash (see corpuslens/analyze/__init__.py).",
+                )
 
     def test_composition_mix_pins_the_actual_live_classifier_regexes(self):
         # A hash pinned against the WRONG object (a copy, a stale re-derivation)
@@ -87,7 +89,9 @@ class ClassifierHashDisciplineTests(unittest.TestCase):
         # trivially passing: hash the SAME inputs with one character changed
         # and confirm it no longer matches the pinned literal. This is the
         # failure a real regex edit would produce.
-        mutated = semantic_hash(AUTHORED.pattern + "X", CODE_REF.pattern, DELIB.pattern, "12", "3.0")
+        mutated = semantic_hash(
+            AUTHORED.pattern + "X", CODE_REF.pattern, DELIB.pattern, "12", "3.0"
+        )
         self.assertNotEqual(mutated, composition_mod._COMPOSITION_MIX_HASH)
 
     def test_semantic_hash_is_order_and_content_sensitive(self):
@@ -112,9 +116,11 @@ class DiscoveryTests(unittest.TestCase):
         for a in all_analyzers():
             if a.name in depends_on_classifiers:
                 with self.subTest(analyzer=a.name):
-                    self.assertTrue(a.semantic_inputs,
-                                    f"{a.name} depends on a claude-code classifier but declares "
-                                    f"no semantic_inputs to hash")
+                    self.assertTrue(
+                        a.semantic_inputs,
+                        f"{a.name} depends on a claude-code classifier but declares "
+                        f"no semantic_inputs to hash",
+                    )
 
 
 if __name__ == "__main__":
@@ -137,6 +143,7 @@ class LayeringTests(unittest.TestCase):
 
     def test_no_analyzer_imports_the_ingest_layer(self):
         import pathlib
+
         analyze_dir = pathlib.Path(__file__).resolve().parent.parent / "corpuslens" / "analyze"
         offenders = []
         for f in sorted(analyze_dir.glob("*.py")):
@@ -146,5 +153,9 @@ class LayeringTests(unittest.TestCase):
                     continue
                 if "ingest" in stripped:
                     offenders.append(f"{f.name}:{i}: {stripped}")
-        self.assertEqual(offenders, [], "analyzers must not import the ingest layer; "
-                                        "shared things belong in corpuslens/classifiers.py")
+        self.assertEqual(
+            offenders,
+            [],
+            "analyzers must not import the ingest layer; "
+            "shared things belong in corpuslens/classifiers.py",
+        )
