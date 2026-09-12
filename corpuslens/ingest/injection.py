@@ -95,6 +95,15 @@ MACHINE_TURN = re.compile(
     # The relay preamble the harness writes above a cross-session message.
     # Anchored, so a person writing the phrase mid-sentence is untouched.
     r"|Another Claude session sent a message:"
+    # The harness's own record of a human pressing interrupt — written in
+    # the user role with neither `isMeta` nor `origin`, so the field check
+    # from BUGS.md's harness-authored-turn fix cannot see it. Observed
+    # 2026-09-12 in this project's own session log (the residual left by
+    # that fix); the `for tool use` sibling is also an observed harness
+    # string, hence the optional tail. It is a record OF the human's act,
+    # not a prompt from them, and — like the doors above — anchoring at the
+    # start keeps a person quoting the phrase mid-message untouched.
+    r"|\[Request interrupted by user(?: for tool use)?\]"
     r").*",
     re.DOTALL | re.IGNORECASE,
 )

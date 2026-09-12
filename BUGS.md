@@ -315,12 +315,30 @@ are structural, and the corpus reads 0 malformed. Regression tests:
 keeps the same resume wording when `origin` says a human typed it — the check
 reads the field, never the text.
 
-**Residual, not fixed here:** `doctor` on that log now reads 24 operator
+~~**Residual, not fixed here:** `doctor` on that log now reads 24 operator
 turns, not 23. The one left is `[Request interrupted by user]`, which the
 harness writes in the user role with neither field — a text-anchored door of
 the same class as the stop-hook prefix, and it belongs in `MACHINE_TURN`'s
 enumeration in `injection.py`, not in a field check. Recorded so the next
-person does not rediscover it.
+person does not rediscover it.~~
+
+**Fixed:** `[Request interrupted by user]` — the harness's own record that the
+operator pressed interrupt — is written in the user role with neither `isMeta`
+nor `origin`, so the field check above cannot see it; the field is absent, not
+false, and fail-open reads absence as a real turn. Anchored into
+`MACHINE_TURN` in `injection.py` alongside the stop-hook prefix, the same
+text-only door, keyed on the observed strings rather than a guess. Both
+observed forms are enumerated: `[Request interrupted by user]` and the
+sibling `[Request interrupted by user for tool use]`. Anchored at the start
+and consuming the turn, so a person quoting the phrase mid-message is
+untouched — planted as its own fixture. Regression tests:
+`tests/test_pipeline.py::DogfoodRegressions::test_an_interrupt_marker_is_not_a_prompt`,
+`::test_an_interrupt_marker_for_tool_use_is_not_a_prompt`, and
+`::test_interrupt_marker_quoted_mid_message_is_still_a_prompt` for the plant.
+Re-running `corpuslens doctor` against the owner's own 18-hour log is not
+possible from here, so the effect is stated, not measured: the owner's log
+should now read 23 operator turns, the number `origin.kind == "human"` gives
+(23 of 23) — to be confirmed on the next run.
 
 ### A peer agent's relayed message was counted as the operator typing
 

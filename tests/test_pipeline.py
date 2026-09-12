@@ -450,6 +450,54 @@ class DogfoodRegressions(unittest.TestCase):
         # BUGS.md now records the claim it sits awkwardly with.
         self.assertEqual([e.time.delta_prev_s for e in ops][1], 539.0)
 
+    def test_an_interrupt_marker_is_not_a_prompt(self):
+        """`[Request interrupted by user]` is the harness's own record that the
+        person pressed interrupt — written in the user role with neither
+        `isMeta` nor `origin`, so the field check from BUGS.md's
+        harness-authored-turn fix cannot see it. It is a record OF a human
+        act, not a prompt, and now sits in `MACHINE_TURN` alongside the
+        stop-hook prefix (same anchored, text-only door, same drop reason).
+        """
+        _write(self.d / "s.jsonl", [
+            _cc_line("user", "merge it once the checks finish", "2026-02-01T10:00:00Z"),
+            _cc_line("user", "[Request interrupted by user]", "2026-02-01T10:00:01Z"),
+            _cc_line("user", "test it against this session", "2026-02-01T10:09:00Z"),
+        ])
+        events, _, dropped = ingest.get("claude-code")(str(self.d))
+        ops = [e for e in events if e.author_class == "operator"]
+        self.assertEqual(len(ops), 2)
+        self.assertEqual(dropped.total, 1)
+        # Same bucket the stop-hook turn lands in: MACHINE_TURN empties the
+        # text in `authored_text`, and an empty user turn is EMPTY_TURN.
+        self.assertEqual(dropped.as_dict(), {"empty_turn": 1})
+
+    def test_an_interrupt_marker_for_tool_use_is_not_a_prompt(self):
+        """The sibling form observed in the wild: interrupting mid-tool-call."""
+        _write(self.d / "s.jsonl", [
+            _cc_line("user", "merge it once the checks finish", "2026-02-01T10:00:00Z"),
+            _cc_line("user", "[Request interrupted by user for tool use]",
+                     "2026-02-01T10:00:01Z"),
+            _cc_line("user", "test it against this session", "2026-02-01T10:09:00Z"),
+        ])
+        events, _, dropped = ingest.get("claude-code")(str(self.d))
+        ops = [e for e in events if e.author_class == "operator"]
+        self.assertEqual(len(ops), 2)
+        self.assertEqual(dropped.total, 1)
+        self.assertEqual(dropped.as_dict(), {"empty_turn": 1})
+
+    def test_interrupt_marker_quoted_mid_message_is_still_a_prompt(self):
+        """The anchor is what makes this safe: a person asking ABOUT the
+        marker, with the phrase not at the start of the turn, is untouched."""
+        _write(self.d / "s.jsonl", [
+            _cc_line("user",
+                     'I saw "[Request interrupted by user]" in the log — is '
+                     "that me or the harness?", "2026-02-01T10:00:00Z"),
+        ])
+        events, _, dropped = ingest.get("claude-code")(str(self.d))
+        ops = [e for e in events if e.author_class == "operator"]
+        self.assertEqual(len(ops), 1)
+        self.assertEqual(dropped.total, 0)
+
     # ── finding 4: dispatched traffic is marked on the record, not the path ──
     def test_sidechain_records_are_skipped_wherever_they_live(self):
         """The runtime marks dispatched traffic with `isSidechain` on every
