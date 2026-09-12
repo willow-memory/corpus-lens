@@ -121,6 +121,18 @@ class ReadmeStatusVersionTests(unittest.TestCase):
         self.assertNotEqual(stale_versions_in_headings(planted, current), [])
         self.assertNotEqual(stale_versions_in_status_body(planted, current), [])
 
+    def test_planted_changelog_without_a_top_section_is_caught(self):
+        # `current_release` is the scan the other two lean on: it must read
+        # the top section's version, and refuse a CHANGELOG with no such
+        # section rather than hand back something the others would compare
+        # every README version against (and clear).
+        self.assertEqual(
+            current_release("# Changelog\n\n## [9.9.9](https://x/compare/v9.9.8...v9.9.9)\n"),
+            "9.9.9",
+        )
+        with self.assertRaises(AssertionError):
+            current_release("# Changelog\n\nNothing released yet.\n")
+
     def test_current_status_version_passes(self):
         # The control: the same shape, naming the current release (or no
         # release at all, and pointing at the CHANGELOG instead) is clean.
