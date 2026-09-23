@@ -229,6 +229,32 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(dropped.total, 2)  # untagged user + assistant, both counted
         sub.cleanup()
 
+    def test_cursor_accepts_abbreviated_month_in_timestamp(self):
+        """Cursor injects Sep/Oct-style months; full names alone dropped real exports."""
+        c = Path(self.tmp.name) / "cur.jsonl"
+        tagged = {
+            "role": "user",
+            "message": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "<timestamp>Friday, Sep 11, 2026, 8:05 PM (UTC-6)</timestamp>\n"
+                            "<user_query>run corpus lens on this session</user_query>"
+                        ),
+                    }
+                ],
+            },
+        }
+        _write(c, [json.dumps(tagged)])
+        sub = tempfile.TemporaryDirectory()
+        Path(sub.name, "cur.jsonl").write_bytes(c.read_bytes())
+        events, q, dropped = ingest.get("cursor")(sub.name)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(q.base_date_iso, "2026-09-11")
+        self.assertEqual(dropped.total, 0)
+        sub.cleanup()
+
     def test_malformed_message_shape_does_not_crash_and_is_counted(self):
         j = Path(self.tmp.name) / "badmsg.jsonl"
         _write(
