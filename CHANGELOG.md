@@ -7,6 +7,14 @@ amendments — corrections sit beside the record they correct, never overwrite i
 Versioned sections are written by release-please from the commit messages; the
 hand-written history below them predates the release pipeline.
 
+## [0.7.4](https://github.com/willow-memory/corpus-lens/compare/v0.7.3...v0.7.4) (2026-09-23)
+
+
+### Fixed
+
+* cursor adapter accepts abbreviated month names in timestamps ([67902ca](https://github.com/willow-memory/corpus-lens/commit/67902cad68096b4791413bde02a69e67f6af4d5c))
+* **ingest:** the forge adapter's locator is posix-spelled on every platform ([09671dd](https://github.com/willow-memory/corpus-lens/commit/09671ddb2065f7f00c5ead7cc943b5e3d509267a))
+
 ## [0.7.3](https://github.com/willow-memory/corpus-lens/compare/v0.7.2...v0.7.3) (2026-09-12)
 
 
