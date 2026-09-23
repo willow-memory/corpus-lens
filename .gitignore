@@ -10,3 +10,5 @@ build/
 
 # Local lens run output
 .lens-out/
+
+.venv/
