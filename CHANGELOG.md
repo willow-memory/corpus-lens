@@ -13,7 +13,7 @@ hand-written history below them predates the release pipeline.
 ### Fixed
 
 * cursor adapter accepts abbreviated month names in timestamps ([67902ca](https://github.com/willow-memory/corpus-lens/commit/67902cad68096b4791413bde02a69e67f6af4d5c))
-* **cursor:** accept abbreviated month names in timestamps ([135e74e](https://github.com/willow-memory/corpus-lens/commit/135e74e9a312ee0d9258131dce2be3602645ccf4))
+* **ingest:** the forge adapter's locator is posix-spelled on every platform ([09671dd](https://github.com/willow-memory/corpus-lens/commit/09671ddb2065f7f00c5ead7cc943b5e3d509267a))
 
 ## [0.7.3](https://github.com/willow-memory/corpus-lens/compare/v0.7.2...v0.7.3) (2026-09-12)
 
