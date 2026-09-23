@@ -235,13 +235,15 @@ class PipelineTests(unittest.TestCase):
         tagged = {
             "role": "user",
             "message": {
-                "content": [{
-                    "type": "text",
-                    "text": (
-                        "<timestamp>Friday, Sep 11, 2026, 8:05 PM (UTC-6)</timestamp>\n"
-                        "<user_query>run corpus lens on this session</user_query>"
-                    ),
-                }],
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "<timestamp>Friday, Sep 11, 2026, 8:05 PM (UTC-6)</timestamp>\n"
+                            "<user_query>run corpus lens on this session</user_query>"
+                        ),
+                    }
+                ],
             },
         }
         _write(c, [json.dumps(tagged)])
