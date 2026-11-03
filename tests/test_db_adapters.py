@@ -168,6 +168,22 @@ class SqliteAdapterTests(unittest.TestCase):
         events2, _, _ = ingest.get("sqlite")(self.db, table="turns")
         self.assertEqual(len(events), len(events2))
 
+    def test_a_table_name_holding_quotes_is_one_name(self):
+        # a name comes from the file: a `"` in it must not end the quotes early
+        for name in ('my "chat" log', 'turns" WHERE 0 --'):
+            db = str(Path(self.tmp.name) / f"q{len(name)}.db")
+            con = sqlite3.connect(db)
+            q = '"' + name.replace('"', '""') + '"'
+            con.execute(
+                f"CREATE TABLE {q} (created_at TEXT, author TEXT, body TEXT, session_id TEXT)"
+            )
+            con.executemany(f"INSERT INTO {q} VALUES (?,?,?,?)", ROWS)
+            con.commit()
+            con.close()
+            events, _, _ = ingest.get("sqlite")(db)  # the only table, picked
+            base, _, _ = ingest.get("sqlite")(self.db)
+            self.assertEqual(len(events), len(base), name)
+
     def test_missing_required_column_errors(self):
         bad = str(Path(self.tmp.name) / "bad.db")
         _make_sqlite(bad, cols=("created_at", "author", "note_wrong", "session_id"))

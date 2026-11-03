@@ -41,6 +41,12 @@ _TABLE_PREFERENCE = (
 )
 
 
+def _quoted(name: str) -> str:
+    """A table name as one SQL identifier, whatever it holds: a name comes
+    from the file being read, and a `"` in it would end the quotes early."""
+    return '"' + name.replace('"', '""') + '"'
+
+
 def _pick_table(con) -> str:
     rows = con.execute(
         "SELECT name FROM sqlite_master WHERE type='table' "
@@ -73,7 +79,7 @@ def ingest(path: str, corpus_id: str = "corpus", table: str | None = None):
         con.row_factory = sqlite3.Row
         try:
             table = table or _pick_table(con)
-            info = con.execute(f'PRAGMA table_info("{table}")').fetchall()
+            info = con.execute(f"PRAGMA table_info({_quoted(table)})").fetchall()
         except sqlite3.DatabaseError as e:
             # `path` is echoed because the operator typed it (same reasoning as
             # cli.py's `_empty_message`); sqlite3's own message is NOT, because
@@ -89,7 +95,7 @@ def ingest(path: str, corpus_id: str = "corpus", table: str | None = None):
 
         raw = []
         drops = DropCounts()
-        for n, row in enumerate(con.execute(f'SELECT * FROM "{table}"')):
+        for n, row in enumerate(con.execute(f"SELECT * FROM {_quoted(table)}")):
             d, epoch = parse_db_ts(row[m["ts"]])
             if d is None:
                 drops.add(MISSING_TIMESTAMP)
