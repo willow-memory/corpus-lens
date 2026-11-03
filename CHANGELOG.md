@@ -12,7 +12,6 @@ hand-written history below them predates the release pipeline.
 
 ### Fixed
 
-* **ingest:** a SQLite table name holding a quote is still one name ([8aff474](https://github.com/willow-memory/corpus-lens/commit/8aff474f05e3f9e8a70a979cabdb93de19804dbf))
 * **ingest:** a SQLite table name holding a quote is still one name ([9e2b145](https://github.com/willow-memory/corpus-lens/commit/9e2b145c939d6dbca39b951f550274c6bb54ed32))
 
 ## [0.7.4](https://github.com/willow-memory/corpus-lens/compare/v0.7.3...v0.7.4) (2026-09-23)
