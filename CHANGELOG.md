@@ -7,6 +7,14 @@ amendments — corrections sit beside the record they correct, never overwrite i
 Versioned sections are written by release-please from the commit messages; the
 hand-written history below them predates the release pipeline.
 
+## [0.7.5](https://github.com/willow-memory/corpus-lens/compare/v0.7.4...v0.7.5) (2026-11-03)
+
+
+### Fixed
+
+* **ingest:** a SQLite table name holding a quote is still one name ([8aff474](https://github.com/willow-memory/corpus-lens/commit/8aff474f05e3f9e8a70a979cabdb93de19804dbf))
+* **ingest:** a SQLite table name holding a quote is still one name ([9e2b145](https://github.com/willow-memory/corpus-lens/commit/9e2b145c939d6dbca39b951f550274c6bb54ed32))
+
 ## [0.7.4](https://github.com/willow-memory/corpus-lens/compare/v0.7.3...v0.7.4) (2026-09-23)
 
 
